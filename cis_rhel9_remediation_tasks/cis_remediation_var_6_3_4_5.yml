@@ -1,0 +1,8 @@
+playbook_name: "cis_6_3_4_5"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for find and chmod commands using command: `which find && which chmod`. Expected result: paths to both executables are displayed."
+req_02: |
+  Apply restrictive permissions to audit configuration files using command: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) -exec chmod u-x,g-wx,o-rwx {} +`. Expected result: all audit configuration files have permissions no more permissive than 0640.
+req_03: |
+  Verify audit configuration files permissions using command: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) -exec stat -c '%a %n' {} +`. Expected result: each file's permission mode is 640 or less permissive.
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

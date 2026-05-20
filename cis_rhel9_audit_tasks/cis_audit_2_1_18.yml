@@ -1,0 +1,276 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_18.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    data_07: "Not collected yet"
+    status_07: "ERROR"
+    data_08: "Not collected yet"
+    status_08: "ERROR"
+    data_09: "Not collected yet"
+    status_09: "ERROR"
+    details_09: "Not evaluated"
+    httpd_installed: false
+    nginx_installed: false
+    any_webserver_installed: false
+
+- name: "Req 01 - Check if httpd is installed"
+  ansible.builtin.shell: rpm -q httpd
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if httpd is installed"
+    task_01_cmd: "rpm -q httpd"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) != 0 else 'FAIL' }}"
+    details_01: "{{ 'package httpd is not installed' if result_01.rc | default(-1) != 0 else 'package httpd is installed' }}"
+    httpd_installed: "{{ result_01.rc | default(-1) == 0 }}"
+
+- name: "Req 02 - Check if nginx is installed"
+  ansible.builtin.shell: rpm -q nginx
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check if nginx is installed"
+    task_02_cmd: "rpm -q nginx"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if result_02.rc | default(-1) != 0 else 'FAIL' }}"
+    details_02: "{{ 'package nginx is not installed' if result_02.rc | default(-1) != 0 else 'package nginx is installed' }}"
+    nginx_installed: "{{ result_02.rc | default(-1) == 0 }}"
+
+- name: "Set any_webserver_installed fact"
+  set_fact:
+    any_webserver_installed: "{{ httpd_installed | default(false) or nginx_installed | default(false) }}"
+
+    # --- Enabled checks (only when any webserver is installed) ---
+
+- name: "Req 03 - Check if httpd.socket is enabled"
+  ansible.builtin.shell: systemctl is-enabled httpd.socket 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: any_webserver_installed | default(false)
+
+- name: "Req 04 - Check if httpd.service is enabled"
+  ansible.builtin.shell: systemctl is-enabled httpd.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: any_webserver_installed | default(false)
+
+- name: "Req 05 - Check if nginx.service is enabled"
+  ansible.builtin.shell: systemctl is-enabled nginx.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: any_webserver_installed | default(false)
+
+    # --- Active checks (only when any webserver is installed) ---
+
+- name: "Req 06 - Check if httpd.socket is active"
+  ansible.builtin.shell: systemctl is-active httpd.socket 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_06
+  failed_when: false
+  changed_when: false
+  when: any_webserver_installed | default(false)
+
+- name: "Req 07 - Check if httpd.service is active"
+  ansible.builtin.shell: systemctl is-active httpd.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_07
+  failed_when: false
+  changed_when: false
+  when: any_webserver_installed | default(false)
+
+- name: "Req 08 - Check if nginx.service is active"
+  ansible.builtin.shell: systemctl is-active nginx.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_08
+  failed_when: false
+  changed_when: false
+  when: any_webserver_installed | default(false)
+
+# --- Compile results for requirements 03–08 in a single set_fact ---
+- name: "Store requirement 03–08 details"
+  set_fact:
+    task_03_name: "Check if httpd.socket is enabled"
+    task_03_cmd: "systemctl is-enabled httpd.socket 2>/dev/null | grep 'enabled'"
+    task_03_rc: "{{ result_03.rc | default(-1) if any_webserver_installed | default(false) else -1 }}"
+    data_03: "{{ result_03.stdout | default('N/A') | trim if any_webserver_installed | default(false) else 'N/A' }}"
+    status_03: "{{ 'PASS' if (any_webserver_installed | default(false) and result_03.rc | default(-1) != 0) else ('SKIP' if not any_webserver_installed | default(false) else 'FAIL') }}"
+    details_03: "{{ 'httpd.socket is not enabled' if (any_webserver_installed | default(false) and result_03.rc | default(-1) != 0) else ('httpd.socket is enabled' if (any_webserver_installed | default(false) and result_03.rc | default(-1) == 0) else 'Not applicable - web servers not installed') }}"
+
+    task_04_name: "Check if httpd.service is enabled"
+    task_04_cmd: "systemctl is-enabled httpd.service 2>/dev/null | grep 'enabled'"
+    task_04_rc: "{{ result_04.rc | default(-1) if any_webserver_installed | default(false) else -1 }}"
+    data_04: "{{ result_04.stdout | default('N/A') | trim if any_webserver_installed | default(false) else 'N/A' }}"
+    status_04: "{{ 'PASS' if (any_webserver_installed | default(false) and result_04.rc | default(-1) != 0) else ('SKIP' if not any_webserver_installed | default(false) else 'FAIL') }}"
+    details_04: "{{ 'httpd.service is not enabled' if (any_webserver_installed | default(false) and result_04.rc | default(-1) != 0) else ('httpd.service is enabled' if (any_webserver_installed | default(false) and result_04.rc | default(-1) == 0) else 'Not applicable - web servers not installed') }}"
+
+    task_05_name: "Check if nginx.service is enabled"
+    task_05_cmd: "systemctl is-enabled nginx.service 2>/dev/null | grep 'enabled'"
+    task_05_rc: "{{ result_05.rc | default(-1) if any_webserver_installed | default(false) else -1 }}"
+    data_05: "{{ result_05.stdout | default('N/A') | trim if any_webserver_installed | default(false) else 'N/A' }}"
+    status_05: "{{ 'PASS' if (any_webserver_installed | default(false) and result_05.rc | default(-1) != 0) else ('SKIP' if not any_webserver_installed | default(false) else 'FAIL') }}"
+    details_05: "{{ 'nginx.service is not enabled' if (any_webserver_installed | default(false) and result_05.rc | default(-1) != 0) else ('nginx.service is enabled' if (any_webserver_installed | default(false) and result_05.rc | default(-1) == 0) else 'Not applicable - web servers not installed') }}"
+
+    task_06_name: "Check if httpd.socket is active"
+    task_06_cmd: "systemctl is-active httpd.socket 2>/dev/null | grep '^active'"
+    task_06_rc: "{{ result_06.rc | default(-1) if any_webserver_installed | default(false) else -1 }}"
+    data_06: "{{ result_06.stdout | default('N/A') | trim if any_webserver_installed | default(false) else 'N/A' }}"
+    status_06: "{{ 'PASS' if (any_webserver_installed | default(false) and result_06.rc | default(-1) != 0) else ('SKIP' if not any_webserver_installed | default(false) else 'FAIL') }}"
+    details_06: "{{ 'httpd.socket is not active' if (any_webserver_installed | default(false) and result_06.rc | default(-1) != 0) else ('httpd.socket is active' if (any_webserver_installed | default(false) and result_06.rc | default(-1) == 0) else 'Not applicable - web servers not installed') }}"
+
+    task_07_name: "Check if httpd.service is active"
+    task_07_cmd: "systemctl is-active httpd.service 2>/dev/null | grep '^active'"
+    task_07_rc: "{{ result_07.rc | default(-1) if any_webserver_installed | default(false) else -1 }}"
+    data_07: "{{ result_07.stdout | default('N/A') | trim if any_webserver_installed | default(false) else 'N/A' }}"
+    status_07: "{{ 'PASS' if (any_webserver_installed | default(false) and result_07.rc | default(-1) != 0) else ('SKIP' if not any_webserver_installed | default(false) else 'FAIL') }}"
+    details_07: "{{ 'httpd.service is not active' if (any_webserver_installed | default(false) and result_07.rc | default(-1) != 0) else ('httpd.service is active' if (any_webserver_installed | default(false) and result_07.rc | default(-1) == 0) else 'Not applicable - web servers not installed') }}"
+
+    task_08_name: "Check if nginx.service is active"
+    task_08_cmd: "systemctl is-active nginx.service 2>/dev/null | grep '^active'"
+    task_08_rc: "{{ result_08.rc | default(-1) if any_webserver_installed | default(false) else -1 }}"
+    data_08: "{{ result_08.stdout | default('N/A') | trim if any_webserver_installed | default(false) else 'N/A' }}"
+    status_08: "{{ 'PASS' if (any_webserver_installed | default(false) and result_08.rc | default(-1) != 0) else ('SKIP' if not any_webserver_installed | default(false) else 'FAIL') }}"
+    details_08: "{{ 'nginx.service is not active' if (any_webserver_installed | default(false) and result_08.rc | default(-1) != 0) else ('nginx.service is active' if (any_webserver_installed | default(false) and result_08.rc | default(-1) == 0) else 'Not applicable - web servers not installed') }}"
+
+- name: "Req 09 - Summarize overall compliance"
+  set_fact:
+    task_09_name: "Overall compliance assessment"
+    task_09_cmd: "N/A"
+    task_09_rc: 0
+    data_09: "Aggregated status"
+    status_09: "{{ 'FAIL' if (status_01 == 'FAIL' or status_02 == 'FAIL' or status_03 == 'FAIL' or status_04 == 'FAIL' or status_05 == 'FAIL' or status_06 == 'FAIL' or status_07 == 'FAIL' or status_08 == 'FAIL') else 'PASS' }}"
+    details_09: "{{ 'One or more web server components are installed or active/enabled' if (status_01 == 'FAIL' or status_02 == 'FAIL' or status_03 == 'FAIL' or status_04 == 'FAIL' or status_05 == 'FAIL' or status_06 == 'FAIL' or status_07 == 'FAIL' or status_08 == 'FAIL') else 'All web server services are not in use' }}"
+
+- name: "Set cis_result"
+  set_fact:
+    cis_result: "{{ status_09 }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.18"
+    - "Reference: CIS Benchmark checkpoint 2.1.18"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('ERROR') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: {{ task_09_name | default('Not recorded') }}"
+    - "  Command: {{ task_09_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_09_rc | default(-1) }}"
+    - "  Data: {{ data_09 | default('') | trim }}"
+    - "  Status: {{ status_09 | default('ERROR') | trim }}"
+    - "  Details: {{ details_09 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 10 - {{ req_10 }}:"
+    - "  Task: {{ task_10_name | default('Not recorded') }}"
+    - "  Command: {{ task_10_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_10_rc | default(-1) }}"
+    - "  Data: {{ data_10 | default('') | trim }}"
+    - "  Status: {{ status_10 | default('ERROR') | trim }}"
+    - "  Details: {{ details_10 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_09 | default('Not evaluated') | trim }}"
+    - "========================================================"

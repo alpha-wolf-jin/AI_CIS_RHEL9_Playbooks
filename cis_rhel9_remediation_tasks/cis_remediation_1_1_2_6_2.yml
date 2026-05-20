@@ -1,0 +1,219 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_6_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: snapshot
+
+- name: "Snapshot - Check if /etc/fstab exists"
+  ansible.builtin.stat:
+    path: /etc/fstab
+  register: _fstab_stat
+  tags: snapshot
+
+- name: "Snapshot - Backup /etc/fstab if exists (baseline)"
+  ansible.builtin.shell: cp /etc/fstab "{{ backup_dir }}/fstab.backup"
+  args:
+    executable: /bin/bash
+    creates: "{{ backup_dir }}/fstab.backup"
+  when: _fstab_stat.stat.exists | default(false)
+  failed_when: false
+  tags: snapshot
+
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- block:
+  - name: "Check if /var/log is a separate partition"
+    ansible.builtin.shell: mount | grep -E '\s/var/log\s'
+    args:
+      executable: /bin/bash
+    register: mount_check
+    failed_when: false
+    changed_when: false
+    tags: execute
+
+  - name: "Set partition_exists flag"
+    ansible.builtin.set_fact:
+      partition_exists: "{{ mount_check.rc == 0 and (mount_check.stdout | default('') | trim | length > 0) }}"
+    tags: execute
+
+  - name: "Req 1 - Add nodev mount option to /var/log partition in /etc/fstab"
+    ansible.builtin.lineinfile:
+      path: /etc/fstab
+      regexp: |
+        ^\s*(\S+\s+/var/log\s+\S+\s+)(?!.*\bnodev\b)(\S+)(\s+.*)$
+      line: |
+        \1\2,nodev\3
+      backrefs: true
+    register: fstab_result
+    failed_when: false
+    when: partition_exists | default(false)
+    tags: execute
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Add nodev mount option to /var/log partition in /etc/fstab"
+      task_01_cmd: |
+        lineinfile: path=/etc/fstab regexp='^\\s*(\\S+\\s+/var/log\\s+\\S+\\s+)(?!.*\\bnodev\\b)(\\S+)(\\s+.*)$' line='\\1\\2,nodev\\3' backrefs=true
+      task_01_rc: "{{ fstab_result.rc | default(-1) }}"
+      data_01: "{{ fstab_result.diff | default('') | trim }}"
+      status_01: >-
+        {% if not partition_exists | default(false) %}SKIPPED
+        {% elif fstab_result.rc | default(-1) == 0 %}APPLIED
+        {% else %}FAILED
+        {% endif %}
+      details_01: >-
+        {% if not partition_exists | default(false) %}No separate /var/log partition
+        {% elif fstab_result.rc | default(-1) == 0 %}
+          {% if fstab_result.changed %}nodev added to fstab{% else %}nodev already present in fstab{% endif %}
+        {% else %}Failed to modify fstab
+        {% endif %}
+    tags: execute
+
+  - name: "Req 2 - Remount /var/log partition with updated options"
+    ansible.builtin.shell: mount -o remount /var/log
+    args:
+      executable: /bin/bash
+    register: remount_result
+    failed_when: false
+    when: partition_exists | default(false)
+    tags: execute
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remount /var/log partition"
+      task_02_cmd: "mount -o remount /var/log"
+      task_02_rc: "{{ remount_result.rc | default(-1) }}"
+      data_02: "{{ remount_result.stdout | default('') | trim }}"
+      status_02: >-
+        {% if not partition_exists | default(false) %}SKIPPED
+        {% elif remount_result.rc | default(-1) == 0 %}APPLIED
+        {% else %}FAILED
+        {% endif %}
+      details_02: >-
+        {% if not partition_exists | default(false) %}No separate /var/log partition
+        {% elif remount_result.rc | default(-1) == 0 %}Remounted successfully
+        {% else %}Failed with exit code {{ remount_result.rc }}
+        {% endif %}
+    tags: execute
+
+  - name: "Req 3 - Verify nodev option is set on /var/log partition"
+    ansible.builtin.shell: |
+      mount | grep -E '\s/var/log\s' | grep -o nodev
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    when: partition_exists | default(false)
+    tags: execute
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Verify nodev option on /var/log"
+      task_03_cmd: |
+        mount | grep -E '\\s/var/log\\s' | grep -o nodev
+      task_03_rc: "{{ verify_result.rc | default(-1) }}"
+      data_03: "{{ verify_result.stdout | default('') | trim }}"
+      status_03: >-
+        {% if not partition_exists | default(false) %}SKIPPED
+        {% elif verify_result.stdout | default('') | trim == 'nodev' %}APPLIED
+        {% else %}FAILED
+        {% endif %}
+      details_03: >-
+        {% if not partition_exists | default(false) %}No separate /var/log partition
+        {% elif verify_result.stdout | default('') | trim == 'nodev' %}Verification succeeded: nodev is present
+        {% else %}Verification failed: nodev not found on /var/log mount
+        {% endif %}
+    tags: execute
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.2.6.2"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.6.2"
+      - ""
+      - "REQUIREMENT 1 — {{ req_01 }}"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 2 — {{ req_02 }}"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 3 — {{ req_03 }}"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION"
+      - "  Overall Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Overall Details: {{ details_03 | default('Not evaluated') | trim }}"
+    tags: execute
+
+  always:
+  - name: "Restore - Check if fstab backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/fstab.backup"
+    register: _restore_fstab_stat
+    failed_when: false
+    tags: restore
+
+  - name: "Restore - Restore /etc/fstab from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/fstab.backup"
+      dest: /etc/fstab
+      remote_src: true
+    when: _restore_fstab_stat.stat.exists | default(false)
+    failed_when: false
+    tags: restore
+
+  - name: "Restore - Remount /var/log with original fstab options"
+    ansible.builtin.shell: mount -o remount /var/log
+    args:
+      executable: /bin/bash
+    when: _restore_fstab_stat.stat.exists | default(false)
+    failed_when: false
+    tags: restore
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: restore

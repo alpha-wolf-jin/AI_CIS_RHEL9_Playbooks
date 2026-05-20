@@ -1,0 +1,9 @@
+playbook_name: "cis_6_3_1_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check: ensure grubby is installed using command: `which grubby`. Expected result: path to grubby binary."
+req_02: "Apply audit=1 kernel parameter to all kernels using command: `grubby --update-kernel ALL --args 'audit=1'`. Expected result: no output, exit code 0."
+req_03: |
+  Apply audit=1 to GRUB_CMDLINE_LINUX in /etc/default/grub using command: `sed -i 's/^GRUB_CMDLINE_LINUX="/&audit=1 /' /etc/default/grub`. Expected result: file updated with audit=1 added.
+req_04: "Verify audit=1 is present in kernel command line using command: `grubby --info ALL | grep audit=1`. Expected result: output contains 'audit=1' for each kernel."
+req_05: "Verify audit=1 is present in /etc/default/grub using command: `grep '^GRUB_CMDLINE_LINUX=' /etc/default/grub | grep 'audit=1'`. Expected result: line contains 'audit=1'."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

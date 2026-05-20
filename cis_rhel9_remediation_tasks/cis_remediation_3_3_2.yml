@@ -1,0 +1,291 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snap_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+    remote_src: yes
+  when: _snap_config_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if temp script exists"
+  ansible.builtin.stat:
+    path: "{{ temp_script }}"
+  register: _snap_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Save script existence marker"
+  ansible.builtin.copy:
+    content: "{{ _snap_script_stat.stat.exists | default(false) }}"
+    dest: "{{ backup_dir }}/script_existed"
+    force: false
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Remediation report"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug"
+      task_04_rc: 0
+    tags: [execute]
+
+# --- REQUIREMENT 01: Remediation ---
+  - name: "Req 01 - Capture config file before changes"
+    ansible.builtin.slurp:
+      src: "{{ config_file }}"
+    register: _config_before
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set send_redirects parameters in sysctl config"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: "^{{ item.param | regex_escape() }} ="
+      line: "{{ item.param }} = {{ item.value }}"
+      create: yes
+      mode: '0644'
+    loop:
+    - param: "net.ipv4.conf.all.send_redirects"
+      value: "0"
+    - param: "net.ipv4.conf.default.send_redirects"
+      value: "0"
+    register: _lineinfile_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Capture config file after changes"
+    ansible.builtin.slurp:
+      src: "{{ config_file }}"
+    register: _config_after
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Deploy kernel parameter script"
+    ansible.builtin.copy:
+      dest: "{{ temp_script }}"
+      mode: '0700'
+      content: |
+        #!/usr/bin/env bash
+        {
+           sysctl -w net.ipv4.conf.all.send_redirects=0
+           sysctl -w net.ipv4.conf.default.send_redirects=0
+           sysctl -w net.ipv4.route.flush=1
+        }
+    register: _deploy_script
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute kernel parameter script"
+    ansible.builtin.shell: /bin/bash "{{ temp_script }}"
+    args:
+      executable: /bin/bash
+    register: _script_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary script"
+    ansible.builtin.file:
+      path: "{{ temp_script }}"
+      state: absent
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Compute requirement 01 status"
+    set_fact:
+      _req01_status_tmp: >-
+        {%- if _lineinfile_result is not failed and _script_result.rc | default(1) == 0 -%}PASS
+        {%- else -%}FAIL{%- endif -%}
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Remediate packet redirect sending"
+      task_01_cmd: "lineinfile + bash sysctl script"
+      task_01_rc: "{% if _script_result.rc | default(1) == 0 %}0{% else %}1{% endif %}"
+      data_01: >-
+        Before config:
+        {{ _config_before.content | b64decode | default('') | trim }}
+        After config:
+        {{ _config_after.content | b64decode | default('') | trim }}
+        Script output:
+        {{ _script_result.stdout | default('') | trim }}
+      status_01: "{{ _req01_status_tmp | trim }}"
+      details_01: >-
+        {%- if _req01_status_tmp | trim == 'PASS' -%}
+        Config parameters set and kernel parameters applied successfully.
+        {%- elif _req01_status_tmp | trim == 'FAIL' -%}
+        Failed to apply remediation.
+        {%- else -%}
+        Unknown status.
+        {%- endif -%}
+    tags: [execute]
+
+# --- REQUIREMENT 02: Verification ---
+  - name: "Req 02 - Verify send_redirects kernel parameters"
+    ansible.builtin.shell: |
+      sysctl -n net.ipv4.conf.all.send_redirects
+      sysctl -n net.ipv4.conf.default.send_redirects
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Compute verification status"
+    set_fact:
+      _req02_status_tmp: >-
+        {%- set lines = _verify_result.stdout | default('') | trim | split('\n') -%}
+        {%- if lines | length == 2 and lines[0] | trim == '0' and lines[1] | trim == '0' -%}PASS
+        {%- else -%}FAIL{%- endif -%}
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify send_redirects parameters"
+      task_02_cmd: "sysctl -n net.ipv4.conf.all.send_redirects; sysctl -n net.ipv4.conf.default.send_redirects"
+      task_02_rc: "{{ _verify_result.rc | default(1) }}"
+      data_02: "{{ _verify_result.stdout | default('') | trim }}"
+      status_02: "{{ _req02_status_tmp | trim }}"
+      details_02: >-
+        {%- if _req02_status_tmp | trim == 'PASS' -%}
+        Both send_redirects parameters are set to 0, compliant.
+        {%- else -%}
+        send_redirects parameters not correctly set: {{ _verify_result.stdout | default('') }}
+        {%- endif -%}
+    tags: [execute]
+
+# --- REQUIREMENT 03: Store cis_result ---
+  - name: "Set cis_result variable"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Set remediation result"
+      task_03_cmd: "set_fact cis_result = {{ cis_result }}"
+      task_03_rc: 0
+      data_03: "cis_result = {{ cis_result }}"
+      status_03: "{{ cis_result }}"
+      details_03: "Overall remediation status derived from verification"
+    tags: [execute]
+
+# --- REQUIREMENT 04: Report ---
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 3.3.2"
+      - "Reference: CIS Benchmark checkpoint 3.3.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+    register: _restore_check
+    tags: [restore]
+
+  - name: "Restore - Restore config file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+      dest: "{{ config_file }}"
+      remote_src: yes
+    when: _restore_check.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/script_existed"
+    register: _restore_script_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove temp script if it was not present before"
+    ansible.builtin.file:
+      path: "{{ temp_script }}"
+      state: absent
+    when:
+    - _restore_script_marker.content is defined
+    - (_restore_script_marker.content | b64decode | trim) == 'False'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

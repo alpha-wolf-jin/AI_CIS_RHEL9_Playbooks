@@ -1,0 +1,199 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_3_2_7.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "N/A"
+    status_02: "NOT_APPLICABLE"
+    details_02: "Not applicable (package not installed)"
+    data_03: "N/A"
+    status_03: "NOT_APPLICABLE"
+    details_03: "Not applicable (package not installed)"
+    data_04: "N/A"
+    status_04: "NOT_APPLICABLE"
+    details_04: "Not applicable (package not installed)"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+- name: "Req 01 - Check if pwquality package is installed"
+  shell: dpkg -l | grep libpwquality || rpm -q libpwquality
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check pwquality package installation"
+    task_01_cmd: "dpkg -l | grep libpwquality || rpm -q libpwquality"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: >-
+      {% if (result_01.rc | default(-1)) == 0 %}PASS{% else %}NOT_APPLICABLE{% endif %}
+    details_01: >-
+      {% if (result_01.rc | default(-1)) == 0 %}Package installed{% else %}Package not installed{% endif %}
+
+- block:
+  - name: "Req 02 - Check enforce_for_root in /etc/security/pwquality.conf"
+    shell: grep -Psi -- '^\h*enforce_for_root\b' /etc/security/pwquality.conf
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Check enforce_for_root in main config"
+      task_02_cmd: |
+        grep -Psi -- '^\\h*enforce_for_root\\b' /etc/security/pwquality.conf
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {% if (result_02.rc | default(-1)) == 0 and (result_02.stdout | default('') | trim) != '' %}PASS{% else %}FAIL{% endif %}
+      details_02: >-
+        {% if (result_02.rc | default(-1)) == 0 %}enforce_for_root found in main config{% else %}Not found in main config{% endif %}
+  when: "status_01 == 'PASS'"
+
+- block:
+  - name: "Req 03 - Check enforce_for_root in /etc/security/pwquality.conf.d/"
+    shell: grep -Psi -- '^\h*enforce_for_root\b' /etc/security/pwquality.conf.d/*.conf
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Check enforce_for_root in .d directory"
+      task_03_cmd: |
+        grep -Psi -- '^\\h*enforce_for_root\\b' /etc/security/pwquality.conf.d/*.conf
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: >-
+        {% if (result_03.rc | default(-1)) == 0 and (result_03.stdout | default('') | trim) != '' %}PASS{% else %}FAIL{% endif %}
+      details_03: >-
+        {% if (result_03.rc | default(-1)) == 0 %}enforce_for_root found in .d files{% else %}Not found in .d files{% endif %}
+  when: "status_01 == 'PASS'"
+
+- block:
+  - name: "Req 04 - Check for conflicting enforce_for_root across all pwquality configs"
+    shell: grep -Psi -- '^\h*enforce_for_root\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Check enforce_for_root across all config files"
+      task_04_cmd: |
+        grep -Psi -- '^\\h*enforce_for_root\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: >-
+        {% if (result_04.rc | default(-1)) == 0 and (result_04.stdout | default('') | trim) != '' %}PASS{% else %}FAIL{% endif %}
+      details_04: >-
+        {% if (result_04.rc | default(-1)) == 0 %}enforce_for_root found (no conflict){% else %}Not found or conflict exists{% endif %}
+  when: "status_01 == 'PASS'"
+
+- name: "Req 05 - Compute overall compliance"
+  set_fact:
+    status_05: >-
+      {% if status_01 == 'NOT_APPLICABLE' %}NOT_APPLICABLE
+      {% elif status_02 == 'PASS' or status_03 == 'PASS' or status_04 == 'PASS' %}PASS
+      {% else %}FAIL{% endif %}
+    details_05: >-
+      {% if status_01 == 'NOT_APPLICABLE' %}Required package not installed
+      {% elif status_02 == 'PASS' or status_03 == 'PASS' or status_04 == 'PASS' %}enforce_for_root is enabled
+      {% else %}enforce_for_root is not enabled{% endif %}
+
+- name: "Store requirement 05 details"
+  set_fact:
+    task_05_name: "Compliance evaluation"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "{{ status_05 }}"
+
+- name: "Req 06 - Set final audit result cis_result"
+  set_fact:
+    cis_result: "{{ status_05 }}"
+    task_06_name: "Store cis_result"
+    task_06_cmd: "N/A"
+    task_06_rc: 0
+    data_06: "{{ status_05 }}"
+    status_06: "{{ status_05 }}"
+    details_06: "{{ details_05 }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.3.2.7"
+    - "Reference: CIS Benchmark checkpoint 5.3.3.2.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name }}"
+    - "  Command: {{ task_04_cmd }}"
+    - "  Exit code: {{ task_04_rc }}"
+    - "  Data: {{ data_04 }}"
+    - "  Status: {{ status_04 }}"
+    - "  Details: {{ details_04 }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name }}"
+    - "  Command: {{ task_05_cmd }}"
+    - "  Exit code: {{ task_05_rc }}"
+    - "  Data: {{ data_05 }}"
+    - "  Status: {{ status_05 }}"
+    - "  Details: {{ details_05 }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name }}"
+    - "  Command: {{ task_06_cmd }}"
+    - "  Exit code: {{ task_06_rc }}"
+    - "  Data: {{ data_06 }}"
+    - "  Status: {{ status_06 }}"
+    - "  Details: {{ details_06 }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "========================================================"

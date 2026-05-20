@@ -1,0 +1,5 @@
+req_01: "Check if /etc/motd exists using command: `[ -e /etc/motd ]`. Expected result: The file may or may not exist; if it does not exist, no further checks are needed."
+req_02: "Check the access permissions of /etc/motd using command: `stat -Lc 'Access: (%#a/%A)  Uid: ( %u/ %U) Gid: { %g/ %G)' /etc/motd`. Expected result: Access: (0644/-rw-r--r--)  Uid: ( 0/ root) Gid: ( 0/ root) or more restrictive (e.g., 0640, 0600, 0400)."
+req_03: "Check the Uid of /etc/motd using command: `stat -Lc '%u' /etc/motd`. Expected result: 0"
+req_04: "Check the Gid of /etc/motd using command: `stat -Lc '%g' /etc/motd`. Expected result: 0"
+req_05: "Summarize overall compliance: If /etc/motd exists, it must have permissions 644 or more restrictive, and both Uid and Gid must be 0/root. If /etc/motd does not exist, the check is compliant by default."

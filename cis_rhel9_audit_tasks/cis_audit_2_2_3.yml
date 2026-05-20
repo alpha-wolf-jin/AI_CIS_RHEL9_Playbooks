@@ -1,0 +1,100 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_2_3.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- name: "Req 01 - Check if ypbind package is installed"
+  ansible.builtin.shell: rpm -q ypbind
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    status_01: "{{ 'PASS' if (result_01.rc | default(-1)) != 0 else 'FAIL' }}"
+    details_01: "{{ 'ypbind is not installed' if (result_01.rc | default(-1)) != 0 else 'ypbind is installed' }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+
+- name: "Compute overall compliance"
+  ansible.builtin.set_fact:
+    overall_result: "{{ 'PASS' if (status_01 == 'PASS') else 'FAIL' }}"
+    overall_details: >-
+      {{ 'Audit passed: NIS client (ypbind) is not installed.'
+         if (status_01 == 'PASS')
+         else 'Audit failed: ypbind is installed. CIS 2.2.3 requires it not be installed.' }}
+
+- name: "Store requirement 02 details (summary)"
+  ansible.builtin.set_fact:
+    status_02: "{{ overall_result }}"
+    details_02: "{{ overall_details }}"
+    data_02: "{{ overall_details }}"
+    task_02_name: "Req 02 - Summarize overall compliance"
+    task_02_cmd: "N/A (logical evaluation)"
+    task_02_rc: 0
+
+- name: "Store cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ overall_result }}"
+
+- name: "Store requirement 03 details (cis_result storage)"
+  ansible.builtin.set_fact:
+    status_03: "PASS"
+    details_03: "cis_result set to {{ cis_result }}"
+    data_03: "{{ cis_result }}"
+    task_03_name: "Req 03 - Store cis_result"
+    task_03_cmd: "set_fact: cis_result = overall_result"
+    task_03_rc: 0
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.2.3"
+    - "Reference: CIS Benchmark checkpoint 2.2.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"

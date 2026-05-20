@@ -1,0 +1,254 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_4_2_1.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    status_01: "UNKNOWN"
+    data_01: "Not collected yet"
+    details_01: "Not evaluated"
+    status_02: "UNKNOWN"
+    data_02: "Not collected yet"
+    details_02: "Not evaluated"
+    status_03: "UNKNOWN"
+    data_03: "Not collected yet"
+    details_03: "Not evaluated"
+    status_04: "UNKNOWN"
+    data_04: "Not collected yet"
+    details_04: "Not evaluated"
+    status_05: "UNKNOWN"
+    data_05: "Not collected yet"
+    details_05: "Not evaluated"
+    status_06: "UNKNOWN"
+    data_06: "Not collected yet"
+    details_06: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+  tags: [audit, cis]
+- name: "Req 01 - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [audit, cis]
+- name: "Req 01 - Set firewalld installed fact"
+  set_fact:
+    firewalld_installed: "{{ 'firewalld' in ansible_facts.packages }}"
+  tags: [audit, cis]
+- name: "Req 01 - Check firewalld service enabled"
+  shell: |
+    systemctl is-enabled firewalld.service 2>/dev/null | grep -q 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: "firewalld_installed | bool"
+  tags: [audit, cis]
+- name: "Req 01 - Store details"
+  set_fact:
+    task_01_name: "Check firewalld is enabled"
+    task_01_cmd: "systemctl is-enabled firewalld.service 2>/dev/null | grep -q 'enabled'"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ 'enabled' if result_01.rc | default(-1) == 0 else 'not enabled' }}"
+    status_01: >-
+      {%- if not firewalld_installed | bool -%}NOT_APPLICABLE
+      {%- elif result_01.rc | default(-1) == 0 -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_01: >-
+      {%- if not firewalld_installed | bool -%}firewalld package not installed
+      {%- elif result_01.rc | default(-1) == 0 -%}firewalld service is enabled
+      {%- else -%}firewalld service is not enabled
+      {%- endif -%}
+  tags: [audit, cis]
+- name: "Req 02 - Check nftables service enabled"
+  shell: |
+    systemctl is-enabled nftables.service 2>/dev/null | grep -q 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  tags: [audit, cis]
+- name: "Req 02 - Store details"
+  set_fact:
+    task_02_name: "Check nftables is enabled"
+    task_02_cmd: "systemctl is-enabled nftables.service 2>/dev/null | grep -q 'enabled'"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ 'enabled' if result_02.rc | default(-1) == 0 else 'not enabled' }}"
+    status_02: "{{ 'FAIL' if result_02.rc | default(-1) == 0 else 'PASS' }}"
+    details_02: "{{ 'nftables is enabled (audit not applicable)' if result_02.rc | default(-1) == 0 else 'nftables is not enabled' }}"
+    nftables_enabled: "{{ result_02.rc | default(-1) == 0 }}"
+  tags: [audit, cis]
+- name: "Req 03 - List allowed services and ports in active zone"
+  shell: |
+    firewall-cmd --list-all --zone="$(firewall-cmd --list-all | awk '/\(active\)/ { print $1 }')" | grep -P -- '^\h*(services:|ports:)'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when:
+  - "firewalld_installed | default(false) | bool"
+  - "not nftables_enabled | default(false) | bool"
+  tags: [audit, cis]
+- name: "Req 03 - Store details"
+  set_fact:
+    task_03_name: "List allowed services and ports"
+    task_03_cmd: |
+      firewall-cmd --list-all --zone=\"$(firewall-cmd --list-all | awk '/\\(active\\)/ { print $1 }')\" | grep -P -- '^\\h*(services:|ports:)'
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: >-
+      {%- if not (firewalld_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif result_03.rc | default(-1) != 0 -%}FAIL
+      {%- elif result_03.stdout | default('') | trim | length == 0 -%}PASS
+      {%- else -%}UNKNOWN
+      {%- endif -%}
+    details_03: >-
+      {%- if not (firewalld_installed | default(false) | bool) -%}firewalld not installed
+      {%- elif result_03.rc | default(-1) != 0 -%}Failed to retrieve zone information
+      {%- elif result_03.stdout | default('') | trim | length == 0 -%}No services/ports allowed (policy enforced)
+      {%- else -%}Active zone services/ports listed — manual review needed against site policy
+      {%- endif -%}
+  tags: [audit, cis]
+- name: "Req 04 - Check SSH permitted in active zone"
+  shell: |
+    firewall-cmd --list-all --zone="$(firewall-cmd --list-all | awk '/\(active\)/ { print $1 }')" | grep -E 'services:.*ssh|ports:.*22'
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when:
+  - "firewalld_installed | default(false) | bool"
+  - "not nftables_enabled | default(false) | bool"
+  - "result_03.rc | default(-1) == 0"
+  tags: [audit, cis]
+- name: "Req 04 - Store details"
+  set_fact:
+    task_04_name: "Check SSH access in zone"
+    task_04_cmd: |
+      firewall-cmd --list-all --zone=\"$(firewall-cmd --list-all | awk '/\\(active\\)/ { print $1 }')\" | grep -E 'services:.*ssh|ports:.*22'
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('Not collected') | trim }}"
+    status_04: >-
+      {%- if not (firewalld_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif result_04 is not defined -%}FAIL
+      {%- elif result_04.stdout | default('') | trim | length == 0 -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if not (firewalld_installed | default(false) | bool) -%}firewalld not installed
+      {%- elif result_04 is not defined -%}SSH check skipped due to previous failure
+      {%- elif result_04.stdout | default('') | trim | length == 0 -%}SSH not permitted in active zone
+      {%- else -%}SSH permitted without source restrictions (manual review required)
+      {%- endif -%}
+  tags: [audit, cis]
+- name: "Req 05 - Summarize overall compliance"
+  set_fact:
+    status_05: >-
+      {%- if not (firewalld_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif (nftables_enabled | default(false) | bool) -%}SKIPPED
+      {%- elif (status_01 | default('UNKNOWN')) == 'PASS' and
+              (status_02 | default('UNKNOWN')) == 'PASS' and
+              (status_03 | default('UNKNOWN')) == 'PASS' and
+              (status_04 | default('UNKNOWN')) == 'PASS' -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_05: >-
+      {%- if not (firewalld_installed | default(false) | bool) -%}firewalld not installed
+      {%- elif (nftables_enabled | default(false) | bool) -%}nftables is enabled, audit skipped
+      {%- elif status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' -%}All checks passed
+      {%- else -%}One or more checks failed
+      {%- endif -%}
+    task_05_name: "Overall compliance assessment"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "Overall status from requirements"
+  tags: [audit, cis]
+- name: "Req 06 - Store final audit result"
+  set_fact:
+    cis_result: "{{ status_05 }}"
+    task_06_name: "Store final result"
+    task_06_cmd: "N/A"
+    task_06_rc: 0
+    data_06: "{{ status_05 }}"
+    status_06: "{{ status_05 }}"
+    details_06: "Final compliance status: {{ status_05 }}"
+  tags: [audit, cis]
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 4.2.1"
+    - "Reference: CIS Benchmark checkpoint 4.2.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"
+  tags: [audit, cis]

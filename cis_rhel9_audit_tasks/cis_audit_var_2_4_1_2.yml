@@ -1,0 +1,8 @@
+req_01: "Check if cron is installed on the system using command: `dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null`. Expected result: package is installed (non-empty output)."
+req_02: "Check /etc/crontab file permissions using command: `stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/crontab`. Expected result: Access: (600/-rw-------) Uid: ( 0/ root) Gid: ( 0/ root)"
+req_03: "Verify overall compliance: if cron is installed and the /etc/crontab file has permissions 600, owner root, and group root, then the system is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+expected_mode: "600"
+expected_uid: "0"
+expected_gid: "0"
+stat_command: "stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/crontab"

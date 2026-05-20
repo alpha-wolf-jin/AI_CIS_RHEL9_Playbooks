@@ -1,0 +1,264 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_2_1.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore pwquality conf from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/50-pwdifok.conf.present"
+    dest: "{{ pwquality_conf_file }}"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete pwquality conf created in prior run"
+  ansible.builtin.file:
+    path: "{{ pwquality_conf_file }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if pwquality conf exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_conf_file }}"
+  register: _sg_pwquality_stat
+  tags: [snapshot]
+- name: "State Guard - Backup pwquality conf (present)"
+  ansible.builtin.copy:
+    src: "{{ pwquality_conf_file }}"
+    dest: "{{ state_guard_dir }}/50-pwdifok.conf.present"
+    remote_src: true
+  when: _sg_pwquality_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark pwquality conf as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/50-pwdifok.conf.absent"
+  when: not _sg_pwquality_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === STATE GUARD — EXECUTE PHASE ===
+
+  - name: "Req 01 - Check if pam_pwquality package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if pam_pwquality not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'libpwquality' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Set difok parameter in pwquality configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ pwquality_conf_file }}"
+      regexp: |
+        ^\s*difok\s*=
+      line: "difok = {{ difok_value }}"
+      create: true
+      mode: '0644'
+    failed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 01 - Remove difok from PAM authselect files"
+    ansible.builtin.shell: |
+      for l_pam_file in system-auth password-auth; do
+        l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+        if [ -f "$l_authselect_file" ]; then
+          sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+ difok\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+        fi
+      done
+      authselect apply-changes
+    args:
+      executable: /bin/bash
+    register: pam_cleanup_result
+    failed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 02 - Verify difok is configured in pwquality configuration"
+    ansible.builtin.shell: |
+      if grep -E '^\s*difok\s*=\s*[0-9]+' {{ pwquality_conf_file }} 2>/dev/null; then
+        VALUE=$(grep -E '^\s*difok\s*=\s*[0-9]+' {{ pwquality_conf_file }} | sed -r 's/.*=\s*([0-9]+).*/\1/')
+        if [ "$VALUE" -ge {{ difok_value }} ]; then
+          echo "COMPLIANT_VALUE=$VALUE"
+        else
+          echo "NONCOMPLIANT_VALUE=$VALUE"
+        fi
+      else
+        echo "NOT_PRESENT"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_pwquality
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 02 - Verify difok is not present in PAM authselect files"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        if grep -E '^\s*password\s+.*pam_pwquality\.so.*\s+difok\s*=' "/etc/authselect/$l_pam_profile/system-auth" "/etc/authselect/$l_pam_profile/password-auth" 2>/dev/null; then
+          echo "FOUND_IN_PAM"
+        else
+          echo "NOT_FOUND_IN_PAM"
+        fi
+      else
+        echo "NO_CUSTOM_PROFILE"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_pam
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 03 - Set cis_result fact"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {{ 'SKIP' if playbook_skipped else
+           ('PASS' if ('COMPLIANT_VALUE' in verify_pwquality.stdout | default('') and
+                       'NOT_FOUND_IN_PAM' in verify_pam.stdout | default(''))
+           else 'FAIL') }}
+    tags: [execute]
+
+  - name: "Req 03/04 - Store report details for requirements 03 and 04"
+    ansible.builtin.set_fact:
+      task_03_name: "Set cis_result fact"
+      task_03_cmd: "set_fact based on verification results"
+      task_03_rc: 0
+      data_03: "{{ cis_result | default('') | trim }}"
+      status_03: "PASS"
+      details_03: >-
+        {{ 'Remediation skipped - pam_pwquality not installed' if playbook_skipped else
+           ('System is compliant' if cis_result == 'PASS' else 'System is not compliant') }}
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "N/A"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Remediation report generated"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.3.2.1"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.2.1"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Set difok={{ difok_value }} in pwquality conf and remove from PAM"
+      - "  Command: lineinfile + sed/authselect apply-changes"
+      - "  Exit code: {{ pam_cleanup_result.rc | default(-1) }}"
+      - "  Data: {{ pam_cleanup_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'SKIP' if playbook_skipped else 'PASS' }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else 'Configuration applied' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify difok={{ difok_value }} in pwquality conf and absent from PAM"
+      - "  Command: grep difok in pwquality conf and PAM files"
+      - "  Exit code: {{ verify_pwquality.rc | default(-1) }}"
+      - "  Data: pwquality={{ verify_pwquality.stdout | default('') | trim }}, PAM={{ verify_pam.stdout | default('') | trim }}"
+      - "  Status: {{ 'SKIP' if playbook_skipped else ('PASS' if ('COMPLIANT_VALUE' in verify_pwquality.stdout | default('') and 'NOT_FOUND_IN_PAM' in verify_pam.stdout | default('')) else 'FAIL') }}"
+      - "  Details: {{ 'Skipped - package not installed' if playbook_skipped else ('Compliant' if ('COMPLIANT_VALUE' in verify_pwquality.stdout | default('') and 'NOT_FOUND_IN_PAM' in verify_pam.stdout | default('')) else 'Non-compliant') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if pwquality backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/50-pwdifok.conf.present"
+    register: _sg_restore_pwquality
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore pwquality conf from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/50-pwdifok.conf.present"
+      dest: "{{ pwquality_conf_file }}"
+      remote_src: true
+    when: _sg_restore_pwquality.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/50-pwdifok.conf.absent"
+    register: _sg_restore_absent_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete pwquality conf created by remediation"
+    ansible.builtin.file:
+      path: "{{ pwquality_conf_file }}"
+      state: absent
+    when: _sg_restore_absent_marker.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,207 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_7_6.yml
+
+- name: "Req 01 - Check if /etc/issue.net file exists using stat command"
+  ansible.builtin.shell: stat -Lc '%a %u %g' /etc/issue.net 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: stat_full
+  failed_when: false
+  changed_when: false
+
+- name: "Set facts for Req 01"
+  ansible.builtin.set_fact:
+    data_01: "{{ stat_full.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if stat_full.rc == 0 and (stat_full.stdout | default('') | trim) != '' else 'FAIL' }}"
+    details_01: "{{ 'File exists' if stat_full.rc == 0 and (stat_full.stdout | default('') | trim) != '' else 'File does not exist' }}"
+    task_01_name: "Req 01 - Check if /etc/issue.net file exists"
+    task_01_cmd: "stat -Lc '%a %u %g' /etc/issue.net 2>/dev/null"
+    task_01_rc: "{{ stat_full.rc | default(-1) }}"
+
+# --- Requirement 2 ---
+- name: "Req 02 - Check access permissions on /etc/issue.net are 644 or more restrictive using stat command"
+  ansible.builtin.shell: stat -Lc '%a' /etc/issue.net
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+
+- name: "Set facts for Req 02"
+  ansible.builtin.set_fact:
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: >-
+      {{ 
+        'PASS' if (stat_full.rc | default(-1)) == 0 
+                  and (stat_full.stdout | default('') | trim) != '' 
+                  and result_02.rc == 0
+                  and (result_02.stdout | default('') | trim) != ''
+                  and (result_02.stdout | trim | int(base=8)) <= 420 
+        else 'FAIL' 
+      }}
+    details_02: >-
+      {{ 
+        'Permissions compliant' if (stat_full.rc | default(-1)) == 0 
+                                  and (stat_full.stdout | default('') | trim) != '' 
+                                  and result_02.rc == 0
+                                  and (result_02.stdout | default('') | trim) != ''
+                                  and (result_02.stdout | trim | int(base=8)) <= 420
+        else ('Permissions not restrictive enough' if (stat_full.rc | default(-1)) == 0 
+                                                    and (stat_full.stdout | default('') | trim) != ''
+                                                    and result_02.rc == 0
+                                                    and (result_02.stdout | default('') | trim) != ''
+        else ('Stat command failed' if (stat_full.rc | default(-1)) == 0 
+                                      and (stat_full.stdout | default('') | trim) != ''
+                                      and (result_02.rc != 0 or (result_02.stdout | default('') | trim) == '')
+        else 'File does not exist'))
+      }}
+    task_02_name: "Req 02 - Check access permissions"
+    task_02_cmd: "stat -Lc '%a' /etc/issue.net"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+
+# --- Requirement 3 ---
+- name: "Req 03 - Check Uid ownership of /etc/issue.net is root using stat command"
+  ansible.builtin.shell: stat -Lc '%u' /etc/issue.net
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+
+- name: "Set facts for Req 03"
+  ansible.builtin.set_fact:
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: >-
+      {{ 
+        'PASS' if (stat_full.rc | default(-1)) == 0 
+                  and (stat_full.stdout | default('') | trim) != '' 
+                  and (result_03.stdout | default('') | trim) == '0' 
+        else 'FAIL' 
+      }}
+    details_03: >-
+      {{ 
+        'UID is root' if (stat_full.rc | default(-1)) == 0 
+                        and (stat_full.stdout | default('') | trim) != '' 
+                        and (result_03.stdout | default('') | trim) == '0' 
+        else ('UID not root' if (stat_full.rc | default(-1)) == 0 
+                              and (stat_full.stdout | default('') | trim) != '' 
+        else 'File does not exist') 
+      }}
+    task_03_name: "Req 03 - Check Uid ownership"
+    task_03_cmd: "stat -Lc '%u' /etc/issue.net"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+
+# --- Requirement 4 ---
+- name: "Req 04 - Check Gid ownership of /etc/issue.net is root using stat command"
+  ansible.builtin.shell: stat -Lc '%g' /etc/issue.net
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+
+- name: "Set facts for Req 04"
+  ansible.builtin.set_fact:
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: >-
+      {{ 
+        'PASS' if (stat_full.rc | default(-1)) == 0 
+                  and (stat_full.stdout | default('') | trim) != '' 
+                  and (result_04.stdout | default('') | trim) == '0' 
+        else 'FAIL' 
+      }}
+    details_04: >-
+      {{ 
+        'GID is root' if (stat_full.rc | default(-1)) == 0 
+                        and (stat_full.stdout | default('') | trim) != '' 
+                        and (result_04.stdout | default('') | trim) == '0' 
+        else ('GID not root' if (stat_full.rc | default(-1)) == 0 
+                              and (stat_full.stdout | default('') | trim) != '' 
+        else 'File does not exist') 
+      }}
+    task_04_name: "Req 04 - Check Gid ownership"
+    task_04_cmd: "stat -Lc '%g' /etc/issue.net"
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+
+# --- Requirement 5 (overall summary) ---
+- name: "Req 05 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    status_05: "{{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' else 'FAIL' }}"
+    details_05: "{{ 'All checks passed' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' else 'One or more checks failed' }}"
+    data_05: "N/A"
+    task_05_name: "Req 05 - Overall compliance"
+    task_05_cmd: "N/A"
+    task_05_rc: "N/A"
+
+# --- Requirement 6: Store cis_result ---
+- name: "Req 06 - Store final compliance result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_05 }}"
+    status_06: "PASS"
+    details_06: "cis_result set to '{{ status_05 }}'"
+    data_06: "N/A"
+    task_06_name: "Req 06 - Store cis_result"
+    task_06_cmd: "set_fact"
+    task_06_rc: "0"
+
+# --- Audit report ---
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.7.6"
+    - "Reference: CIS Benchmark checkpoint 1.7.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default('N/A') }}"
+    - "  Data: N/A"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default('N/A') }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+    - "========================================================"

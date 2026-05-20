@@ -1,0 +1,15 @@
+playbook_name: "cis_6_2_3_6"
+checkpoint_id: "cis_6_2_3_6"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+rsyslog_conf: "/etc/rsyslog.conf"
+rsyslog_conf_d: "/etc/rsyslog.d"
+remote_log_host: "loghost.example.com"
+remote_log_port: "514"
+remote_log_protocol: "tcp"
+rsyslog_forward_line: '*.* action(type="omfwd" target="{{ remote_log_host }}" port="{{ remote_log_port }}" protocol="{{ remote_log_protocol }}" action.resumeRetryCount="100" queue.type="LinkedList" queue.size="1000")'
+req_01: "Ensure rsyslog is installed and operational using command: `which rsyslogd && systemctl is-active rsyslog`. Expected result: rsyslogd binary path and active status."
+req_02: |
+  Add remote log forwarding configuration to /etc/rsyslog.conf or a file in /etc/rsyslog.d/ using command: `echo '*.* action(type=\"omfwd\" target=\"loghost.example.com\" port=\"514\" protocol=\"tcp\" action.resumeRetryCount=\"100\" queue.type=\"LinkedList\" queue.size=\"1000\")' >> /etc/rsyslog.conf`. Expected result: Line appended to configuration file.
+req_03: "Reload rsyslog service to apply changes using command: `systemctl reload-or-restart rsyslog.service`. Expected result: Service reloaded or restarted without errors."
+req_04: "Verify rsyslog is sending logs to remote host using command: `grep -r 'loghost.example.com' /etc/rsyslog.conf /etc/rsyslog.d/ && systemctl status rsyslog`. Expected result: Configuration line present and service active (running)."

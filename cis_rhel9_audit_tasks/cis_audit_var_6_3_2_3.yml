@@ -1,0 +1,7 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check disk_full_action is set to halt or single using command: `grep -P -- '^\\h*disk_full_action\\h*=\\h*(halt|single)\\b' /etc/audit/auditd.conf`. Expected result: disk_full_action = halt or disk_full_action = single.
+req_03: |
+  Check disk_error_action is set to syslog, single, or halt using command: `grep -P -- '^\\h*disk_error_action\\h*=\\h*(syslog|single|halt)\\b' /etc/audit/auditd.conf`. Expected result: disk_error_action = syslog, disk_error_action = single, or disk_error_action = halt.
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if auditd is not installed, FAIL if auditd is installed but either disk_full_action or disk_error_action is misconfigured."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

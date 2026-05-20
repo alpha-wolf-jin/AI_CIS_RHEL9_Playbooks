@@ -1,0 +1,20 @@
+playbook_name: "CIS_6_2_3_3_journald_rsyslog"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+journald_dropin_dir: "/etc/systemd/journald.conf.d"
+journald_dropin_file: "/etc/systemd/journald.conf.d/60-journald.conf"
+req_01: "Run the provided remediation script to fix Ensure journald is configured to send logs to rsyslog"
+req_02: "VERIFY: Run audit check to confirm Ensure journald is configured to send logs to rsyslog is properly configured. Expected result: System is compliant"
+# Script to apply the required configuration
+remediate_script: "/tmp/cis_6_2_3_3_remediate.sh"
+remediate_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+    [ ! -d /etc/systemd/journald.conf.d/ ] && mkdir /etc/systemd/journald.conf.d/
+    if grep -Psq -- '^\h*\[Journal\]' /etc/systemd/journald.conf.d/60-journald.conf; then
+      printf '%s\n' "ForwardToSyslog=yes" >> /etc/systemd/journald.conf.d/60-journald.conf
+    else
+      printf '%s\n' "[Journal]" "ForwardToSyslog=yes" >> /etc/systemd/journald.conf.d/60-journald.conf
+    fi
+  }
+  {% endraw %}

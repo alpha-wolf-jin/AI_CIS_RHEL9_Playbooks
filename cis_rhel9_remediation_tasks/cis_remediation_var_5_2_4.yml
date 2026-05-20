@@ -1,0 +1,9 @@
+playbook_name: "cis_5_2_4"
+checkpoint_id: "cis_5_2_4"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "Apply prerequisite check: ensure sudo is installed using command: `which sudo`. Expected result: path to sudo binary is displayed."
+req_02: "Apply removal of NOPASSWD tags from sudoers files using command: `sudo visudo -f /etc/sudoers && sudo sed -i '/NOPASSWD/d' /etc/sudoers`. Expected result: no NOPASSWD lines remain in /etc/sudoers."
+req_03: |
+  Apply removal of NOPASSWD tags from all sudoers.d files using command: `for f in /etc/sudoers.d/*; do sudo visudo -f \"$f\" && sudo sed -i '/NOPASSWD/d' \"$f\"; done`. Expected result: no NOPASSWD lines remain in any sudoers.d files.
+req_04: "Verify that no NOPASSWD tags exist in any sudoers file using command: `sudo grep -r 'NOPASSWD' /etc/sudoers /etc/sudoers.d/`. Expected result: no output (empty result)."

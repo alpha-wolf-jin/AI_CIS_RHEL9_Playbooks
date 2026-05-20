@@ -1,0 +1,6 @@
+req_01: "Check if a separate partition exists for /var/log using command: `findmnt -kn /var/log`. Expected result: output should contain a mount point for /var/log."
+req_02: "Check if the nodev option is set on the /var/log partition using command: `findmnt -kn /var/log | grep -v nodev`. Expected result: no output should be returned."
+req_03: "Summarize overall compliance: PASS if both checks pass, SKIP if no separate partition exists for /var/log, FAIL if partition exists but nodev option is not set."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+mount_point: "/var/log"
+mount_option: "nodev"

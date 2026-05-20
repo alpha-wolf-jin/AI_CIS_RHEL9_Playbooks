@@ -1,0 +1,7 @@
+playbook_name: "cis_6_3_3_14"
+checkpoint_id: "cis_6_3_3_14"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+audit_rules_file: "/etc/audit/rules.d/50-MAC-policy.rules"
+req_01: "Apply remediation for: Ensure events that modify the system's Mandatory Access Controls are collected. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure events that modify the system's Mandatory Access Controls are collected is properly configured. Expected result: Compliant"

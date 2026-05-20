@@ -1,0 +1,8 @@
+playbook_name: "cis_6_2_3_1_rsyslog"
+checkpoint_id: "cis_6_2_3_1"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+package_name: "rsyslog"
+req_01: "Apply prerequisite check for dnf package manager using command: `which dnf`. Expected result: path to dnf binary."
+req_02: "Install rsyslog using command: `dnf install -y rsyslog`. Expected result: rsyslog package is installed successfully."
+req_03: "Verify rsyslog installation using command: `rpm -q rsyslog`. Expected result: package version is displayed."

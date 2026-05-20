@@ -1,0 +1,5 @@
+req_01: "Check if nftables utility is in use on the system using command: `which nft`. Expected result: path to nft binary (e.g., /usr/sbin/nft)."
+req_02: "Check if nftables service is enabled using command: `systemctl is-enabled nftables.service`. Expected result: 'enabled'."
+req_03: "Check if nftables service is enabled and list rules for established incoming connections using command: `systemctl is-enabled nftables.service | grep -q 'enabled' && nft list ruleset | awk '/hook input/,/}/' | grep 'ct state'`. Expected result: output similar to 'ip protocol tcp ct state established accept', 'ip protocol udp ct state established accept', 'ip protocol icmp ct state established accept'."
+req_04: "Summarize overall compliance status: Verify that all rules for established incoming connections match site policy based on the output of the previous check."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

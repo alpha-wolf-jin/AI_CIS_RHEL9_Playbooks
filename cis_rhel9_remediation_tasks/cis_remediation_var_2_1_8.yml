@@ -1,0 +1,71 @@
+playbook_name: "cis_2_1_8_message_access_server_services"
+checkpoint_id: "cis_2_1_8"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for dnf package manager using command: `which dnf`. Expected result: path to dnf binary."
+req_02: "Apply stop dovecot.socket using command: `systemctl stop dovecot.socket`. Expected result: service socket stopped."
+req_03: "Apply stop dovecot.service using command: `systemctl stop dovecot.service`. Expected result: service stopped."
+req_04: "Apply stop cyrus-imapd.service using command: `systemctl stop cyrus-imapd.service`. Expected result: service stopped."
+req_05: "Apply remove dovecot package using command: `dnf remove -y dovecot`. Expected result: package removed."
+req_06: "Apply remove cyrus-imapd package using command: `dnf remove -y cyrus-imapd`. Expected result: package removed."
+req_07: "Apply mask dovecot.socket using command: `systemctl mask dovecot.socket`. Expected result: socket masked."
+req_08: "Apply mask dovecot.service using command: `systemctl mask dovecot.service`. Expected result: service masked."
+req_09: "Apply mask cyrus-imapd.service using command: `systemctl mask cyrus-imapd.service`. Expected result: service masked."
+req_10: "Verify dovecot and cyrus-imapd services are not active using command: `systemctl is-active dovecot.socket dovecot.service cyrus-imapd.service`. Expected result: each returns 'inactive' or 'masked'."
+req_11: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_12: "Create a task named 'Generate remediation report' using debug msg with EXACTLY this format..."
+
+capture_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  set -euo pipefail
+  STATEDIR="{{ state_guard_dir }}"
+  mkdir -p "$STATEDIR"
+  dnf list installed dovecot &>/dev/null; echo $? > "$STATEDIR/dovecot_installed"
+  dnf list installed cyrus-imapd &>/dev/null; echo $? > "$STATEDIR/cyrus_installed"
+  for svc in dovecot.socket dovecot.service cyrus-imapd.service; do
+    systemctl is-active "$svc" &>/dev/null && echo "0" > "$STATEDIR/${svc}_active" || echo "1" > "$STATEDIR/${svc}_active"
+    if [ -L "/etc/systemd/system/$svc" ] && [ "$(readlink -f "/etc/systemd/system/$svc")" = "/dev/null" ]; then
+      echo "masked" > "$STATEDIR/${svc}_masked"
+    else
+      echo "unmasked" > "$STATEDIR/${svc}_masked"
+    fi
+  done
+  echo "captured" > "{{ state_guard_flag }}"
+  {% endraw %}
+
+restore_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  set -euo pipefail
+  STATEDIR="{{ state_guard_dir }}"
+  if [ -f "$STATEDIR/dovecot_installed" ]; then
+    if [ "$(cat $STATEDIR/dovecot_installed)" = "0" ]; then
+      dnf install -y dovecot 2>/dev/null || true
+    fi
+  fi
+  if [ -f "$STATEDIR/cyrus_installed" ]; then
+    if [ "$(cat $STATEDIR/cyrus_installed)" = "0" ]; then
+      dnf install -y cyrus-imapd 2>/dev/null || true
+    fi
+  fi
+  for svc in dovecot.socket dovecot.service cyrus-imapd.service; do
+    if [ -f "$STATEDIR/${svc}_active" ]; then
+      if [ "$(cat $STATEDIR/${svc}_active)" = "0" ]; then
+        systemctl start "$svc" 2>/dev/null || true
+      fi
+    fi
+    if [ -f "$STATEDIR/${svc}_masked" ]; then
+      if [ "$(cat $STATEDIR/${svc}_masked)" = "masked" ]; then
+        systemctl mask "$svc" 2>/dev/null || true
+      else
+        systemctl unmask "$svc" 2>/dev/null || true
+      fi
+    fi
+  done
+  rm -rf "$STATEDIR"
+  {% endraw %}
+
+state_guard_capture_script: "{{ state_guard_dir }}/capture.sh"
+state_guard_restore_script: "{{ state_guard_dir }}/restore.sh"

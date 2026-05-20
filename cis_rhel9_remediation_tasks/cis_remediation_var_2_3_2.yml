@@ -1,0 +1,7 @@
+playbook_name: "cis_2_3_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for chrony using command: `which chronyd || dpkg -l | grep chrony || rpm -q chrony`. Expected result: chrony is installed."
+req_02: "Apply configuration by adding or editing server or pool lines in /etc/chrony.conf or a file in /etc/chrony.d using command: `echo 'server <remote-server>' >> /etc/chrony.conf`. Expected result: The server line is added to the configuration."
+req_03: "Apply restart of chrony service using command: `systemctl restart chronyd`. Expected result: chrony service restarts successfully."
+req_04: "Verify chrony is configured and synchronized using command: `chronyc sources -v`. Expected result: The output shows the configured NTP sources with a status of '*' or '+' indicating synchronization."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

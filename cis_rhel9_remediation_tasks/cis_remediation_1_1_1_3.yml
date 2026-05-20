@@ -1,0 +1,220 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file /etc/modprobe.d/{{ kernel_module }}.conf exists"
+  ansible.builtin.stat:
+    path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+  register: conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if it exists"
+  ansible.builtin.copy:
+    src: "/etc/modprobe.d/{{ kernel_module }}.conf"
+    dest: "{{ backup_dir }}/{{ kernel_module }}.conf"
+    remote_src: true
+    force: false
+  when: conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark config file as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/{{ kernel_module }}.absent"
+    force: false
+  when: not conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Record whether config file existed"
+  ansible.builtin.copy:
+    content: "{{ conf_stat.stat.exists | default(false) }}"
+    dest: "{{ backup_dir }}/conf_existed"
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Record whether module is loaded"
+  ansible.builtin.shell: lsmod | grep -q '^{{ kernel_module }} ' && echo loaded || echo not_loaded
+  args:
+    executable: /bin/bash
+  register: _snap_mod_state
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save module load state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_mod_state.stdout | trim }}"
+    dest: "{{ backup_dir }}/module_loaded_state"
+    mode: '0700'
+    force: false
+  tags: [snapshot]
+
+- block:
+# ---- Execute remediation ----
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+           unset a_output2; l_output3="" l_dl="" # unset arrays and clear variables
+           l_mod_name="hfs" # set module name
+           l_mod_type="fs" # set module type
+           l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
+           f_module_fix()
+           {
+              l_dl="y" # Set to ignore duplicate checks
+              a_showconfig=() # Create array with modprobe output
+              while IFS= read -r l_showconfig; do
+                 a_showconfig+=("$l_showconfig")
+              done < <(modprobe --showconfig | grep -P -- '\b(install|blacklist)\h+'"${l_mod_name//-/_}"'\b')
+              if  lsmod | grep "$l_mod_name" &> /dev/null; then # Check if the module is currently loaded
+                 a_output2+=(" - unloading kernel module: \"$l_mod_name\"")
+                 modprobe -r "$l_mod_name" 2>/dev/null; rmmod "$l_mod_name" 2>/dev/null
+              fi
+              if ! grep -Pq -- '\binstall\h+'"${l_mod_name//- /_}"'\h+\/bin\/(true|false)\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - setting kernel  module: \"$l_mod_name\" to \"/bin/false\"")
+                 printf '%s\n' "install $l_mod_name /bin/false" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+              if ! grep -Pq -- '\bblacklist\h+'"${l_mod_name//-/_}"'\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - denylisting kernel  module: \"$l_mod_name\"")
+                 printf '%s\n' "blacklist $l_mod_name" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+           }
+           for l_mod_base_directory in $l_mod_path; do # Check if the module exists on the system
+              if [ -d "$l_mod_base_directory/${l_mod_name/-/\/}" ] && [ -n "$(ls -A $l_mod_base_directory/${l_mod_name/-/\/})" ]; then
+                 l_output3="$l_output3\n  - \"$l_mod_base_directory\""
+                 [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
+                 [ "$l_dl" != "y" ] && f_module_fix
+              else
+                 echo -e " - kernel module: \"$l_mod_name\" doesn't exist in \"$l_mod_base_directory\""
+              fi
+           done
+           [ -n "$l_output3" ] && echo -e "\n\n -- INFO --\n - module: \"$l_mod_name\" exists in:$l_output3"
+           [ "${#a_output2[@]}" -gt 0 ] && printf '%s\n' "${a_output2[@]}"
+           echo -e "\n - remediation of kernel module: \"$l_mod_name\" complete\n"
+        }
+        {% endraw %}
+      dest: /tmp/remediate_hfs.sh
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/remediate_hfs.sh
+    args:
+      executable: /bin/bash
+    register: remediation_result
+    failed_when: false
+    tags: [execute]
+
+# ---- Verification ----
+  - name: "Req 02 - Verify {{ kernel_module }} is not loaded and blacklisted"
+    ansible.builtin.shell: |
+      if ! find /lib/modules -type d -name {{ kernel_module }} -path "*/kernel/fs/*" 2>/dev/null | grep -q {{ kernel_module }}; then
+        echo "COMPLIANT: {{ kernel_module }} module not found on filesystem"
+        exit 0
+      fi
+      if modprobe --showconfig | grep -q 'install {{ kernel_module }} /bin/false' && \
+         modprobe --showconfig | grep -q 'blacklist {{ kernel_module }}' && \
+         ! lsmod | grep -q '^{{ kernel_module }} '; then
+        echo "COMPLIANT: {{ kernel_module }} is properly configured and not loaded"
+        exit 0
+      fi
+      echo "NON-COMPLIANT: {{ kernel_module }} configuration or load state is incorrect"
+      exit 1
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+# ---- Report ----
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 1.1.1.3"
+      - "        Reference: CIS Benchmark checkpoint 1.1.1.3"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Deploy and execute remediation script"
+      - "  Command: /bin/bash /tmp/remediate_hfs.sh"
+      - "  Exit code: {{ remediation_result.rc | default(-1) }}"
+      - "  Data: {{ remediation_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if remediation_result.rc | default(-1) == 0 else 'FAILED' }}"
+      - "  Details: {{ 'Script executed successfully' if remediation_result.rc | default(-1) == 0 else 'Script execution failed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify module not loaded and blacklisted"
+      - "  Command: Shell verification check"
+      - "  Exit code: {{ verify_result.rc | default(-1) }}"
+      - "  Data: {{ verify_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED' }}"
+      - "  Details: {{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant' }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ 'APPLIED' if (remediation_result.rc | default(-1) == 0) and (verify_result.rc | default(-1) == 0) else 'FAILED' }}"
+      - "  Details: {{ 'All requirements satisfied' if (remediation_result.rc | default(-1) == 0) and (verify_result.rc | default(-1) == 0) else 'Remediation or verification failed' }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# ---- Restore ----
+  - name: "Restore - Check if backup of original config exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/{{ kernel_module }}.conf"
+    register: backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore original config file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/{{ kernel_module }}.conf"
+      dest: "/etc/modprobe.d/{{ kernel_module }}.conf"
+      remote_src: true
+    when: backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if config file was absent originally"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/{{ kernel_module }}.absent"
+    register: absent_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove config file if it was absent originally"
+    ansible.builtin.file:
+      path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+      state: absent
+    when: absent_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved module load state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/module_loaded_state"
+    register: _restore_mod_state
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload module if it was previously loaded"
+    ansible.builtin.shell: "modprobe {{ kernel_module }} 2>/dev/null || true"
+    args:
+      executable: /bin/bash
+    when:
+    - "_restore_mod_state.content is defined"
+    - "(_restore_mod_state.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,6 @@
+playbook_name: "cis_6_3_3_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply remediation for: Ensure events that modify the sudo log file are collected. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure events that modify the sudo log file are collected is properly configured. Expected result: Compliant"
+audit_rules_file: "/etc/audit/rules.d/50-sudo.rules"
+audit_key: "sudo_log_file"

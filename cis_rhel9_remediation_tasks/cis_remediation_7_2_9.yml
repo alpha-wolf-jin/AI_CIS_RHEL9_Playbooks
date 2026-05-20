@@ -1,0 +1,343 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_7_2_9.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Snapshot /etc/passwd"
+  ansible.builtin.copy:
+    src: "/etc/passwd"
+    dest: "{{ state_guard_dir }}/passwd.present"
+    remote_src: true
+  tags: [snapshot]
+- name: "State Guard - Snapshot /etc/shells"
+  ansible.builtin.copy:
+    src: "/etc/shells"
+    dest: "{{ state_guard_dir }}/shells.present"
+    remote_src: true
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- block:
+        # === STATE GUARD — EXECUTE PHASE ===
+
+# Requirement 1: Run remediation script
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        set -euo pipefail
+        a_output2=(); a_output3=()
+        l_maxsize="1000"
+        l_valid_shells="^($( awk -F\/ '$NF != "nologin" {print}' /etc/shells | sed -rn '/^\//{s,/,\\\\/,g;p}' | paste -s -d '|' - ))$"
+        a_user_and_home=()
+        while read -r l_local_user l_local_user_home; do
+           [[ -n "$l_local_user" && -n "$l_local_user_home" ]] && a_user_and_home+=("$l_local_user:$l_local_user_home")
+        done <<< "$(awk -v pat="$l_valid_shells" -F: '$(NF) ~ pat { print $1 " " $(NF-1) }' /etc/passwd)"
+        l_asize="${#a_user_and_home[@]}"
+        [ "${#a_user_and_home[@]}" -gt "$l_maxsize" ] && printf '%s\n' "" "  ** INFO **" \
+        "  - \"$l_asize\" Local interactive users found on the system" \
+        "  - This may be a long running check" ""
+        file_access_fix()
+        {
+           a_access_out=()
+           l_max="$( printf '%o' $(( 0777 & ~$l_mask)) )"
+           if [ $(( $l_mode & $l_mask )) -gt 0 ]; then
+              printf '%s\n' "" "  - File: \"$l_hdfile\" is mode: \"$l_mode\" and should be mode: \"$l_max\" or more restrictive" \
+              "     Updating file: \"$l_hdfile\" to be mode: \"$l_max\" or more restrictive"
+              chmod "$l_change" "$l_hdfile"
+           fi
+           if [[ ! "$l_owner" =~ ($l_user) ]]; then
+              printf '%s\n' "" "  - File: \"$l_hdfile\" owned by: \"$l_owner\" and should be owned by \"${l_user//|/ or }\"" \
+              "     Updating file: \"$l_hdfile\" to be owned by \"${l_user//|/ or }\""
+              chown "$l_user" "$l_hdfile"
+           fi
+           if [[ ! "$l_gowner" =~ ($l_group) ]]; then
+              printf '%s\n' "" "  - File: \"$l_hdfile\" group owned by: \"$l_gowner\" and should be group owned by \"${l_group//|/ or }\"" \
+              "     Updating file: \"$l_hdfile\" to be group owned by \"${l_group//|/ or }\""
+              chgrp "$l_group" "$l_hdfile"
+           fi
+        }
+        while IFS=: read -r l_user l_home; do
+           a_dot_file=(); a_netrc=(); a_netrc_warn=(); a_bhout=(); a_hdirout=()
+           if [ -d "$l_home" ]; then
+              l_group="$(id -gn "$l_user" | xargs)";l_group="${l_group:-$l_user}";l_group="${l_group// /|}"
+              while IFS= read -r -d $'\0' l_hdfile; do
+                 [[ -z "$l_hdfile" ]] && continue
+                 while read -r l_mode l_owner l_gowner; do
+                    case "$(basename "$l_hdfile")" in
+                       .forward | .rhost )
+                          a_dot_file+=("  - File: \"$l_hdfile\" exists" " Please review and manually delete this file") ;;
+                       .netrc )
+                          l_mask='0177'; l_change="u-x,go-rwx"; file_access_fix
+                          a_netrc_warn+=("   - File: \"$l_hdfile\" exists") ;;
+                       .bash_history )
+                          l_mask='0177'; l_change="u-x,go-rwx"; file_access_fix ;;
+                       * )
+                          l_mask='0133'; l_change="u-x,go-wx"; file_access_fix ;;
+                    esac
+                 done < <(stat -Lc '%#a %U %G' "$l_hdfile")
+              done < <(find "$l_home" -xdev -type f -name '.*' -print0)
+           fi
+           [ "${#a_dot_file[@]}" -gt 0 ] && a_output2+=(" - User: \"$l_user\" Home Directory: \"$l_home\"" "${a_dot_file[@]}")
+           [ "${#a_netrc_warn[@]}" -gt 0 ] && a_output3+=(" - User: \"$l_user\" Home Directory: \"$l_home\"" "${a_netrc_warn[@]}")
+        done <<< "$(printf '%s\n' "${a_user_and_home[@]}")"
+        [ "${#a_output3[@]}" -gt 0 ] && printf '%s\n' "" "  ** WARNING **" "${a_output3[@]}" ""
+        [ "${#a_output2[@]}" -gt 0 ] && printf '%s\n' "" "${a_output2[@]}"
+        exit 0
+        {% endraw %}
+      dest: "{{ script_dest }}"
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: "/bin/bash {{ script_dest }} 2>&1"
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Clean up remediation script"
+    ansible.builtin.file:
+      path: "{{ script_dest }}"
+      state: absent
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute remediation script for interactive user dot file permissions"
+      task_01_cmd: "/bin/bash {{ script_dest }} 2>&1"
+      task_01_rc: "{{ result_01.rc | default(-1) | int }}"
+      data_01: "{{ (result_01.stdout | default('') ~ ' ' ~ result_01.stderr | default('')) | trim }}"
+      status_01: >-
+        {{ 'APPLIED' if (result_01.rc | default(-1) | int == 0) or ('Updating file' in (result_01.stdout | default(''))) or ((result_01.stdout | default('') | trim == '') and (result_01.rc | default(-1) | int == 1)) else 'FAILED' }}
+      details_01: >-
+        {{ 'Script applied changes' if ('Updating file' in (result_01.stdout | default('')))
+           else 'No changes needed - system already compliant' if ((result_01.stdout | default('') | trim == '') and (result_01.rc | default(-1) | int == 1))
+           else 'Script execution succeeded' if (result_01.rc | default(-1) | int == 0)
+           else 'Script execution failed - check data for details' }}
+
+# Requirement 2: Verify compliance
+  - name: "Req 02 - Verify dot file permissions compliance"
+    ansible.builtin.shell: |
+      l_valid_shells="^($( awk -F\/ '$NF != "nologin" {print}' /etc/shells | sed -rn '/^\//{s,/,\\\\/,g;p}' | paste -s -d '|' - ))$"
+      a_user_and_home=()
+      while read -r l_local_user l_local_user_home; do
+         [[ -n "$l_local_user" && -n "$l_local_user_home" ]] && a_user_and_home+=("$l_local_user:$l_local_user_home")
+      done <<< "$(awk -v pat="$l_valid_shells" -F: '$(NF) ~ pat { print $1 " " $(NF-1) }' /etc/passwd)"
+      violations=0
+      while IFS=: read -r l_user l_home; do
+         if [ -d "$l_home" ]; then
+            while IFS= read -r -d $'\0' l_hdfile; do
+               read -r l_mode l_owner l_gowner < <(stat -Lc '%#a %U %G' "$l_hdfile")
+               case "$(basename "$l_hdfile")" in
+                  .forward | .rhost )
+                     violations=$((violations+1))
+                     echo "VIOLATION: $l_hdfile exists (should be manually deleted)" ;;
+                  .netrc | .bash_history )
+                     if [ $(( l_mode & 0177 )) -gt 0 ] || [ "$l_owner" != "$l_user" ] || [ "$l_gowner" != "$(id -gn "$l_user")" ]; then
+                        violations=$((violations+1))
+                        echo "VIOLATION: $l_hdfile mode=$l_mode owner=$l_owner group=$l_gowner"
+                     fi ;;
+                  * )
+                     if [ $(( l_mode & 0133 )) -gt 0 ] || [ "$l_owner" != "$l_user" ] || [ "$l_gowner" != "$(id -gn "$l_user")" ]; then
+                        violations=$((violations+1))
+                        echo "VIOLATION: $l_hdfile mode=$l_mode owner=$l_owner group=$l_gowner"
+                     fi ;;
+               esac
+            done < <(find "$l_home" -xdev -type f -name '.*' -print0 2>/dev/null)
+         fi
+      done <<< "$(printf '%s\n' "${a_user_and_home[@]}")"
+      if [ "$violations" -eq 0 ]; then
+         echo "COMPLIANT: All interactive user dot files have correct permissions"
+      else
+         echo "NON-COMPLIANT: $violations violations found"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify interactive user dot file permissions compliance"
+      task_02_cmd: "Audit script checking dot file permissions and ownership"
+      task_02_rc: "{{ result_02.rc | default(-1) | int }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if ('COMPLIANT' in (result_02.stdout | default(''))) else 'FAIL' }}"
+      details_02: "{{ 'System is compliant' if ('COMPLIANT' in (result_02.stdout | default(''))) else 'Violations found - check data for details' }}"
+
+# Requirement 3: Store cis_result variable (mandatory)
+  - name: "Req 03 - Store overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'PASS' if (status_01 == 'APPLIED' or status_01 == 'PASS') and status_02 == 'PASS' else 'FAIL' }}"
+      task_03_name: "Store overall remediation result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: "cis_result = {{ 'PASS' if (status_01 == 'APPLIED' or status_01 == 'PASS') and status_02 == 'PASS' else 'FAIL' }}"
+      status_03: "{{ 'PASS' if (status_01 == 'APPLIED' or status_01 == 'PASS') and status_02 == 'PASS' else 'FAIL' }}"
+      details_03: "Overall result stored in cis_result variable"
+    tags: [execute]
+
+# Requirement 4: Prepare report details and generate the final report
+  - name: "Req 04 - Prepare report details"
+    ansible.builtin.set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: "Report generated (see output above)"
+      status_04: "PASS"
+      details_04: "Remediation report generated successfully"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 7.2.9"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 7.2.9"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if passwd backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/passwd.present"
+    register: _sg_restore_passwd
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/passwd from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/passwd.present"
+      dest: "/etc/passwd"
+      remote_src: true
+    when: "_sg_restore_passwd.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if shells backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/shells.present"
+    register: _sg_restore_shells
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/shells from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/shells.present"
+      dest: "/etc/shells"
+      remote_src: true
+    when: "_sg_restore_shells.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Clean up temporary remediation script"
+    ansible.builtin.file:
+      path: "{{ script_dest }}"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

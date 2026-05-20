@@ -1,0 +1,329 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_8_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if profile file exists"
+  ansible.builtin.stat:
+    path: /etc/dconf/profile/user
+  register: _snap_profile_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup profile file if exists"
+  ansible.builtin.copy:
+    src: /etc/dconf/profile/user
+    dest: "{{ backup_dir }}/profile_user.present"
+    remote_src: true
+  when: "_snap_profile_stat.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Mark profile file as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/profile_user.absent"
+  when: "not _snap_profile_stat.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Check if key file exists"
+  ansible.builtin.stat:
+    path: /etc/dconf/db/local.d/00-screensaver
+  register: _snap_key_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup key file if exists"
+  ansible.builtin.copy:
+    src: /etc/dconf/db/local.d/00-screensaver
+    dest: "{{ backup_dir }}/key_file.present"
+    remote_src: true
+  when: "_snap_key_stat.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Mark key file as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/key_file.absent"
+  when: "not _snap_key_stat.stat.exists"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE (tag: execute) ===
+  - name: "Initialize report variables"
+    ansible.builtin.set_fact:
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      exit_01: -1
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      exit_02: -1
+    tags: [execute]
+
+  - name: "Check if GDM package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set GDM installed fact"
+    ansible.builtin.set_fact:
+      gdm_installed: "{{ 'gdm' in ansible_facts.packages }}"
+      gdm_not_present: "{{ 'gdm' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Fact - skip remediation if GDM not installed"
+    ansible.builtin.set_fact:
+      skip_all: "{{ gdm_not_present | default(false) }}"
+    tags: [execute]
+
+# Req 1 – Remediation tasks (only if GDM is installed)
+  - name: "Req 1 - Ensure dconf profile directory exists"
+    ansible.builtin.file:
+      path: /etc/dconf/profile
+      state: directory
+      mode: '0755'
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Ensure user-db line in dconf profile"
+    ansible.builtin.lineinfile:
+      path: /etc/dconf/profile/user
+      line: 'user-db:user'
+      create: true
+      mode: '0644'
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+    register: result_profile_userdb
+
+  - name: "Req 1 - Ensure system-db line in dconf profile"
+    ansible.builtin.lineinfile:
+      path: /etc/dconf/profile/user
+      line: 'system-db:local'
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+    register: result_profile_sysdb
+
+  - name: "Req 1 - Ensure dconf database directory exists"
+    ansible.builtin.file:
+      path: /etc/dconf/db/local.d
+      state: directory
+      mode: '0755'
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+    register: result_mkdir
+
+  - name: "Req 1 - Deploy screensaver script"
+    ansible.builtin.copy:
+      content: |
+        #!/usr/bin/env bash
+        {
+           l_key_file="/etc/dconf/db/local.d/00-screensaver"
+           l_idmv="900"
+           l_ldmv="5"
+           {
+              echo '# Specify the dconf path'
+              echo '[org/gnome/desktop/session]'
+              echo ''
+              echo '# Number of seconds of inactivity before the screen goes blank'
+              echo '# Set to 0 seconds if you want to deactivate the screensaver.'
+              echo "idle-delay=uint32 $l_idmv"
+              echo ''
+              echo '# Specify the dconf path'
+              echo '[org/gnome/desktop/screensaver]'
+              echo ''
+              echo '# Number of seconds after the screen is blank before locking the screen'
+              echo "lock-delay=uint32 $l_ldmv"
+           } > "$l_key_file"
+        }
+      dest: /tmp/cis_1_8_4_screensaver.sh
+      mode: '0700'
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+    register: result_deploy
+
+  - name: "Req 1 - Execute screensaver script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_1_8_4_screensaver.sh
+    args:
+      executable: /bin/bash
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+    register: result_script
+
+  - name: "Req 1 - Remove temporary script"
+    ansible.builtin.file:
+      path: /tmp/cis_1_8_4_screensaver.sh
+      state: absent
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Update dconf databases"
+    ansible.builtin.shell: dconf update
+    args:
+      executable: /bin/bash
+    when: "not skip_all | default(false)"
+    failed_when: false
+    tags: [execute]
+    register: result_dconf_update
+
+# Req 2 – Verification
+  - name: "Req 2 - Verify GDM screen lock configuration"
+    ansible.builtin.shell: |
+      set -o pipefail
+      if ! grep -qxF 'user-db:user' /etc/dconf/profile/user; then echo "FAIL: Missing user-db:user in profile"; exit 1; fi
+      if ! grep -qxF 'system-db:local' /etc/dconf/profile/user; then echo "FAIL: Missing system-db:local in profile"; exit 1; fi
+      if [ ! -f /etc/dconf/db/local.d/00-screensaver ]; then echo "FAIL: Key file missing"; exit 1; fi
+      if ! grep -q 'idle-delay=uint32 900' /etc/dconf/db/local.d/00-screensaver; then echo "FAIL: idle-delay not 900"; exit 1; fi
+      if ! grep -q 'lock-delay=uint32 5' /etc/dconf/db/local.d/00-screensaver; then echo "FAIL: lock-delay not 5"; exit 1; fi
+      echo "PASS: All checks passed"
+    args:
+      executable: /bin/bash
+    register: result_verify
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+    when: "not skip_all | default(false)"
+
+  - name: "Set remediation status for requirement 1"
+    ansible.builtin.set_fact:
+      status_01: "{{ 'APPLIED' if (result_script.rc | default(1)) == 0 and (result_dconf_update.rc | default(1)) == 0 else 'FAILED' }}"
+      details_01: "{{ 'Remediation script and dconf update succeeded' if (result_script.rc | default(1)) == 0 and (result_dconf_update.rc | default(1)) == 0 else 'Remediation steps encountered errors' }}"
+      exit_01: "{{ result_script.rc | default(-1) }}"
+    when: "not skip_all | default(false)"
+    tags: [execute]
+
+  - name: "Set verification status for requirement 2"
+    ansible.builtin.set_fact:
+      status_02: "{{ 'PASS' if result_verify.rc | default(1) == 0 else 'FAIL' }}"
+      details_02: "{{ result_verify.stdout | default('') | trim }}"
+      exit_02: "{{ result_verify.rc | default(-1) }}"
+    when: "not skip_all | default(false)"
+    tags: [execute]
+
+  - name: "Set skipped status if GDM not installed"
+    ansible.builtin.set_fact:
+      status_01: "SKIPPED"
+      details_01: "GDM package not installed"
+      status_02: "SKIPPED"
+      details_02: "GDM package not installed"
+    when: "skip_all | default(false)"
+    tags: [execute]
+
+# Req 3 – Report
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.8.4"
+      - "Reference: CIS Benchmark checkpoint 1.8.4"
+      - ""
+      - "Requirement 1 - Run remediation script:"
+      - "  Task: Execute screensaver script and dconf update"
+      - "  Command: /bin/bash /tmp/cis_1_8_4_screensaver.sh && dconf update"
+      - "  Exit code: {{ exit_01 | default(-1) }}"
+      - "  Data: {{ result_script.stdout | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 2 - VERIFY configuration:"
+      - "  Task: Verify GDM screen lock settings"
+      - "  Command: grep checks on profile and key file"
+      - "  Exit code: {{ exit_02 | default(-1) }}"
+      - "  Data: {{ result_verify.stdout | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+    tags: [execute]
+
+  always:
+# === RESTORE (tag: restore) ===
+  - name: "Restore - Check if backup directory exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if profile backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/profile_user.present"
+    register: _restore_profile_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore profile file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/profile_user.present"
+      dest: /etc/dconf/profile/user
+      remote_src: true
+    when: "_restore_profile_present.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if profile was absent before"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/profile_user.absent"
+    register: _restore_profile_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove profile file if originally absent"
+    ansible.builtin.file:
+      path: /etc/dconf/profile/user
+      state: absent
+    when: "_restore_profile_absent.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if key backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/key_file.present"
+    register: _restore_key_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore key file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/key_file.present"
+      dest: /etc/dconf/db/local.d/00-screensaver
+      remote_src: true
+    when: "_restore_key_present.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if key file was absent before"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/key_file.absent"
+    register: _restore_key_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove key file if originally absent"
+    ansible.builtin.file:
+      path: /etc/dconf/db/local.d/00-screensaver
+      state: absent
+    when: "_restore_key_absent.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Update dconf after file restoration"
+    ansible.builtin.shell: dconf update
+    args:
+      executable: /bin/bash
+    when: "_restore_backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: "_restore_backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

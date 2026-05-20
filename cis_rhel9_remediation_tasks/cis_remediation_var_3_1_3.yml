@@ -1,0 +1,10 @@
+playbook_name: "cis_3_1_3_bluetooth"
+backup_dir: "/tmp/ai-cis-backup/{{ playbook_name }}"
+req_01: "Apply stop of bluetooth.service using command: `systemctl stop bluetooth.service`. Expected result: The bluetooth service is stopped immediately."
+req_02: "Apply removal of bluez package using command: `dnf remove bluez`. Expected result: The bluez package is removed from the system."
+req_03: "If bluez is required as a dependency, apply masking of bluetooth.service using command: `systemctl mask bluetooth.service`. Expected result: The bluetooth service is masked and cannot be started."
+req_04: "Verify that bluetooth.service is not active using command: `systemctl is-active bluetooth.service`. Expected result: Output is 'inactive' or 'unknown'."
+req_05: "Verify that bluetooth.service is masked (if applicable) using command: `systemctl is-enabled bluetooth.service`. Expected result: Output is 'masked' or 'disabled'."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+service_name: bluetooth
+package_name: bluez

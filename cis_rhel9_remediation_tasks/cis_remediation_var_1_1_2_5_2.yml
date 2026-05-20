@@ -1,0 +1,10 @@
+req_01: |
+  Apply prerequisite check: ensure /var/tmp is a separate partition using command: `mount | grep -E '\\s/var/tmp\\s'`. Expected result: output contains a line with /var/tmp.
+req_02: |
+  Apply nodev mount option to /var/tmp in /etc/fstab using command: `sed -i 's|\\(\\S\\+\\s\\+/var/tmp\\s\\+\\S\\+\\s\\+\\)\\(\\S\\+\\)|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab`. Expected result: the fourth field for /var/tmp partition contains nodev.
+req_03: "Apply remount of /var/tmp with updated options using command: `mount -o remount /var/tmp`. Expected result: no error output."
+req_04: |
+  Verify nodev option is active on /var/tmp using command: `mount | grep -E '\\s/var/tmp\\s' | grep -o 'nodev'`. Expected result: output contains 'nodev'.
+checkpoint_id: "cis_1_1_2_5_2"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"

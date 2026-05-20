@@ -1,0 +1,170 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_2_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      task_01_name: "Removal of ypbind package"
+      task_01_cmd: "dnf remove -y ypbind"
+      task_01_rc: -1
+      data_01: "Not collected"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_02_name: "Verification that ypbind is not installed"
+      task_02_cmd: "rpm -q ypbind"
+      task_02_rc: -1
+      data_02: "Not collected"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_03_name: "Set final remediation result"
+      task_03_cmd: "set_fact"
+      task_03_rc: -1
+      data_03: "Not collected"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+    tags: [execute]
+
+  - name: "Req 01 - Check if ypbind is installed"
+    ansible.builtin.shell: "rpm -q {{ package_name }}"
+    args:
+      executable: /bin/bash
+    register: ypbind_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set ypbind installed fact"
+    set_fact:
+      ypbind_installed: "{{ ypbind_check.rc == 0 }}"
+    tags: [execute]
+
+  - name: "Req 01 - Remove ypbind package"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: absent
+    register: remove_result
+    failed_when: false
+    when: ypbind_installed | bool
+    tags: [execute]
+
+  - name: "Req 02 - Verify ypbind is not installed"
+    ansible.builtin.shell: "rpm -q {{ package_name }}"
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Removal of ypbind package"
+      task_01_cmd: "dnf remove -y ypbind"
+      task_01_rc: "{{ remove_result.rc | default(-1) }}"
+      data_01: "{{ remove_result.stdout | default('') | trim }}"
+      status_01: >-
+        {%- if not (ypbind_installed | bool) -%}
+          SKIP
+        {%- elif remove_result.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_01: >-
+        {%- if not (ypbind_installed | bool) -%}
+          Package ypbind is not installed, removal skipped
+        {%- elif remove_result.rc | default(-1) == 0 -%}
+          Successfully removed ypbind
+        {%- else -%}
+          Failed to remove ypbind
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verification that ypbind is not installed"
+      task_02_cmd: "rpm -q ypbind"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: >-
+        {%- if verify_result.rc | default(-1) != 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if verify_result.rc | default(-1) != 0 -%}
+          Package ypbind is not installed (expected)
+        {%- else -%}
+          Package ypbind is still installed
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_02 | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ status_02 | trim }}"
+      task_03_name: "Set final remediation result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: "cis_result = {{ status_02 | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.2.3"
+      - "Reference: CIS Benchmark checkpoint 2.2.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 | trim }}"
+      - "  Details: {{ details_01 | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 | trim }}"
+      - "  Details: {{ details_02 | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name }}"
+      - "  Command: {{ task_03_cmd }}"
+      - "  Exit code: {{ task_03_rc }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 | trim }}"
+      - "  Details: {{ details_03 | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup directory exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}"
+    register: backup_dir_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: backup_dir_stat.stat.exists
+    failed_when: false
+    tags: [restore]

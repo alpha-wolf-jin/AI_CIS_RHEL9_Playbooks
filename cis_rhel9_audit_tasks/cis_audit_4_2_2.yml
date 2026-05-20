@@ -1,0 +1,185 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_4_2_2.yml
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: pre_existing_script
+  changed_when: false
+  failed_when: false
+
+- name: "Snapshot - Create marker if script already exists"
+  ansible.builtin.copy:
+    content: ""
+    dest: /tmp/audit_firewalld_loopback_marker.txt
+    mode: '0600'
+  when: pre_existing_script.stat.exists
+  changed_when: false
+  failed_when: false
+
+
+- name: "Gather installed package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [audit]
+- name: "Set firewalld installation fact"
+  ansible.builtin.set_fact:
+    firewalld_installed: "{{ 'firewalld' in ansible_facts.packages }}"
+  failed_when: false
+  tags: [audit]
+- name: "Initialize default status variables"
+  ansible.builtin.set_fact:
+    status_01: "UNKNOWN"
+    details_01: ""
+    data_01: ""
+    task_01_cmd: ""
+    task_01_rc: -1
+    status_02: "UNKNOWN"
+    details_02: ""
+    data_02: ""
+    task_02_cmd: ""
+    task_02_rc: -1
+    status_03: "UNKNOWN"
+    details_03: ""
+    data_03: ""
+    task_03_cmd: ""
+    task_03_rc: -1
+  tags: [audit]
+- name: "Set NOT_APPLICABLE status when firewalld is missing"
+  ansible.builtin.set_fact:
+    status_01: "NOT_APPLICABLE"
+    details_01: "Firewalld package is not installed"
+    task_01_cmd: "N/A (firewalld not installed)"
+    task_01_rc: -1
+    status_02: "NOT_APPLICABLE"
+    details_02: "Firewalld package is not installed"
+    task_02_cmd: "N/A (firewalld not installed)"
+    task_02_rc: -1
+    status_03: "NOT_APPLICABLE"
+    details_03: "Firewalld package is not installed"
+    task_03_cmd: "N/A (firewalld not installed)"
+    task_03_rc: -1
+    cis_result: "NOT_APPLICABLE"
+  when: "not firewalld_installed | bool"
+  failed_when: false
+  tags: [audit]
+- name: "Audit block for firewalld loopback traffic configuration"
+  when: "firewalld_installed | bool"
+  block:
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+    tags: [audit]
+
+  - name: "Req 01 - Execute audit script for firewalld loopback traffic configuration"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [audit]
+
+  - name: "Store Req 01 details"
+    ansible.builtin.set_fact:
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+      details_01: "{{ 'Script executed successfully' if result_01.rc | default(-1) == 0 else 'Script execution failed' }}"
+    failed_when: false
+    tags: [audit]
+
+  - name: "Req 02 - Determine compliance status from audit script output"
+    ansible.builtin.set_fact:
+      data_02: "{{ result_01.stdout | default('') | trim }}"
+      task_02_cmd: "N/A (analysis from script output)"
+      task_02_rc: "{{ result_01.rc | default(-1) }}"
+      status_02: >-
+        {{ 'PASS' if '*** PASS ***' in (result_01.stdout | default('')) else
+           ('FAIL' if '*** FAIL ***' in (result_01.stdout | default('')) else 'UNKNOWN') }}
+      details_02: >-
+        {{ 'Compliance check passed' if '*** PASS ***' in (result_01.stdout | default('')) else
+           ('Compliance check failed' if '*** FAIL ***' in (result_01.stdout | default('')) else 'Unable to determine compliance') }}
+    failed_when: false
+    tags: [audit]
+
+  - name: "Store final compliance result as cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') }}"
+    tags: [audit]
+
+  - name: "Store Req 03 details"
+    ansible.builtin.set_fact:
+      task_03_cmd: "set_fact: cis_result = {{ status_02 | default('UNKNOWN') }}"
+      task_03_rc: 0
+      data_03: "cis_result set to {{ status_02 | default('UNKNOWN') }}"
+      status_03: "PASS"
+      details_03: "Variable stored successfully"
+    tags: [audit]
+
+  always:
+  - name: "Check if script was pre-existing"
+    ansible.builtin.stat:
+      path: /tmp/audit_firewalld_loopback_marker.txt
+    register: marker_check
+    failed_when: false
+    changed_when: false
+
+  - name: "Remove temporary audit script if not pre-existing"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: not marker_check.stat.exists
+    failed_when: false
+    changed_when: false
+
+  - name: "Remove existence marker"
+    ansible.builtin.file:
+      path: /tmp/audit_firewalld_loopback_marker.txt
+      state: absent
+    when: marker_check.stat.exists
+    failed_when: false
+    changed_when: false
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 4.2.2"
+    - "Reference: CIS Benchmark checkpoint 4.2.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_cmd | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_cmd | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Set cis_result variable"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"
+  tags: [audit]

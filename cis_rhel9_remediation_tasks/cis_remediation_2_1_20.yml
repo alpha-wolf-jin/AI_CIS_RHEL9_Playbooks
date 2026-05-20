@@ -1,0 +1,179 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_20.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check if dnf package manager is available"
+    ansible.builtin.shell: which dnf
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if dnf is available"
+      task_01_cmd: "which dnf"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ ('dnf found at ' + (result_01.stdout | default('not found') | trim)) if result_01.rc | default(-1) == 0 else 'dnf not found' | trim }}"
+    tags: [execute]
+
+  - name: "Req 02 - Check if xorg-x11-server-common is installed"
+    ansible.builtin.shell: rpm -q xorg-x11-server-common
+    args:
+      executable: /bin/bash
+    register: pkg_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Remove xorg-x11-server-common if installed"
+    ansible.builtin.dnf:
+      name: xorg-x11-server-common
+      state: absent
+    register: result_02
+    failed_when: false
+    when:
+    - "result_01.rc | default(-1) == 0"
+    - "pkg_check.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Remove xorg-x11-server-common package"
+      task_02_cmd: "dnf remove -y xorg-x11-server-common"
+      task_02_rc: "{{ result_02.rc | default(-1) if (result_01.rc | default(-1) == 0 and pkg_check.rc | default(-1) == 0) else -1 }}"
+      data_02: >-
+        {{ 
+          (result_02.stdout | default('') | trim) if (result_01.rc | default(-1) == 0 and pkg_check.rc | default(-1) == 0)
+          else ('skipped' if (result_01.rc | default(-1) == 0) and pkg_check.rc | default(-1) != 0 else 'dnf not available')
+        }}
+      status_02: >-
+        {{ 
+          ('PASS' if (result_02.rc | default(-1) == 0) else 'FAIL') if (result_01.rc | default(-1) == 0 and pkg_check.rc | default(-1) == 0)
+          else ('SKIP' if (result_01.rc | default(-1) == 0) and pkg_check.rc | default(-1) != 0 else 'SKIP')
+          | trim
+        }}
+      details_02: >-
+        {{ 
+          ('Package removed successfully' if result_02.rc | default(-1) == 0 else 'Package removal failed') if (result_01.rc | default(-1) == 0 and pkg_check.rc | default(-1) == 0)
+          else ('Package not installed, removal skipped' if (result_01.rc | default(-1) == 0) and pkg_check.rc | default(-1) != 0 else 'dnf not available, removal skipped')
+          | trim
+        }}
+    tags: [execute]
+
+  - name: "Req 03 - Verify xorg-x11-server-common is not installed"
+    ansible.builtin.shell: rpm -q xorg-x11-server-common
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Verify package removal"
+      task_03_cmd: "rpm -q xorg-x11-server-common"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ ('PASS' if result_03.rc != 0 else 'FAIL') | trim }}"
+      details_03: "{{ ('Package is not installed' if result_03.rc != 0 else 'Package still installed') | trim }}"
+    tags: [execute]
+
+  - name: "Req 04 - Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_03 | default('ERROR') | trim }}"
+      status_04: "{{ status_03 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.20"
+      - "Reference: CIS Benchmark checkpoint 2.1.20"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    tags: [restore]

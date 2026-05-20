@@ -1,0 +1,79 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_6_1.yml
+
+- name: "varlog_mount_check - Check if /var/log is mounted on separate partition"
+  ansible.builtin.command: findmnt -kn /var/log
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "varlog_compliance - Determine overall compliance and store cis_result"
+  ansible.builtin.set_fact:
+        # Requirement 01
+    task_01_name: "Check if /var/log is mounted on separate partition"
+    task_01_cmd: "findmnt -kn /var/log"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'FAIL' }}"
+    details_01: >-
+      {{ 
+        'Output shows /var/log is mounted' 
+        if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) 
+        else 'Failed to find /var/log mount' 
+      }}
+     # Requirement 02
+    task_02_name: "Summarize overall compliance"
+    task_02_cmd: "N/A (evaluation based on findmnt output)"
+    task_02_rc: 0
+    data_02: "{{ 'PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'FAIL' }}"
+    status_02: "{{ 'PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'FAIL' }}"
+    details_02: >-
+      {{ 
+        'Compliant: /var/log is a separate partition' 
+        if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) 
+        else 'Non-compliant: /var/log is not a separate partition' 
+      }}
+     # Requirement 03
+    task_03_name: "Store final audit result variable cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: 0
+    data_03: "{{ 'cis_result set to PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'cis_result set to FAIL' }}"
+    status_03: "{{ 'PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'FAIL' }}"
+    details_03: "{{ 'cis_result variable stored as ' + ('PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'FAIL') }}"
+    cis_result: "{{ 'PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'FAIL' }}"
+
+- name: "varlog_report - Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.2.6.1"
+    - "Reference: CIS Benchmark checkpoint 1.1.2.6.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

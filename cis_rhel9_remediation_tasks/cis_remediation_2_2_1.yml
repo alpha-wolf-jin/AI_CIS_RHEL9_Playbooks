@@ -1,0 +1,159 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_2_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if ftp config file exists"
+  ansible.builtin.stat:
+    path: "/etc/ftpusers"
+  register: _ftp_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup ftp config file if exists"
+  ansible.builtin.copy:
+    src: "/etc/ftpusers"
+    dest: "{{ backup_dir }}/ftpusers.backup"
+    remote_src: true
+  when: _ftp_config_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+    tags: [execute]
+
+  - name: "Req 1 - Check if ftp client is installed"
+    ansible.builtin.shell: "rpm -q {{ ftp_package }}"
+    args:
+      executable: /bin/bash
+    register: result_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set ftp installed fact"
+    ansible.builtin.set_fact:
+      ftp_installed: "{{ result_check.rc == 0 }}"
+    tags: [execute]
+
+  - name: "Req 1 - Remove ftp client"
+    ansible.builtin.dnf:
+      name: "{{ ftp_package }}"
+      state: absent
+    register: result_remove
+    failed_when: false
+    when: ftp_installed
+    tags: [execute]
+
+  - name: "Req 2 - Verify ftp client is not installed"
+    ansible.builtin.shell: "rpm -q {{ ftp_package }}"
+    args:
+      executable: /bin/bash
+    register: result_verify
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 and 02 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Remove ftp client"
+      task_01_cmd: "dnf remove {{ ftp_package }}"
+      task_01_rc: "{{ result_remove.rc | default(-1) }}"
+      data_01: "{{ result_remove.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if not ftp_installed or (result_remove.rc | default(1) == 0) else 'FAIL' }}"
+      details_01: "{{ 'Package was not installed' if not ftp_installed else ('Package removed successfully' if result_remove.rc | default(1) == 0 else 'Failed to remove package') }}"
+      task_02_name: "Verify ftp client not installed"
+      task_02_cmd: "rpm -q {{ ftp_package }}"
+      task_02_rc: "{{ result_verify.rc | default(-1) }}"
+      data_02: "{{ result_verify.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if result_verify.rc != 0 else 'FAIL' }}"
+      details_02: "{{ 'Package ftp is not installed' if result_verify.rc != 0 else 'Package ftp is still installed' }}"
+    tags: [execute]
+
+  - name: "Req 3 - Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Store final remediation result"
+      task_03_cmd: "set_fact cis_result"
+      task_03_rc: 0
+      data_03: ""
+      status_03: "PASS"
+      details_03: "cis_result set to {{ cis_result }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.2.1"
+      - "Reference: CIS Benchmark checkpoint 2.2.1"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/ftpusers.backup"
+    register: restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/ftpusers.backup"
+      dest: "/etc/ftpusers"
+      remote_src: true
+    when: restore_backup_stat.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

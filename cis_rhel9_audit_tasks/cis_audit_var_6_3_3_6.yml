@@ -1,0 +1,4 @@
+req_01: "Run the provided audit script to verify Ensure use of privileged commands are collected. On disk configuration and Running configuration"
+req_02: "VERIFY: Summarise compliance status for Ensure use of privileged commands are collected. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format: AUDIT REPORT — CIS 6.3.3.6 Reference: CIS Benchmark checkpoint 6.3.3.6 Then for each requirement: REQUIREMENT NN - <req_NN>:  With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIP/ERROR), Details. End with OVERALL COMPLIANCE: section containing Result: <cis_result>"

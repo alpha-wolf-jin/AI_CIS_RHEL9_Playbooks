@@ -1,0 +1,192 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_7_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/fstab exists"
+  ansible.builtin.stat:
+    path: "{{ fstab_file }}"
+  register: _fstab_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/fstab if exists"
+  ansible.builtin.copy:
+    src: "{{ fstab_file }}"
+    dest: "{{ backup_dir }}/fstab.bak"
+    remote_src: true
+  when: _fstab_stat.stat.exists
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Verify separate partition exists for /var/log/audit"
+    ansible.builtin.shell: mount | grep /var/log/audit
+    args:
+      executable: /bin/bash
+    register: mount_check_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set partition_exists fact"
+    ansible.builtin.set_fact:
+      partition_exists: "{{ mount_check_result.rc == 0 and (mount_check_result.stdout | default('') | trim | length > 0) }}"
+    tags: [execute]
+
+  - name: "Capture fstab line for /var/log/audit before modification"
+    ansible.builtin.shell: grep '/var/log/audit' /etc/fstab
+    args:
+      executable: /bin/bash
+    register: fstab_before
+    failed_when: false
+    changed_when: false
+    when: partition_exists | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Add noexec option to /etc/fstab for /var/log/audit partition"
+    ansible.builtin.lineinfile:
+      path: "{{ fstab_file }}"
+      regexp: |
+        ^(\S+\s+{{ mount_point | regex_escape }}\s+\S+\s+)(?!\S*\bnoexec\b)(\S+)(\s+\S+\s+\S+\s*)$
+      line: |
+        \1\2,noexec\3
+      backrefs: true
+    register: fstab_mod
+    failed_when: false
+    when: partition_exists | default(false)
+    tags: [execute]
+
+  - name: "Capture fstab line for /var/log/audit after modification"
+    ansible.builtin.shell: grep '/var/log/audit' /etc/fstab
+    args:
+      executable: /bin/bash
+    register: fstab_after
+    failed_when: false
+    changed_when: false
+    when: partition_exists | default(false)
+    tags: [execute]
+
+  - name: "Req 03 - Remount /var/log/audit with configured options"
+    ansible.builtin.shell: mount -o remount {{ mount_point }}
+    args:
+      executable: /bin/bash
+    register: remount_result
+    failed_when: false
+    when: partition_exists | default(false)
+    tags: [execute]
+
+  - name: "Req 04 - Verify noexec option is set on /var/log/audit partition"
+    ansible.builtin.shell: mount | grep /var/log/audit | grep noexec
+    args:
+      executable: /bin/bash
+    register: verify_noexec
+    failed_when: false
+    changed_when: false
+    when: partition_exists | default(false)
+    tags: [execute]
+
+  - name: "Store results for report"
+    ansible.builtin.set_fact:
+      task_01_name: "Verify separate partition existence"
+      task_01_cmd: "mount | grep /var/log/audit"
+      task_01_rc: "{{ mount_check_result.rc | default(-1) }}"
+      data_01: "{{ mount_check_result.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if partition_exists else 'SKIPPED' }}"
+      details_01: "{{ 'Partition exists' if partition_exists else 'Partition not found, skipping remediation' }}"
+      task_02_name: "Add noexec to fstab"
+      task_02_cmd: "lineinfile (regexp add noexec)"
+      task_02_rc: "0"
+      data_02: "Before: {{ fstab_before.stdout | default('N/A') | trim }} ; After: {{ fstab_after.stdout | default('N/A') | trim }}"
+      status_02: "{{ 'APPLIED' if (fstab_mod.changed | default(false)) else ('ALREADY SET' if (partition_exists and not (fstab_mod.changed | default(false))) else 'SKIPPED') }}"
+      details_02: "{{ 'noexec added to fstab entry' if (fstab_mod.changed | default(false)) else ('noexec already present' if (partition_exists and not (fstab_mod.changed | default(false))) else 'Partition not found, skipped') }}"
+      task_03_name: "Remount partition"
+      task_03_cmd: "mount -o remount /var/log/audit"
+      task_03_rc: "{{ remount_result.rc | default(-1) }}"
+      data_03: "{{ remount_result.stdout | default('') | trim }}"
+      status_03: "{{ 'APPLIED' if (partition_exists and remount_result.rc | default(-1) == 0) else ('SKIPPED' if not partition_exists else 'FAILED') }}"
+      details_03: "{{ 'Remounted successfully' if (partition_exists and remount_result.rc | default(-1) == 0) else ('Partition not found, remount skipped' if not partition_exists else 'Remount failed') }}"
+      task_04_name: "Verify noexec"
+      task_04_cmd: "mount | grep /var/log/audit | grep noexec"
+      task_04_rc: "{{ verify_noexec.rc | default(-1) }}"
+      data_04: "{{ verify_noexec.stdout | default('') | trim }}"
+      status_04: "{{ 'APPLIED' if (verify_noexec.rc | default(-1) == 0) else ('SKIPPED' if not partition_exists else 'FAILED') }}"
+      details_04: "{{ 'noexec confirmed active' if (verify_noexec.rc | default(-1) == 0) else ('Partition not found, verification skipped' if not partition_exists else 'noexec not set or verification failed') }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.2.7.4"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.7.4"
+      - ""
+      - "Requirement 01 - {{ req_01 }}"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "Requirement 02 - {{ req_02 }}"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "Requirement 03 - {{ req_03 }}"
+      - "  Task: {{ task_03_name }}"
+      - "  Command: {{ task_03_cmd }}"
+      - "  Exit code: {{ task_03_rc }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 }}"
+      - "  Details: {{ details_03 }}"
+      - ""
+      - "Requirement 04 - {{ req_04 }}"
+      - "  Task: {{ task_04_name }}"
+      - "  Command: {{ task_04_cmd }}"
+      - "  Exit code: {{ task_04_rc }}"
+      - "  Data: {{ data_04 }}"
+      - "  Status: {{ status_04 }}"
+      - "  Details: {{ details_04 }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Final Status: {{ status_04 }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if fstab backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/fstab.bak"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite /etc/fstab with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/fstab.bak"
+      dest: "{{ fstab_file }}"
+      remote_src: true
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remount /var/log/audit to apply original fstab options"
+    ansible.builtin.shell: mount -o remount {{ mount_point }}
+    args:
+      executable: /bin/bash
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,9 @@
+playbook_name: "cis_3_3_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/sysctl.d/60-netipv4_sysctl.conf"
+req_01: "Run the provided remediation script to fix Ensure bogus icmp responses are ignored."
+req_02: "VERIFY: Run audit check to confirm Ensure bogus icmp responses are ignored is properly configured. Expected result: System is compliant"
+revert_backup: false   # Set to true to restore backup after execution (testing mode); false for permanent remediation
+# Sysctl parameters to save/restore
+sysctl_param_icmp: "net.ipv4.icmp_ignore_bogus_error_responses"
+sysctl_param_flush: "net.ipv4.route.flush"

@@ -1,0 +1,5 @@
+req_01: "Run the provided remediation script to disable wireless interfaces"
+req_02: "VERIFY: Run audit check to confirm Ensure wireless interfaces are disabled is properly configured. Expected result: System is compliant"
+backup_dir: "/tmp/ansible-cis-backups/cis_3_1_2"
+script_dir: "/usr/local/bin/cis"
+script_path: "{{ script_dir }}/cis_remediation_3_1_2.sh"

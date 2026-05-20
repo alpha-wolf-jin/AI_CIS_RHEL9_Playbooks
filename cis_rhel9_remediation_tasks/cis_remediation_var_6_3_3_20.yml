@@ -1,0 +1,11 @@
+playbook_name: "cis_6_3_3_20"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_rules_file: "/etc/audit/rules.d/99-finalize.rules"
+req_01: "Ensure auditd is installed using command: `dpkg -l auditd || rpm -q audit`. Expected result: package is installed."
+req_02: |
+  Add immutable audit rule by appending '-e 2' to /etc/audit/rules.d/99-finalize.rules using command: `printf '\\n%s' '-e 2' >> /etc/audit/rules.d/99-finalize.rules`. Expected result: file contains '-e 2' at the end.
+req_03: "Merge and load audit rules using command: `augenrules --load`. Expected result: rules loaded without error."
+req_04: |
+  Check if reboot is required using command: `if [[ $(auditctl -s | grep 'enabled') =~ '2' ]]; then printf 'Reboot required to load rules\\n'; fi`. Expected result: message indicates if reboot is needed.
+req_05: "Verify the audit configuration is immutable using command: `auditctl -s | grep enabled`. Expected result: the output contains 'enabled 2'."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

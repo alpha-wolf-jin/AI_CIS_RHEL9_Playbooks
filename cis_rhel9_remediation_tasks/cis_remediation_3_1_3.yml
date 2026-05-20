@@ -1,0 +1,269 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if {{ package_name }} package is installed"
+  ansible.builtin.shell: "rpm -q {{ package_name }}"
+  args:
+    executable: /bin/bash
+  register: _pkg_check
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save package installed status to file"
+  ansible.builtin.copy:
+    content: "{{ _pkg_check.rc }}"
+    dest: "{{ backup_dir }}/pkg_installed.rc"
+  tags: [snapshot]
+- name: "Snapshot - Record current service active state"
+  ansible.builtin.shell: "systemctl is-active {{ service_name }}.service 2>/dev/null || echo 'inactive'"
+  args:
+    executable: /bin/bash
+  register: _service_active_state
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save service active state to file"
+  ansible.builtin.copy:
+    content: "{{ _service_active_state.stdout | trim }}"
+    dest: "{{ backup_dir }}/service_active_state"
+  tags: [snapshot]
+- name: "Snapshot - Record whether service is masked"
+  ansible.builtin.shell: "systemctl is-enabled {{ service_name }}.service 2>/dev/null || echo 'unknown'"
+  args:
+    executable: /bin/bash
+  register: _service_masked_state
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save service masked state to file"
+  ansible.builtin.copy:
+    content: "{{ _service_masked_state.stdout | trim }}"
+    dest: "{{ backup_dir }}/service_masked_state"
+  tags: [snapshot]
+
+- name: "Initialize remediation result variables"
+  ansible.builtin.set_fact:
+    stop_result: {}
+    remove_result: {}
+    mask_result: {}
+    verify_service_result: {}
+    verify_mask_result: {}
+    _block_pkg_check: {}
+  tags: [execute]
+- block:
+  - name: "Block Pkg Check - Check if {{ package_name }} is installed"
+    ansible.builtin.shell: "rpm -q {{ package_name }}"
+    args:
+      executable: /bin/bash
+    register: _block_pkg_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Stop {{ service_name }}.service"
+    ansible.builtin.systemd:
+      name: "{{ service_name }}.service"
+      state: stopped
+    when: _block_pkg_check.rc == 0
+    register: stop_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Remove {{ package_name }} package"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: absent
+    when: _block_pkg_check.rc == 0
+    register: remove_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Mask {{ service_name }}.service (if removal failed due to dependency)"
+    ansible.builtin.systemd:
+      name: "{{ service_name }}.service"
+      masked: true
+    when:
+    - _block_pkg_check.rc == 0
+    - remove_result.failed | default(false)
+    register: mask_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 04 - Verify {{ service_name }}.service is inactive or masked"
+    ansible.builtin.shell: "systemctl is-active {{ service_name }}.service"
+    args:
+      executable: /bin/bash
+    when: _block_pkg_check.rc == 0
+    register: verify_service_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 05 - Verify {{ service_name }}.service is masked"
+    ansible.builtin.shell: "systemctl is-enabled {{ service_name }}.service"
+    args:
+      executable: /bin/bash
+    when: _block_pkg_check.rc == 0
+    register: verify_mask_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 6 - Set final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {% if _block_pkg_check.rc | default(-1) != 0 %}
+        SKIP
+        {% elif verify_service_result.stdout | default('') in ['inactive', 'masked'] %}
+        PASS
+        {% else %}
+        FAIL
+        {% endif %}
+      cis_result_details: >-
+        {% if _block_pkg_check.rc | default(-1) != 0 %}
+        BlueZ package not installed, remediation skipped
+        {% elif verify_service_result.stdout | default('') in ['inactive', 'masked'] %}
+        Bluetooth service is inactive/masked
+        {% else %}
+        Remediation incomplete - service still active or removal failed
+        {% endif %}
+    tags: [execute]
+
+  - name: "Evaluate requirement 06 status"
+    ansible.builtin.set_fact:
+      status_06: "PASS"
+      details_06: "cis_result variable set to '{{ cis_result }}'"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT --- CIS 3.1.3"
+      - "Reference: CIS Benchmark checkpoint 3.1.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Stop bluetooth.service"
+      - "  Command: systemctl stop bluetooth.service"
+      - "  Exit code: {{ stop_result.rc | default('N/A') }}"
+      - "  Data: {{ stop_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if (stop_result is defined and not stop_result.failed | default(true)) else ('SKIPPED' if (_block_pkg_check.rc | default(-1) != 0) else 'FAILED') }}"
+      - "  Details: {{ 'Service stopped' if (stop_result is defined and not stop_result.failed | default(true)) else ('BlueZ not installed, skipped' if (_block_pkg_check.rc | default(-1) != 0) else 'Failed to stop') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Remove bluez package"
+      - "  Command: dnf remove bluez"
+      - "  Exit code: {{ remove_result.rc | default('N/A') }}"
+      - "  Data: {{ remove_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if (remove_result is defined and not remove_result.failed | default(true)) else ('SKIPPED' if (_block_pkg_check.rc | default(-1) != 0) else 'FAILED') }}"
+      - "  Details: {{ 'Package removed' if (remove_result is defined and not remove_result.failed | default(true)) else ('BlueZ not installed, skipped' if (_block_pkg_check.rc | default(-1) != 0) else 'Removal failed (likely dependency)') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Mask bluetooth.service (if applicable)"
+      - "  Command: systemctl mask bluetooth.service"
+      - "  Exit code: {{ mask_result.rc | default('N/A') }}"
+      - "  Data: {{ mask_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if (mask_result is defined and not mask_result.failed | default(true)) else ('SKIPPED' if (_block_pkg_check.rc | default(-1) != 0) or (remove_result is defined and not remove_result.failed | default(true)) else 'FAILED') }}"
+      - "  Details: {{ 'Service masked' if (mask_result is defined and not mask_result.failed | default(true)) else ('Not needed - package removed successfully' if (remove_result is defined and not remove_result.failed | default(true)) else ('BlueZ not installed, skipped' if (_block_pkg_check.rc | default(-1) != 0) else 'Mask failed')) }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Verify service status"
+      - "  Command: systemctl is-active bluetooth.service"
+      - "  Exit code: {{ verify_service_result.rc | default(-1) }}"
+      - "  Data: {{ verify_service_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if (verify_service_result is defined and verify_service_result.stdout is defined and verify_service_result.stdout in ['inactive', 'masked']) else ('SKIPPED' if (_block_pkg_check.rc | default(-1) != 0) else 'FAILED') }}"
+      - "  Details: {{ 'Service is ' ~ (verify_service_result.stdout | default('unknown')) if verify_service_result is defined else ('BlueZ not installed, skipped' if (_block_pkg_check.rc | default(-1) != 0) else 'Status not available') }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: Verify service masking status"
+      - "  Command: systemctl is-enabled bluetooth.service"
+      - "  Exit code: {{ verify_mask_result.rc | default(-1) }}"
+      - "  Data: {{ verify_mask_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if (verify_mask_result is defined and verify_mask_result.stdout is defined and verify_mask_result.stdout in ['masked', 'disabled']) else ('SKIPPED' if (_block_pkg_check.rc | default(-1) != 0) else 'FAILED') }}"
+      - "  Details: {{ 'Service is ' ~ (verify_mask_result.stdout | default('unknown')) if (verify_mask_result is defined and verify_mask_result.stdout is defined) else ('BlueZ not installed, skipped' if (_block_pkg_check.rc | default(-1) != 0) else 'Masking status not available') }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: Set final remediation result"
+      - "  Command: N/A"
+      - "  Exit code: N/A"
+      - "  Data: {{ cis_result | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ cis_result_details | default('') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/pkg_installed.rc"
+    register: _restore_backup_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved package installed status"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/pkg_installed.rc"
+    register: _restore_pkg_installed
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Reinstall bluez if it was originally installed"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: present
+    when:
+    - _restore_backup_check.stat.exists | default(false)
+    - _restore_pkg_installed.content is defined
+    - (_restore_pkg_installed.content | b64decode | trim) == '0'
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved service active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/service_active_state"
+    register: _restore_service_active
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore service active state (start if was active)"
+    ansible.builtin.systemd:
+      name: "{{ service_name }}.service"
+      state: started
+    when:
+    - _restore_backup_check.stat.exists | default(false)
+    - _restore_service_active.content is defined
+    - (_restore_service_active.content | b64decode | trim) == 'active'
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved service masked state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/service_masked_state"
+    register: _restore_service_masked
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Set service masked state to original"
+    ansible.builtin.systemd:
+      name: "{{ service_name }}.service"
+      masked: "{{ 'yes' if (_restore_service_masked.content | b64decode | trim) == 'masked' else 'no' }}"
+    when: _restore_backup_check.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_backup_check.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

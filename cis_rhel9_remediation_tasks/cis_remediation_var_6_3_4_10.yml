@@ -1,0 +1,13 @@
+playbook_name: "cis_6_3_4_10"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_tools:
+  - /sbin/auditctl
+  - /sbin/aureport
+  - /sbin/ausearch
+  - /sbin/autrace
+  - /sbin/auditd
+  - /sbin/augenrules
+req_01: "Apply prerequisite check for audit tools using command: `which chgrp && ls /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules`. Expected result: all paths exist and chgrp is available."
+req_02: "Change group ownership of audit tools to root using command: `chgrp root /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules`. Expected result: group owner of each file is set to root."
+req_03: "Verify group ownership of audit tools using command: `stat -c '%g %n' /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules`. Expected result: each file shows group ID 0 (root)."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

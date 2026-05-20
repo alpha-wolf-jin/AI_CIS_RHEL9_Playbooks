@@ -1,0 +1,9 @@
+req_01: "Check if /etc/login.defs exists using command: `test -f /etc/login.defs`. Expected result: file exists."
+req_02: "Check if /etc/shadow exists using command: `test -f /etc/shadow`. Expected result: file exists."
+req_03: |
+  Check PASS_WARN_AGE is configured to 7 or more in /etc/login.defs using command: `grep -Pi -- '^\h*PASS_WARN_AGE\h+\d+\b' /etc/login.defs`. Expected result: output contains 'PASS_WARN_AGE' with a value of 7 or greater.
+req_04: |
+  Check all user passwords have PASS_WARN_AGE of 7 or more using command: `awk -F: '($2~/^\$.+\$/) {if($6 < 7)print "User: " $1 " PASS_WARN_AGE: " $6}' /etc/shadow`. Expected result: no output (nothing returned).
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/login.defs or /etc/shadow does not exist, FAIL if PASS_WARN_AGE is less than 7 or any user has PASS_WARN_AGE less than 7."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_07: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format."

@@ -1,0 +1,319 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_2_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if pwquality.conf exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_conf }}"
+  register: _snap_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup pwquality.conf if exists"
+  ansible.builtin.copy:
+    src: "{{ pwquality_conf }}"
+    dest: "{{ backup_dir }}/pwquality.conf.present"
+    remote_src: true
+  when: "_snap_conf_stat.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Check if pwquality.conf.d directory exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_conf_d }}"
+  register: _snap_dir_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup pwquality.conf.d directory if exists"
+  ansible.builtin.copy:
+    src: "{{ pwquality_conf_d }}/"
+    dest: "{{ backup_dir }}/pwquality.conf.d/"
+    remote_src: true
+  when: "_snap_dir_stat.stat.exists and _snap_dir_stat.stat.isdir"
+  tags: [snapshot]
+- name: "Snapshot - Check if maxsequence_conf file exists"
+  ansible.builtin.stat:
+    path: "{{ maxsequence_conf }}"
+  register: _snap_maxseq_file_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup maxsequence_conf file (if present)"
+  ansible.builtin.copy:
+    src: "{{ maxsequence_conf }}"
+    dest: "{{ backup_dir }}/50-pwmaxsequence.conf.present"
+    remote_src: true
+  when: "_snap_maxseq_file_stat.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Mark maxsequence_conf as absent (if not present)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/50-pwmaxsequence.conf.absent"
+  when: "not _snap_maxseq_file_stat.stat.exists"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if pam_pwquality is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if pam_pwquality not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'libpwquality' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Comment out existing maxsequence in pwquality.conf"
+    ansible.builtin.replace:
+      path: "{{ pwquality_conf }}"
+      regexp: |
+        ^(\s*maxsequence\s*=)
+      replace: |
+        # \1
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set maxsequence in pwquality.conf.d drop-in"
+    ansible.builtin.lineinfile:
+      path: "{{ maxsequence_conf }}"
+      regexp: |
+        ^\s*maxsequence\s*=
+      line: "maxsequence = {{ maxsequence_value }}"
+      create: true
+      mode: '0644'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Deploy PAM cleanup script"
+    ansible.builtin.copy:
+      content: |
+        #!/usr/bin/env bash
+        for l_pam_file in system-auth password-auth; do
+          l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+          sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+maxsequence\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+        done
+        authselect apply-changes
+      dest: "/tmp/cis_5_3_3_2_5_pam_cleanup.sh"
+      mode: '0700'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute PAM cleanup script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_5_3_3_2_5_pam_cleanup.sh
+    args:
+      executable: /bin/bash
+    register: _pam_cleanup_result
+    when: "not playbook_skipped"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary PAM cleanup script"
+    ansible.builtin.file:
+      path: "/tmp/cis_5_3_3_2_5_pam_cleanup.sh"
+      state: absent
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify maxsequence in pwquality configuration"
+    ansible.builtin.shell: |
+      VALUE=$(grep -rh '^\s*maxsequence\s*=' {{ pwquality_conf }} {{ pwquality_conf_d }}/ 2>/dev/null | tail -1 | sed -r 's/.*=\s*([0-9]+).*/\1/')
+      if [ -n "$VALUE" ] && [ "$VALUE" -ge 1 ] && [ "$VALUE" -le 3 ]; then
+        echo "COMPLIANT: maxsequence=$VALUE"
+      elif [ -n "$VALUE" ]; then
+        echo "NONCOMPLIANT: maxsequence=$VALUE (expected 1-3)"
+      else
+        echo "NOT_FOUND"
+      fi
+    args:
+      executable: /bin/bash
+    register: _verify_pwquality
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 02 - Verify maxsequence not in PAM authselect files"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        if grep -E 'pam_pwquality\.so.*maxsequence' "/etc/authselect/$l_pam_profile/system-auth" "/etc/authselect/$l_pam_profile/password-auth" 2>/dev/null; then
+          echo "FOUND_IN_PAM"
+        else
+          echo "NOT_FOUND_IN_PAM"
+        fi
+      else
+        echo "NO_CUSTOM_PROFILE"
+      fi
+    args:
+      executable: /bin/bash
+    register: _verify_pam
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {{ 'SKIP' if playbook_skipped else
+           ('PASS' if (_verify_pwquality.stdout | default('') is search('COMPLIANT') and _verify_pam.stdout | default('') is search('NOT_FOUND_IN_PAM')) else 'FAIL') }}
+    tags: [execute]
+
+  - name: "Req 03 - Create remediation failed flag if remediation failed"
+    ansible.builtin.copy:
+      content: "failed"
+      dest: "{{ backup_dir }}/remediation_failed.flag"
+      mode: '0600'
+    when: "cis_result in ['FAIL', 'ERROR']"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.3.2.5"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.2.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Req 01 - Configure maxsequence and clean PAM"
+      - "  Command: lineinfile + PAM cleanup script"
+      - "  Exit code: {{ _pam_cleanup_result.rc | default(-1) }}"
+      - "  Data: {{ _pam_cleanup_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'SKIPPED' if playbook_skipped else ('APPLIED' if _pam_cleanup_result.rc | default(-1) == 0 else 'FAILED') }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else ('PAM cleanup completed' if _pam_cleanup_result.rc | default(-1) == 0 else 'PAM cleanup failed') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Req 02 - Verify maxsequence configuration"
+      - "  Command: grep maxsequence in pwquality configs + PAM check"
+      - "  Exit code: {{ _verify_pwquality.rc | default(-1) }}"
+      - "  Data: {{ _verify_pwquality.stdout | default('') | trim }} / {{ _verify_pam.stdout | default('') | trim }}"
+      - "  Status: {{ 'SKIPPED' if playbook_skipped else ('APPLIED' if 'COMPLIANT' in (_verify_pwquality.stdout | default('')) and 'NOT_FOUND_IN_PAM' in (_verify_pam.stdout | default('')) else 'FAILED') }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else ('Compliant' if 'COMPLIANT' in (_verify_pwquality.stdout | default('')) and 'NOT_FOUND_IN_PAM' in (_verify_pam.stdout | default('')) else 'Not fully compliant') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Req 03 - Store final remediation result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: cis_result = {{ cis_result }}"
+      - "  Status: APPLIED"
+      - "  Details: Remediation result stored successfully"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Req 04 - Generate remediation report"
+      - "  Command: debug msg"
+      - "  Exit code: 0"
+      - "  Data: Report generated"
+      - "  Status: APPLIED"
+      - "  Details: Remediation report displayed"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else ('System compliant' if (cis_result == 'PASS') else 'System not fully compliant') }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if remediation failed flag exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediation_failed.flag"
+    register: _restore_flag_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if pwquality.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/pwquality.conf.present"
+    register: _rest_conf
+    failed_when: false
+    when: "_restore_flag_check.stat.exists | default(false)"
+    tags: [restore]
+
+  - name: "Restore - Restore pwquality.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/pwquality.conf.present"
+      dest: "{{ pwquality_conf }}"
+      remote_src: true
+    when: "_restore_flag_check.stat.exists | default(false) and _rest_conf.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if pwquality.conf.d backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/pwquality.conf.d"
+    register: _rest_dir
+    failed_when: false
+    when: "_restore_flag_check.stat.exists | default(false)"
+    tags: [restore]
+
+  - name: "Restore - Restore pwquality.conf.d from backup"
+    ansible.builtin.shell: |
+      rm -rf {{ pwquality_conf_d }}/*
+      cp -r "{{ backup_dir }}/pwquality.conf.d/"* {{ pwquality_conf_d }}/
+    args:
+      executable: /bin/bash
+    when: "_restore_flag_check.stat.exists | default(false) and _rest_dir.stat.exists | default(false) and _rest_dir.stat.isdir | default(false)"
+    failed_when: false
+    tags: [restore]
+
+# --- New: Remove any leftover PAM cleanup script ---
+  - name: "Restore - Remove temporary PAM cleanup script"
+    ansible.builtin.file:
+      path: "/tmp/cis_5_3_3_2_5_pam_cleanup.sh"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+# --- Restore / delete maxsequence_conf based on snapshot markers ---
+  - name: "Restore - Check if maxsequence_conf backup exists (.present)"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-pwmaxsequence.conf.present"
+    register: _restore_maxseq_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if maxsequence_conf absent marker exists (.absent)"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-pwmaxsequence.conf.absent"
+    register: _restore_maxseq_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore maxsequence_conf from .present backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-pwmaxsequence.conf.present"
+      dest: "{{ maxsequence_conf }}"
+      remote_src: true
+    when: "_restore_maxseq_present.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove maxsequence_conf if it was absent originally"
+    ansible.builtin.file:
+      path: "{{ maxsequence_conf }}"
+      state: absent
+    when: "_restore_maxseq_absent.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+# --- NEW: Cleanup the remediation failed flag (created during execution) ---
+  - name: "Restore - Remove remediation failed flag"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/remediation_failed.flag"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

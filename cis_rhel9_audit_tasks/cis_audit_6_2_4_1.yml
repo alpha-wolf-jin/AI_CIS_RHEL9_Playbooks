@@ -1,0 +1,183 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_2_4_1.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    cis_result: "ERROR"
+    status_01: "ERROR"
+    status_02: "ERROR"
+    status_03: "ERROR"
+    status_04: "ERROR"
+    data_01: "Not collected"
+    data_02: "Not collected"
+    data_03: "Not collected"
+    data_04: "Not collected"
+    details_01: "Not evaluated"
+    details_02: "Not evaluated"
+    details_03: "Not evaluated"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Check prerequisite - /var/log directory exists"
+  ansible.builtin.stat:
+    path: /var/log
+  register: _var_log_stat
+  failed_when: false
+  changed_when: false
+
+- name: "Set SKIP facts when prerequisite not met"
+  set_fact:
+    status_01: "SKIP"
+    status_02: "SKIP"
+    status_03: "SKIP"
+    status_04: "SKIP"
+    cis_result: "SKIP"
+    data_01: "SKIP"
+    data_02: "SKIP"
+    data_03: "SKIP"
+    data_04: "SKIP"
+    details_01: "Prerequisite not met: /var/log directory does not exist"
+    details_02: "Prerequisite not met"
+    details_03: "Prerequisite not met"
+    details_04: "Prerequisite not met"
+    task_01_name: "Audit script execution (SKIP)"
+    task_01_cmd: "N/A"
+    task_01_rc: 0
+    task_02_name: "Determine compliance (SKIP)"
+    task_02_cmd: "N/A"
+    task_02_rc: 0
+    task_03_name: "Store cis_result (SKIP)"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    task_04_name: "Generate audit report (SKIP)"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+  when: not _var_log_stat.stat.exists or not _var_log_stat.stat.isdir
+
+- block:
+  - name: "Req 01 - Copy audit script to target"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Store execution details"
+    set_fact:
+      status_01: "{{ 'PASS' if audit_result.rc | default(-1) == 0 else 'ERROR' }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      details_01: "{{ 'Audit script executed successfully' if audit_result.rc | default(-1) == 0 else 'Audit script execution failed' }}"
+      task_01_name: "Execute audit script"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+
+  - name: "Req 02 - Determine compliance status from script output"
+    set_fact:
+      status_02: >-
+        {%- set out = audit_result.stdout | default('') | trim -%}
+        {%- if '** Pass **' in out -%}
+        PASS
+        {%- elif '** Fail **' in out -%}
+        FAIL
+        {%- else -%}
+        ERROR
+        {%- endif -%}
+      data_02: "{{ audit_result.stdout | default('') | trim }}"
+      details_02: >-
+        {%- set out = audit_result.stdout | default('') | trim -%}
+        {%- if '** Pass **' in out -%}
+        System is compliant
+        {%- elif '** Fail **' in out -%}
+        System is non-compliant
+        {%- else -%}
+        Unable to determine compliance
+        {%- endif -%}
+      task_02_name: "Determine compliance from audit output"
+      task_02_cmd: "Derive status from script output"
+      task_02_rc: "0"
+
+  - name: "Req 03 - Store final audit result in cis_result"
+    set_fact:
+      cis_result: "{{ status_02 | trim }}"
+      status_03: "{{ 'PASS' if status_02 is defined else 'ERROR' }}"
+      data_03: "{{ status_02 | trim }}"
+      details_03: "cis_result stored as {{ status_02 | trim }}"
+      task_03_name: "Store cis_result fact"
+      task_03_cmd: "set_fact cis_result derived from status_02"
+      task_03_rc: "0"
+
+  when:
+  - _var_log_stat.stat.exists | default(false)
+  - _var_log_stat.stat.isdir | default(false)
+
+  always:
+  - name: "Clean up - Remove audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    failed_when: false
+
+- name: "Req 04 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.2.4.1"
+    - "Reference: CIS Benchmark checkpoint 6.2.4.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug msg"
+    - "  Exit code: 0"
+    - "  Data: Report generated"
+    - "  Status: PASS"
+    - "  Details: Audit report generated successfully"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

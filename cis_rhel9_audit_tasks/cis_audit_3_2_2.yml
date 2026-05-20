@@ -1,0 +1,119 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_3_2_2.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Not collected"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "Not collected"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "Not collected"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+
+    # Requirement 01: Run the provided audit script
+- block:
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+  always:
+  - name: "Req 01 - Remove temporary script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    failed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Execute audit script for {{ kernel_module }} module"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (audit_result.rc | default(-1)) == 0 else 'FAIL' | trim }}"
+    details_01: "{{ 'Audit script executed successfully' if (audit_result.rc | default(-1)) == 0 else 'Audit script execution failed' | trim }}"
+
+# Requirement 02: Verify compliance status from audit output
+- name: "Req 02 - Determine compliance status from audit output"
+  set_fact:
+    task_02_name: "Verify compliance status from audit output"
+    task_02_cmd: "parse audit_result.stdout"
+    task_02_rc: 0
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if '** PASS **' in (audit_result.stdout | default('')) else ('FAIL' if '** FAIL **' in (audit_result.stdout | default('')) else 'UNKNOWN') | trim }}"
+    details_02: "{{ 'Compliance check passed' if '** PASS **' in (audit_result.stdout | default('')) else ('Compliance check failed' if '** FAIL **' in (audit_result.stdout | default('')) else 'Unable to determine compliance from script output') | trim }}"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Generate audit report"
+    task_03_cmd: "debug module"
+    task_03_rc: 0
+    data_03: "Report generated"
+    status_03: "PASS"
+    details_03: "Audit report generated successfully"
+
+# Requirement 03: Set cis_result fact from compliance status
+- name: "Set cis_result from compliance status"
+  set_fact:
+    cis_result: "{{ status_02 | trim }}"
+
+# Final report
+- name: "Req 03 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 3.2.2"
+    - "Reference: CIS Benchmark checkpoint 3.2.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

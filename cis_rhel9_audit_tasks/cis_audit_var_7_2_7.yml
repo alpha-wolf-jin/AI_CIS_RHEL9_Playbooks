@@ -1,0 +1,15 @@
+req_01: "Run the provided audit script to verify Ensure no duplicate group names exist. Run the following script and verify no results are returned: Execute the COMPLETE script as-is"
+req_02: "VERIFY: Summarise compliance status for Ensure no duplicate group names exist. Expected result: PASS if compliant, FAIL otherwise"
+req_03: 'Create a task named "Generate audit report" using debug msg with EXACTLY this format: AUDIT REPORT — CIS 7.2.7 Reference: CIS Benchmark checkpoint 7.2.7 Then for each requirement: REQUIREMENT NN - {{ req_NN }}: With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIPPED/UNKNOWN), Details. End with OVERALL COMPLIANCE: section containing Result and Details.'
+audit_script: "/tmp/audit_dup_groups.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     while read -r l_count l_group; do
+        if [ "$l_count" -gt 1 ]; then
+           echo -e "Duplicate Group: \"$l_group\" Groups: \"$(awk -F: '($1 == n) { print $1 }' n=$l_group /etc/group | xargs)\""
+        fi
+     done < <(cut -f1 -d":" /etc/group | sort -n | uniq -c)
+  }
+  {% endraw %}

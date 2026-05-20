@@ -1,0 +1,203 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_4_1_1.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Check for previous nftables absent marker"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/nftables.absent"
+  register: _sg_prev_nftables_absent
+  when: _sg_flag.stat.exists | default(false)
+  tags: [snapshot]
+- name: "State Guard - Remove nftables if was absent originally (undo prior run)"
+  ansible.builtin.dnf:
+    name: "{{ nftables_pkg }}"
+    state: absent
+  when:
+  - _sg_flag.stat.exists | default(false)
+  - _sg_prev_nftables_absent.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists | default(false)
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if nftables is currently installed"
+  ansible.builtin.shell: "rpm -q {{ nftables_pkg }}"
+  args:
+    executable: /bin/bash
+  register: _sg_nftables_check
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Mark nftables as absent if not installed"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/nftables.absent"
+  when: _sg_nftables_check.rc != 0
+  tags: [snapshot]
+- name: "State Guard - Mark nftables as present if installed"
+  ansible.builtin.copy:
+    content: "present"
+    dest: "{{ state_guard_dir }}/nftables.present"
+  when: _sg_nftables_check.rc == 0
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE ===
+  - name: "Req 01 - Check dnf availability"
+    ansible.builtin.shell: "command -v dnf"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set dnf availability flag"
+    set_fact:
+      dnf_available: "{{ result_01.rc == 0 }}"
+    tags: [execute]
+
+  - name: "Store Req 01 details"
+    set_fact:
+      task_01_name: "Check dnf availability"
+      task_01_cmd: "command -v dnf"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if result_01.rc | default(-1) == 0 else 'SKIPPED' }}"
+      details_01: "{{ 'dnf executable found' if result_01.rc | default(-1) == 0 else 'dnf not found, remediation skipped' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Install nftables"
+    ansible.builtin.dnf:
+      name: "{{ nftables_pkg }}"
+      state: present
+    register: result_02
+    when: dnf_available
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store Req 02 details"
+    set_fact:
+      task_02_name: "Install nftables"
+      task_02_cmd: "dnf install -y nftables"
+      task_02_rc: "{{ result_02.rc | default(-1) if not (result_02 is skipped) else -1 }}"
+      data_02: "{{ result_02.stdout | default('') | trim if not (result_02 is skipped) else '' }}"
+      status_02: "{{ 'SKIPPED' if (result_02 is skipped) else ('APPLIED' if result_02.rc | default(-1) == 0 else 'FAILED') }}"
+      details_02: "{{ 'dnf not available' if (result_02 is skipped) else ('Package installed successfully' if result_02.rc | default(-1) == 0 else 'Installation failed') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Verify nftables installation"
+    ansible.builtin.shell: "rpm -q {{ nftables_pkg }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    when: dnf_available
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store Req 03 details"
+    set_fact:
+      task_03_name: "Verify nftables installation"
+      task_03_cmd: "rpm -q nftables"
+      task_03_rc: "{{ result_03.rc | default(-1) if not (result_03 is skipped) else -1 }}"
+      data_03: "{{ result_03.stdout | default('') | trim if not (result_03 is skipped) else '' }}"
+      status_03: "{{ 'SKIPPED' if (result_03 is skipped) else ('APPLIED' if result_03.rc | default(-1) == 0 else 'FAILED') }}"
+      details_03: "{{ 'dnf not available' if (result_03 is skipped) else ('Package verified' if result_03.rc | default(-1) == 0 else 'Verification failed') }}"
+    tags: [execute]
+
+  - name: "Store cis_result"
+    set_fact:
+      cis_result: >-
+        {{ 'PASS' if (status_01 == 'APPLIED') and (status_02 == 'APPLIED') and (status_03 == 'APPLIED')
+           else ('FAIL' if (status_01 == 'FAILED') or (status_02 == 'FAILED') or (status_03 == 'FAILED')
+           else 'SKIPPED') }}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 4.1.1"
+      - "Reference: CIS Benchmark checkpoint 4.1.1"
+      - ""
+      - "Requirement 1:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "Requirement 2:"
+      - "  Task: {{ task_02_name | default('Install nftables') }}"
+      - "  Command: {{ task_02_cmd | default('dnf install -y nftables') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') }}"
+      - "  Details: {{ details_02 | default('') }}"
+      - ""
+      - "Requirement 3:"
+      - "  Task: {{ task_03_name | default('Verify nftables installation') }}"
+      - "  Command: {{ task_03_cmd | default('rpm -q nftables') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') }}"
+      - "  Details: {{ details_03 | default('') }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ 'All requirements applied successfully' if cis_result == 'PASS' else ('One or more requirements failed' if cis_result == 'FAIL' else 'Remediation skipped due to missing prerequisite') }}"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (guaranteed) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for nftables absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/nftables.absent"
+    register: _sg_restore_nftables_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove nftables if was originally absent"
+    ansible.builtin.dnf:
+      name: "{{ nftables_pkg }}"
+      state: absent
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_nftables_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

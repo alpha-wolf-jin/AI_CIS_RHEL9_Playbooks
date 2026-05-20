@@ -1,0 +1,142 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_6_4.yml
+
+- name: "Gather installed package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Determine if crypto-policies is installed"
+  set_fact:
+    crypto_policies_installed: "{{ 'crypto-policies' in ansible_facts.packages }}"
+
+- name: "Set NOT_APPLICABLE when package not installed"
+  set_fact:
+    task_01_name: "Req 1 - Check file existence"
+    task_01_cmd: "test -f {{ policy_file }}"
+    task_01_rc: -1
+    data_01: "N/A"
+    status_01: "NOT_APPLICABLE"
+    details_01: "crypto-policies package not installed"
+    task_02_name: "Req 2 - Check for weak MACs"
+    task_02_cmd: "{{ grep_cmd }}"
+    task_02_rc: -1
+    data_02: "N/A"
+    status_02: "NOT_APPLICABLE"
+    details_02: "crypto-policies package not installed"
+    task_03_name: "Overall compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "N/A"
+    status_03: "NOT_APPLICABLE"
+    details_03: "crypto-policies package not installed"
+    task_04_name: "Req 4 - Store final compliance result"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "N/A"
+    status_04: "NOT_APPLICABLE"
+    details_04: "crypto-policies package not installed"
+    cis_result: "NOT_APPLICABLE"
+  when: not crypto_policies_installed
+
+- name: "Req 1 - Check file existence"
+  ansible.builtin.stat:
+    path: "{{ policy_file }}"
+  register: req1_stat
+  when: crypto_policies_installed
+  failed_when: false
+
+- name: "Req 2 - Check for weak MACs"
+  ansible.builtin.shell:
+    cmd: "{{ grep_cmd }}"
+    executable: /bin/bash
+  register: req2_grep
+  when: crypto_policies_installed
+  failed_when: false
+
+- name: "Evaluate requirements"
+  set_fact:
+    task_01_name: "Req 1 - Check file existence"
+    task_01_cmd: "test -f {{ policy_file }}"
+    task_01_rc: "{{ 0 if req1_stat.stat.exists | default(false) else 1 }}"
+    data_01: "{{ 'File exists' if req1_stat.stat.exists | default(false) else 'File does not exist' }}"
+    status_01: "{{ 'PASS' if req1_stat.stat.exists | default(false) else 'FAIL' }}"
+    details_01: "{{ 'File exists' if req1_stat.stat.exists | default(false) else 'File missing' }}"
+    task_02_name: "Req 2 - Check for weak MACs"
+    task_02_cmd: "{{ grep_cmd }}"
+    task_02_rc: "{{ req2_grep.rc | default(-1) }}"
+    data_02: "{{ req2_grep.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if (req2_grep.stdout | default('') | trim) == '' and req2_grep.rc | default(-1) in [0,1] else 'FAIL' }}"
+    details_02: "{{ 'No weak MAC found' if (req2_grep.stdout | default('') | trim) == '' and req2_grep.rc | default(-1) in [0,1] else 'Weak MAC found or error' }}"
+    task_03_name: "Overall compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "N/A"
+    status_03: >-
+      {{ 'PASS' if (req1_stat.stat.exists | default(false)
+         and (req2_grep.stdout | default('') | trim) == ''
+         and req2_grep.rc | default(-1) in [0,1])
+         else 'FAIL' }}
+    details_03: >-
+      {{ 'Overall compliance: PASS - File exists and no weak MACs found'
+         if (req1_stat.stat.exists | default(false)
+            and (req2_grep.stdout | default('') | trim) == ''
+            and req2_grep.rc | default(-1) in [0,1])
+         else 'Overall compliance: FAIL - Some checks failed' }}
+  when: crypto_policies_installed
+
+- name: "Req 04 - Store final compliance result"
+  set_fact:
+    task_04_name: "Req 4 - Store final compliance result"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "N/A"
+    status_04: "{{ status_03 }}"
+    details_04: "{{ details_03 }}"
+    cis_result: "{{ status_03 }}"
+  when: crypto_policies_installed
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.6.4"
+    - "Reference: CIS Benchmark checkpoint 1.6.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"

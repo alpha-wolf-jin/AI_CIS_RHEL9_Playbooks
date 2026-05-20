@@ -1,0 +1,229 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_14.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore audit rules file from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/50-MAC-policy.rules.present"
+    dest: "{{ audit_rules_file }}"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete audit rules file if absent in prior run"
+  ansible.builtin.file:
+    path: "{{ audit_rules_file }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Reload audit rules from prior checkpoint"
+  ansible.builtin.shell: augenrules --load 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _sg_rules_stat
+  tags: [snapshot]
+- name: "State Guard - Backup audit rules file if present"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ state_guard_dir }}/50-MAC-policy.rules.present"
+    remote_src: true
+  when: _sg_rules_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark audit rules file as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/50-MAC-policy.rules.absent"
+  when: not _sg_rules_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === STATE GUARD — EXECUTE PHASE ===
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Add MAC-policy audit rules"
+    ansible.builtin.lineinfile:
+      path: "{{ audit_rules_file }}"
+      line: "{{ item }}"
+      create: true
+      mode: '0640'
+    loop:
+    - "-w /etc/selinux -p wa -k MAC-policy"
+    - "-w /usr/share/selinux -p wa -k MAC-policy"
+    when: auditd_installed | bool
+    failed_when: false
+    register: _mac_rules_result
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules into active configuration"
+    ansible.builtin.shell: augenrules --load 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when: auditd_installed | bool
+    failed_when: false
+    register: _augenrules_result
+    tags: [execute]
+
+  - name: "Req 02 - Verify MAC modification audit rules are present"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -l | grep -E 'MAC-policy' || echo 'VERIFY_FAILED'
+    args:
+      executable: /bin/bash
+    when: auditd_installed | bool
+    failed_when: false
+    register: result_02
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify MAC modification audit rules are present"
+      task_02_cmd: "auditctl -l | grep -E 'MAC-policy'"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {%- if not auditd_installed | bool -%}
+          SKIP
+        {%- elif result_02.rc | default(-1) == 0 and 'VERIFY_FAILED' not in (result_02.stdout | default('')) -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if not auditd_installed | bool -%}
+          Skip: auditd package not installed
+        {%- elif result_02.rc | default(-1) == 0 and 'VERIFY_FAILED' not in (result_02.stdout | default('')) -%}
+          MAC-policy audit rules are active
+        {%- else -%}
+          MAC-policy audit rules not found or verification failed
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Set cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.3.3.14"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.14"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Add MAC-policy audit rules and load via augenrules"
+      - "  Command: augenrules --load"
+      - "  Exit code: {{ _augenrules_result.rc | default(-1) }}"
+      - "  Data: {{ _augenrules_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if auditd_installed | bool else 'SKIP' }}"
+      - "  Details: {{ 'Audit rules written and loaded' if auditd_installed | bool else 'auditd package not installed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if rules backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/50-MAC-policy.rules.present"
+    register: _sg_restore_rules
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore audit rules file from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/50-MAC-policy.rules.present"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: _sg_restore_rules.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/50-MAC-policy.rules.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete audit rules file if was absent"
+    ansible.builtin.file:
+      path: "{{ audit_rules_file }}"
+      state: absent
+    when: _sg_restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Reload audit rules after restore"
+    ansible.builtin.shell: augenrules --load 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

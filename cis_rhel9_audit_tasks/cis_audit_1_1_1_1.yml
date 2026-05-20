@@ -1,0 +1,86 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1_1.yml
+
+- name: "Req 01 - Execute CIS audit script for cramfs kernel module"
+  ansible.builtin.shell: |
+    bash <<'AUDIT_EOF'
+    {{ audit_script_content }}
+    AUDIT_EOF
+  args:
+    executable: /bin/bash
+  register: audit_result
+  changed_when: false
+  failed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Inline execution of CIS audit script"
+    task_01_cmd: "bash (heredoc with CIS audit script for cramfs)"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') }}"
+    status_01: "{{ 'PASS' if audit_result.rc | default(-1) == 0 else 'FAIL' }}"
+    details_01: "{{ 'Audit script executed successfully' if audit_result.rc | default(-1) == 0 else 'Script execution encountered errors' }}"
+
+- name: "Req 02 - Verify compliance status from audit script output"
+  set_fact:
+    task_02_name: "Req 02 - Verify compliance status"
+    task_02_cmd: "Analysis of audit script output"
+    task_02_rc: "0"
+    data_02: "{{ 'PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'INCONCLUSIVE') }}"
+    status_02: "{{ 'PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'UNKNOWN') }}"
+    details_02: "{{ 'Cramfs kernel module is not available or properly disabled' if '** PASS **' in audit_result.stdout | default('') else ('Cramfs kernel module is available and may be in use' if '** FAIL **' in audit_result.stdout | default('') else 'Unable to determine compliance from script output') }}"
+
+- name: "Req 03 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 }}"
+    task_03_name: "Req 03 - Store final audit result in cis_result"
+    task_03_cmd: "set_fact: cis_result = status_02"
+    task_03_rc: "0"
+    data_03: "{{ status_02 }}"
+    status_03: "PASS"
+    details_03: "cis_result set to {{ status_02 }}"
+
+- name: "Req 04 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.1.1"
+    - "Reference: CIS Benchmark checkpoint 1.1.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug module"
+    - "  Exit code: 0"
+    - "  Data: Report generated"
+    - "  Status: PASS"
+    - "  Details: Audit report displayed"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

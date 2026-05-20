@@ -1,0 +1,6 @@
+playbook_name: "cis_1_1_2_7_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if a separate partition exists for /var/log/audit by inspecting /etc/fstab and running: `mount | grep /var/log/audit`. Expected result: a line showing the partition is mounted."
+req_02: "Edit /etc/fstab to add nodev to the mounting options for the /var/log/audit partition. Expected result: the fourth field for the /var/log/audit entry includes nodev (e.g., defaults,rw,nosuid,nodev,noexec,relatime)."
+req_03: "Remount /var/log/audit with the configured options using command: `mount -o remount /var/log/audit`. Expected result: the partition is remounted successfully with nodev option."
+req_04: "Verify the nodev option is set on /var/log/audit using command: `mount | grep /var/log/audit | grep nodev`. Expected result: the output contains 'nodev'."

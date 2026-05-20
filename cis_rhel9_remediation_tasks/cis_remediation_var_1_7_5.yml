@@ -1,0 +1,7 @@
+playbook_name: "cis_1_7_5"
+target_file: "/etc/issue"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply ownership of /etc/issue to root:root using command: `chown root:root $(readlink -e /etc/issue)`. Expected result: The file /etc/issue is owned by root:root."
+req_02: "Apply permissions u-x,go-wx on /etc/issue using command: `chmod u-x,go-wx $(readlink -e /etc/issue)`. Expected result: The file /etc/issue has permissions set to u-x,go-wx."
+req_03: "Verify ownership and permissions of /etc/issue using command: `stat -L -c '%U:%G %a' /etc/issue`. Expected result: Output shows 'root:root' and permissions '644' or equivalent (no execute for owner, no write/execute for group and others)."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,219 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_4_1_6.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    cron_installed: false
+
+# Requirement 1 – Check if cron is installed
+- name: "Req 01 - Check if cron is installed"
+  shell: dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check if cron is installed"
+    task_01_cmd: "dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: >-
+      {{ 'PASS' if result_01.rc == 0 and (result_01.stdout | default('') | trim) != '' else 'SKIP' }}
+    details_01: >-
+      {{ 'Cron package found' if result_01.rc == 0 and (result_01.stdout | default('') | trim) != '' else 'Cron not installed — audit not applicable' }}
+    cron_installed: '{{ result_01.rc == 0 and (result_01.stdout | default("") | trim) != "" }}'
+
+# Requirement 2 – Full permissions check
+- name: "Req 02 - Check full permissions and ownership on /etc/cron.monthly"
+  shell: |
+    stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.monthly/
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: cron_installed | bool
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check full permissions and ownership on /etc/cron.monthly"
+    task_02_cmd: "stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.monthly/"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: '{{ "SKIP" if not cron_installed | bool else ( "PASS" if (result_02.stdout | default("") | trim) == "Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)" else "FAIL" ) }}'
+    details_02: '{{ "Cron is not installed" if not cron_installed | bool else ( "Permissions match expected" if (result_02.stdout | default("") | trim) == "Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)" else "Permissions do not match expected" ) }}'
+
+# Requirement 3 – Verify owner (UID)
+- name: "Req 03 - Verify directory owner is root (UID)"
+  shell: stat -Lc '%u/%U' /etc/cron.monthly/
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: cron_installed | bool
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Req 03 - Verify directory owner is root (UID)"
+    task_03_cmd: "stat -Lc '%u/%U' /etc/cron.monthly/"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: '{{ "SKIP" if not cron_installed | bool else ( "PASS" if (result_03.stdout | default("") | trim) == "0/root" else "FAIL" ) }}'
+    details_03: '{{ "Cron is not installed" if not cron_installed | bool else ( "Owner is root" if (result_03.stdout | default("") | trim) == "0/root" else "Owner is not root" ) }}'
+
+# Requirement 4 – Verify group owner (GID)
+- name: "Req 04 - Verify directory group owner is root (GID)"
+  shell: stat -Lc '%g/%G' /etc/cron.monthly/
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: cron_installed | bool
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Req 04 - Verify directory group owner is root (GID)"
+    task_04_cmd: "stat -Lc '%g/%G' /etc/cron.monthly/"
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: '{{ "SKIP" if not cron_installed | bool else ( "PASS" if (result_04.stdout | default("") | trim) == "0/root" else "FAIL" ) }}'
+    details_04: '{{ "Cron is not installed" if not cron_installed | bool else ( "Group owner is root" if (result_04.stdout | default("") | trim) == "0/root" else "Group owner is not root" ) }}'
+
+# Requirement 5 – Verify permissions are 700
+- name: "Req 05 - Verify permissions are 700"
+  shell: stat -Lc '%a' /etc/cron.monthly/
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: cron_installed | bool
+
+- name: "Store requirement 05 details"
+  set_fact:
+    task_05_name: "Req 05 - Verify permissions are 700"
+    task_05_cmd: "stat -Lc '%a' /etc/cron.monthly/"
+    task_05_rc: "{{ result_05.rc | default(-1) }}"
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+    status_05: '{{ "SKIP" if not cron_installed | bool else ( "PASS" if (result_05.stdout | default("") | trim) == "700" else "FAIL" ) }}'
+    details_05: '{{ "Cron is not installed" if not cron_installed | bool else ( "Permissions are 700" if (result_05.stdout | default("") | trim) == "700" else "Permissions are not 700" ) }}'
+
+# Requirement 6 – Overall compliance summary
+- name: "Req 06 - Summarize overall compliance"
+  set_fact:
+    task_06_name: "Req 06 - Summarize overall compliance"
+    task_06_cmd: "N/A (internal evaluation)"
+    task_06_rc: 0
+    data_06: "Overall evaluation"
+    status_06: >-
+      {{ 'SKIP' if status_01 == 'SKIP' else ('PASS' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS') else 'FAIL') }}
+    details_06: >-
+      {{ 'Cron not installed — audit not applicable' if status_01 == 'SKIP' else ('All checks passed' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS') else 'One or more checks failed or skipped') }}
+
+# Store the final audit result in the required variable cis_result
+- name: "Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_06 }}"
+
+# Audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.4.1.6"
+    - "Reference: CIS Benchmark checkpoint 2.4.1.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

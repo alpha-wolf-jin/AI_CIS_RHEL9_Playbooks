@@ -1,0 +1,2 @@
+req_01: "Check if ftp package is installed using command: `rpm -q ftp`. Expected result: package ftp is not installed"
+req_02: "Summarize overall compliance status: ftp client is not installed, meeting the requirement."

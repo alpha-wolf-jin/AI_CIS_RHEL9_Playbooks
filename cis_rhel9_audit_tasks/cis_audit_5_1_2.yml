@@ -1,0 +1,200 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_2.yml
+
+- name: "Snapshot - Ensure backup directory exists"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: "Snapshot - Record audit script pre-existence"
+  shell: |
+    if [ ! -f '{{ audit_script }}' ]; then
+      touch '{{ audit_script_marker }}'
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+  failed_when: false
+
+- block:
+  - name: "Check if {{ package_name }} is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+
+  - name: "Set installed fact and skip if not installed"
+    ansible.builtin.set_fact:
+      openssh_installed: "{{ package_name in ansible_facts.packages }}"
+    failed_when: false
+
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: openssh_installed | default(false)
+    changed_when: false
+    failed_when: false
+
+  - name: "Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    when: openssh_installed | default(false)
+    changed_when: false
+    failed_when: false
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute audit script for SSH private host key permissions"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: >-
+        {%- if not openssh_installed | default(false) -%}
+          SKIPPED
+        {%- elif audit_result.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_01: >-
+        {%- if not openssh_installed | default(false) -%}
+          openssh-server not installed; audit script skipped
+        {%- elif audit_result.rc | default(-1) == 0 -%}
+          Script executed successfully
+        {%- else -%}
+          Script failed with exit code {{ audit_result.rc | default(-1) }}
+        {%- endif -%}
+    failed_when: false
+
+  - name: "Evaluate compliance from audit script output"
+    ansible.builtin.set_fact:
+      compliance_status: >-
+        {%- if not openssh_installed | default(false) -%}
+          NOT_APPLICABLE
+        {%- elif '** PASS **' in audit_result.stdout | default('') -%}
+          PASS
+        {%- elif '** FAIL **' in audit_result.stdout | default('') -%}
+          FAIL
+        {%- else -%}
+          UNKNOWN
+        {%- endif -%}
+      compliance_details: >-
+        {%- if not openssh_installed | default(false) -%}
+          openssh-server is not installed; no private host key files to audit
+        {%- elif '** PASS **' in audit_result.stdout | default('') -%}
+          All SSH private host key files have correct permissions
+        {%- elif '** FAIL **' in audit_result.stdout | default('') -%}
+          One or more SSH private host key files have incorrect permissions
+        {%- else -%}
+          Unable to determine compliance from audit script output
+        {%- endif -%}
+    failed_when: false
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Evaluate compliance from audit script output"
+      task_02_cmd: "set_fact (parsing audit result)"
+      task_02_rc: 0
+      data_02: "{{ compliance_status | default('UNKNOWN') | trim }}"
+      status_02: "{{ compliance_status | default('UNKNOWN') | trim }}"
+      details_02: "{{ compliance_details | default('') | trim }}"
+    failed_when: false
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Generate audit report"
+      task_03_cmd: "debug"
+      task_03_rc: 0
+      data_03: "Report generated"
+      status_03: "PASS"
+      details_03: "Audit report displayed"
+    failed_when: false
+
+  - name: "Set overall compliance"
+    ansible.builtin.set_fact:
+      cis_result: "{{ compliance_status | default('UNKNOWN') | trim }}"
+      overall_details: "{{ compliance_details | default('Not evaluated') | trim }}"
+    failed_when: false
+
+  - name: "Generate audit report"
+    debug:
+      msg:
+      - "AUDIT REPORT — CIS 5.1.2"
+      - "Reference: CIS Benchmark checkpoint 5.1.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ overall_details | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [report]
+  ignore_errors: yes
+
+  always:
+  - name: "Restore - Check if marker exists"
+    ansible.builtin.stat:
+      path: "{{ audit_script_marker }}"
+    register: marker_stat
+
+  - name: "Restore - Remove audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: marker_stat.stat.exists
+
+  - name: "Restore - Remove marker"
+    ansible.builtin.file:
+      path: "{{ audit_script_marker }}"
+      state: absent
+    when: marker_stat.stat.exists

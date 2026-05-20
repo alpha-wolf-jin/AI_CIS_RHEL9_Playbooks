@@ -1,0 +1,335 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_9.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Check if previous config backup exists"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/sshd_config.present"
+  register: _sg_prev_backup
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/ssh/sshd_config from previous backup"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/sshd_config.present"
+    dest: "/etc/ssh/sshd_config"
+    remote_src: true
+  when:
+  - _sg_flag.stat.exists
+  - _sg_prev_backup.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/ssh/sshd_config exists"
+  ansible.builtin.stat:
+    path: "/etc/ssh/sshd_config"
+  register: _sg_sshd_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/ssh/sshd_config (present)"
+  ansible.builtin.copy:
+    src: "/etc/ssh/sshd_config"
+    dest: "{{ state_guard_dir }}/sshd_config.present"
+    remote_src: true
+  when: _sg_sshd_stat.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/ssh/sshd_config as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/sshd_config.absent"
+  when: not _sg_sshd_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === INITIALIZE DATA ===
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      sshd_installed: false
+    tags: [execute]
+
+# === REQUIREMENT 1 ===
+  - name: "Req 01 - Check if sshd is installed"
+    ansible.builtin.shell: "which sshd"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if sshd is installed"
+      task_01_cmd: "which sshd"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'sshd found at: ' + (result_01.stdout | default('') | trim) if (result_01.rc | default(-1)) == 0 else 'sshd not installed' }}"
+      sshd_installed: "{{ true if (result_01.rc | default(-1)) == 0 else false }}"
+    tags: [execute]
+
+# === REQUIREMENT 2 ===
+  - name: "Req 02 - Set ClientAliveInterval to 15 in sshd_config"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^ClientAliveInterval\s+
+      line: 'ClientAliveInterval 15'
+      insertbefore: '^Include|^Match'
+      backup: false
+    register: result_02
+    failed_when: false
+    when: "sshd_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Set ClientAliveInterval to 15"
+      task_02_cmd: |
+        lineinfile: regexp='^ClientAliveInterval\\s+' line='ClientAliveInterval 15' insertbefore='^Include|^Match'
+      task_02_rc: "{{ 0 if (result_02 is not failed) else 1 }}"
+      data_02: "{{ 'ClientAliveInterval 15' if (result_02 is not failed) else (result_02.msg | default('Failed')) }}"
+      status_02: "{{ 'PASS' if (result_02 is not failed) else 'FAIL' }}"
+      details_02: "{{ 'Parameter set to 15' if (result_02 is not failed) else 'Failed to set parameter' }}"
+    when: "sshd_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 02 skipped"
+    ansible.builtin.set_fact:
+      task_02_name: "Set ClientAliveInterval to 15"
+      task_02_cmd: "lineinfile (skipped)"
+      task_02_rc: -1
+      data_02: "N/A"
+      status_02: "SKIP"
+      details_02: "sshd not installed"
+    when: "not (sshd_installed | default(false))"
+    tags: [execute]
+
+# === REQUIREMENT 3 ===
+  - name: "Req 03 - Set ClientAliveCountMax to 3 in sshd_config"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^ClientAliveCountMax\s+
+      line: 'ClientAliveCountMax 3'
+      insertbefore: '^Include|^Match'
+      backup: false
+    register: result_03
+    failed_when: false
+    when: "sshd_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Set ClientAliveCountMax to 3"
+      task_03_cmd: |
+        lineinfile: regexp='^ClientAliveCountMax\\s+' line='ClientAliveCountMax 3' insertbefore='^Include|^Match'
+      task_03_rc: "{{ 0 if (result_03 is not failed) else 1 }}"
+      data_03: "{{ 'ClientAliveCountMax 3' if (result_03 is not failed) else (result_03.msg | default('Failed')) }}"
+      status_03: "{{ 'PASS' if (result_03 is not failed) else 'FAIL' }}"
+      details_03: "{{ 'Parameter set to 3' if (result_03 is not failed) else 'Failed to set parameter' }}"
+    when: "sshd_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 03 skipped"
+    ansible.builtin.set_fact:
+      task_03_name: "Set ClientAliveCountMax to 3"
+      task_03_cmd: "lineinfile (skipped)"
+      task_03_rc: -1
+      data_03: "N/A"
+      status_03: "SKIP"
+      details_03: "sshd not installed"
+    when: "not (sshd_installed | default(false))"
+    tags: [execute]
+
+# === REQUIREMENT 4 ===
+  - name: "Req 04 - Verify sshd configuration"
+    ansible.builtin.shell: "sshd -T | grep -E 'clientaliveinterval|clientalivecountmax'"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: "sshd_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify sshd configuration"
+      task_04_cmd: "sshd -T | grep -E 'clientaliveinterval|clientalivecountmax'"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_04: "{{ 'Configuration verified: ' + (result_04.stdout | default('') | trim) if (result_04.rc | default(-1)) == 0 else 'Verification failed' }}"
+    when: "sshd_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 04 skipped"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify sshd configuration"
+      task_04_cmd: "sshd -T | grep -E 'clientaliveinterval|clientalivecountmax'"
+      task_04_rc: -1
+      data_04: "N/A"
+      status_04: "SKIP"
+      details_04: "sshd not installed"
+    when: "not (sshd_installed | default(false))"
+    tags: [execute]
+
+# === REQUIREMENT 5 ===
+  - name: "Req 05 - Store overall remediation result as cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    tags: [execute]
+
+# === REPORT ===
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.1.9"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.1.9"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: Store final remediation result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: cis_result = {{ cis_result | default('ERROR') | trim }}"
+      - "  Status: PASS"
+      - "  Details: Overall remediation status stored"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD RESTORE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if present backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sshd_config.present"
+    register: _sg_restore_backup
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/ssh/sshd_config from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/sshd_config.present"
+      dest: "/etc/ssh/sshd_config"
+      remote_src: true
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sshd_config.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /etc/ssh/sshd_config (was absent)"
+    ansible.builtin.file:
+      path: "/etc/ssh/sshd_config"
+      state: absent
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,150 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_2_9.yml
+
+- name: "Prerequisite - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Snapshot - Ensure backup directory exists"
+  ansible.builtin.file:
+    path: "/var/log/ai-playbooks-backup"
+    state: directory
+    mode: '0755'
+  when: "'bash' in ansible_facts.packages"
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_pre_stat
+  when: "'bash' in ansible_facts.packages"
+  failed_when: false
+
+- name: "Snapshot - Record pre-existence marker"
+  ansible.builtin.copy:
+    dest: "/var/log/ai-playbooks-backup/audit_dotfiles_pre_exists"
+    content: "{{ 'not_exist' if not (script_pre_stat.stat.exists | default(false)) else 'exist' }}"
+    force: yes
+  when: "'bash' in ansible_facts.packages"
+  failed_when: false
+
+
+- name: "Req 01 - Gather interactive users"
+  shell: |
+    l_valid_shells="^($( awk -F\/ '$NF != "nologin" {print}' /etc/shells | sed -rn '/^\//{s,/,\\\\/,g;p}' | paste -s -d '|' - ))$"
+    awk -v pat="$l_valid_shells" -F: '$(NF) ~ pat { print $1 " " $(NF-1) }' /etc/passwd
+  args:
+    executable: /bin/bash
+  register: gather_users
+  failed_when: false
+  changed_when: false
+  when: "'bash' in ansible_facts.packages"
+
+- block:
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: script_result
+    failed_when: false
+    changed_when: false
+
+  when: "'bash' in ansible_facts.packages"
+
+  always:
+  - name: "Restore - Read pre-existence marker"
+    ansible.builtin.slurp:
+      path: "/var/log/ai-playbooks-backup/audit_dotfiles_pre_exists"
+    register: marker_slurp
+    when: "'bash' in ansible_facts.packages"
+    failed_when: false
+
+  - name: "Restore - Remove temporary script if it did not exist before"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - "'bash' in ansible_facts.packages"
+    - "(marker_slurp.content | b64decode | trim) == 'not_exist'"
+    failed_when: false
+
+  - name: "Restore - Remove pre-existence marker file"
+    ansible.builtin.file:
+      path: "/var/log/ai-playbooks-backup/audit_dotfiles_pre_exists"
+      state: absent
+    failed_when: false
+
+- name: "Set requirement 01 facts"
+  ansible.builtin.set_fact:
+    task_01_name: "Execute audit script for dot files"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: "{{ script_result.rc | default(-1) | int }}"
+    data_01: "{{ script_result.stdout | default('') | trim }}"
+    status_01: "{{ 'SKIPPED' if 'bash' not in ansible_facts.packages else ('PASS' if '** PASS **' in script_result.stdout | default('') or '** FAIL **' in script_result.stdout | default('') else 'FAIL') }}"
+    details_01: "{{ 'Bash not installed, audit skipped' if 'bash' not in ansible_facts.packages else ('Audit script completed successfully' if '** PASS **' in script_result.stdout | default('') or '** FAIL **' in script_result.stdout | default('') else 'Audit script did not produce expected output markers') }}"
+
+- name: "Set compliance status fact"
+  ansible.builtin.set_fact:
+    task_02_name: "Compliance check from audit script output"
+    task_02_cmd: "Parse script output for PASS or FAIL markers"
+    task_02_rc: 0
+    data_02: "{{ script_result.stdout | default('') | trim }}"
+    status_02: "{{ 'SKIPPED' if 'bash' not in ansible_facts.packages else ('PASS' if '** PASS **' in script_result.stdout | default('') else ('FAIL' if '** FAIL **' in script_result.stdout | default('') else 'UNKNOWN')) }}"
+    details_02: "{{ 'Bash not installed, audit skipped' if 'bash' not in ansible_facts.packages else ('Compliance PASS confirmed' if '** PASS **' in script_result.stdout | default('') else ('Compliance FAIL detected' if '** FAIL **' in script_result.stdout | default('') else 'Unable to determine compliance from script output')) }}"
+
+- name: "Set cis_result fact"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 }}"
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Set cis_result fact"
+    task_03_cmd: "cis_result: {{ status_02 }}"
+    task_03_rc: 0
+    data_03: "{{ cis_result | default('') | trim }}"
+    status_03: "{{ 'PASS' | trim }}"
+    details_03: "Overall compliance status recorded as {{ cis_result | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 7.2.9"
+    - "Reference: CIS Benchmark checkpoint 7.2.9"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

@@ -1,0 +1,28 @@
+playbook_name: "CIS_2_4_2_1_at_restricted"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: |
+  1. Run the provided remediation script to fix Ensure at is restricted to authorized users. - IF - at is installed on the system:
+  Run the following script to:
+  • /etc/at.allow:
+  o Create the file if it doesn't exist
+  o Change owner or user root
+  o If group daemon exists, change to group daemon, else change group to root o Change mode to 640 or more restrictive
+  • - IF - /etc/at.deny exists:
+  o Change owner or user root
+  o If group daemon exists, change to group daemon, else change group to root o Change mode to 640 or more restrictive Execute the COMPLETE script as-is:
+req_02: "2. VERIFY: Run audit check to confirm Ensure at is restricted to authorized users is properly configured. Expected result: System is compliant"
+req_03: "3. Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "4. Create a task named 'Generate remediation report' using debug msg with EXACTLY this format: REMEDIATION REPORT — CIS 2.4.2.1 ..."
+audit_script: "/tmp/cis_2_4_2_1_remediate.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     grep -Pq -- '^daemon\b' /etc/group && l_group="daemon" || l_group="root"
+     [ ! -e "/etc/at.allow" ] && touch /etc/at.allow
+     chown root:"$l_group" /etc/at.allow
+     chmod u-x,g-wx,o-rwx /etc/at.allow
+     [ -e "/etc/at.deny" ] && chown root:"$l_group" /etc/at.deny
+     [ -e "/etc/at.deny" ] && chmod u-x,g-wx,o-rwx /etc/at.deny
+  }
+  {% endraw %}

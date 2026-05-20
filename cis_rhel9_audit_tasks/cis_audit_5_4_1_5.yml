@@ -1,0 +1,264 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_1_5.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+
+- name: "Req 01 - Check shadow password file exists"
+  ansible.builtin.stat:
+    path: /etc/shadow
+  register: shadow_check
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Store shadow file check details"
+  ansible.builtin.set_fact:
+    task_01_name: "Req 01 - Check shadow password file exists"
+    task_01_cmd: "test -f /etc/shadow"
+    task_01_rc: 0
+    data_01: "{{ 'File exists' if shadow_check.stat.exists else 'File not found' }}"
+    status_01: "{{ 'PASS' if shadow_check.stat.exists else 'SKIP' }}"
+    details_01: "{{ 'Shadow file /etc/shadow found' if shadow_check.stat.exists else 'Shadow file /etc/shadow does not exist' }}"
+
+- name: "Req 02 - Check useradd command availability"
+  ansible.builtin.shell: command -v useradd
+  args:
+    executable: /bin/bash
+  register: useradd_avail
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Store useradd check details"
+  ansible.builtin.set_fact:
+    task_02_name: "Req 02 - Check useradd command availability"
+    task_02_cmd: "command -v useradd"
+    task_02_rc: "{{ useradd_avail.rc | default(-1) }}"
+    data_02: "{{ useradd_avail.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if useradd_avail.rc | default(-1) == 0 else 'SKIP' }}"
+    details_02: "{{ 'useradd command found' if useradd_avail.rc | default(-1) == 0 else 'useradd command not available' }}"
+
+- name: "Req 03 - Check INACTIVE parameter in useradd defaults"
+  ansible.builtin.shell: useradd -D | grep INACTIVE
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: useradd_avail.rc | default(-1) == 0
+  failed_when: false
+  changed_when: false
+
+- name: "Req 03 - Store INACTIVE defaults check result"
+  ansible.builtin.set_fact:
+    task_03_name: "Req 03 - Check INACTIVE parameter in useradd defaults"
+    task_03_cmd: "useradd -D | grep INACTIVE"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: >-
+      {%- if result_03 is skipped -%}
+        SKIP
+      {%- elif result_03.rc != 0 -%}
+        FAIL
+      {%- else -%}
+        {%- set parts = result_03.stdout.split('=') -%}
+        {%- if parts | length == 2 and parts[0] == 'INACTIVE' -%}
+          {%- set inact_val = parts[1] | int(default=-1) -%}
+          {%- if inact_val >= 0 and inact_val <= 45 -%}
+            PASS
+          {%- else -%}
+            FAIL
+          {%- endif -%}
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      {%- endif -%}
+    details_03: >-
+      {%- if result_03 is skipped -%}
+        Skipped because useradd command not available
+      {%- elif result_03.rc != 0 -%}
+        Command failed with exit code {{ result_03.rc }}
+      {%- else -%}
+        {%- set parts = result_03.stdout.split('=') -%}
+        {%- if parts | length == 2 and parts[0] == 'INACTIVE' -%}
+          {%- set inact_val = parts[1] | int(default=-1) -%}
+          {%- if inact_val >= 0 and inact_val <= 45 -%}
+            INACTIVE value {{ inact_val }} is within policy (<=45)
+          {%- else -%}
+            INACTIVE value {{ inact_val }} is outside policy (>45 or negative)
+          {%- endif -%}
+        {%- else -%}
+          Invalid output format: {{ result_03.stdout }}
+        {%- endif -%}
+      {%- endif -%}
+
+- name: "Req 04 - Check all users password inactive value in shadow file"
+  ansible.builtin.shell: |
+    awk -F: '($2~/^\$.+\$/) {if($7 > {{ max_inactive }} || $7 < 0)print "User: " $1 " INACTIVE: " $7}' /etc/shadow
+  args:
+    executable: /bin/bash
+  register: result_04
+  when:
+  - shadow_check.stat.exists
+  - useradd_avail.rc | default(-1) == 0
+  failed_when: false
+  changed_when: false
+
+- name: "Req 04 - Store user inactive values check result"
+  ansible.builtin.set_fact:
+    task_04_name: "Req 04 - Check all users password inactive value in shadow file"
+    task_04_cmd: |
+      awk -F: '($2~/^\$.+\$/) {if($7 > {{ max_inactive }} || $7 < 0)print "User: " $1 " INACTIVE: " $7}' /etc/shadow
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: >-
+      {%- if result_04 is skipped -%}
+        SKIP
+      {%- elif result_04.rc != 0 -%}
+        FAIL
+      {%- elif result_04.stdout | default('') | trim == '' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if result_04 is skipped -%}
+        Skipped because prerequisites not met
+      {%- elif result_04.rc != 0 -%}
+        Command failed with exit code {{ result_04.rc }}
+      {%- elif result_04.stdout | default('') | trim == '' -%}
+        No users with non-compliant inactive password lock
+      {%- else -%}
+        Non-compliant users found: {{ result_04.stdout | replace('\n', '; ') }}
+      {%- endif -%}
+
+- name: "Req 05 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_05_name: "Req 05 - Summarize overall compliance"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_05: "Overall compliance evaluated"
+    status_05: >-
+      {%- if status_01 == 'SKIP' or status_02 == 'SKIP' -%}
+        SKIP
+      {%- elif status_03 == 'FAIL' or status_04 == 'FAIL' -%}
+        FAIL
+      {%- elif status_03 == 'PASS' and status_04 == 'PASS' -%}
+        PASS
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_05: >-
+      {%- if status_01 == 'SKIP' or status_02 == 'SKIP' -%}
+        Audit skipped because one or more prerequisites were not met
+      {%- elif status_03 == 'FAIL' or status_04 == 'FAIL' -%}
+        One or more checks failed
+      {%- elif status_03 == 'PASS' and status_04 == 'PASS' -%}
+        All checks passed. System is compliant.
+      {%- else -%}
+        Unable to determine compliance due to errors
+      {%- endif -%}
+
+- name: "Req 06 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_05 | default('UNKNOWN') | trim }}"
+    task_06_name: "Req 06 - Store final audit result in cis_result"
+    task_06_cmd: "set_fact: cis_result = status_05"
+    task_06_rc: 0
+    data_06: "cis_result = {{ status_05 | default('UNKNOWN') | trim }}"
+    status_06: "PASS"
+    details_06: "Stored compliance result in variable cis_result."
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.4.1.5"
+    - "Reference: CIS Benchmark checkpoint 5.4.1.5"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+    - "========================================================"

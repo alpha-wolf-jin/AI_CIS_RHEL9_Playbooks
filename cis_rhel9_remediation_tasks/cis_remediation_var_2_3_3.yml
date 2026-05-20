@@ -1,0 +1,6 @@
+playbook_name: "remediate-cis-2.3.3-chrony-not-root"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply the removal of '-u root' from OPTIONS in /etc/sysconfig/chronyd using command: `sed -i 's/-u root//g' /etc/sysconfig/chronyd`. Expected result: The file no longer contains '-u root' in any OPTIONS line."
+req_02: "Apply the reload of chronyd service using command: `systemctl reload-or-restart chronyd.service`. Expected result: The chronyd service reloads or restarts with the updated configuration."
+req_03: "Verify chronyd is not running as root using command: `ps aux | grep chronyd | grep -v grep | awk '{print $1}' | head -1`. Expected result: The output shows 'chrony' (or a non-root user), not 'root'."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

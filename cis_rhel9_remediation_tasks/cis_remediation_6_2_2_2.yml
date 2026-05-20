@@ -1,0 +1,359 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_2_2_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Record file list in /etc/systemd/journald.conf.d"
+  ansible.builtin.shell: "find /etc/systemd/journald.conf.d/ -maxdepth 1 -type f 2>/dev/null || true"
+  args:
+    executable: /bin/bash
+  register: _snap_journald_d_files
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save journald.conf.d file list"
+  ansible.builtin.copy:
+    content: "{{ _snap_journald_d_files.stdout | default('') }}"
+    dest: "{{ backup_dir }}/journald_conf_d.filelist"
+    mode: '0600'
+  tags: [snapshot]
+- name: "Snapshot - Check if 60-journald.conf exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snap_journald_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup 60-journald.conf if present"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/60-journald.conf.present"
+    remote_src: true
+  when: _snap_journald_conf_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Mark 60-journald.conf as absent if not present"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/60-journald.conf.absent"
+  when: not (_snap_journald_conf_stat.stat.exists | default(false))
+  tags: [snapshot]
+- name: "Snapshot - Archive entire journald.conf.d directory"
+  ansible.builtin.shell: "tar czf {{ backup_dir }}/journald_conf_d.tar.gz -C /etc/systemd/journald.conf.d . 2>/dev/null || true"
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "/tmp/remediate_journald_forwardtosyslog.sh"
+  register: _snap_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark remediation script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/temporary_script.absent"
+  when: not (_snap_script_stat.stat.exists | default(false))
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_01: "Not collected"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_02: "Not collected"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: ""
+      status_03: "PASS"
+      details_03: "cis_result stored"
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: ""
+      status_04: "PASS"
+      details_04: "Report generated successfully"
+    tags: [execute]
+
+  - name: "Check if systemd-journald is active"
+    ansible.builtin.shell: "systemctl is-active systemd-journald"
+    args:
+      executable: /bin/bash
+    register: _journald_active
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set skip_remediation based on journald activity"
+    set_fact:
+      skip_remediation: "{{ _journald_active.rc != 0 }}"
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    when: not (skip_remediation | bool)
+    block:
+    - name: "Copy remediation script to remote"
+      ansible.builtin.copy:
+        dest: /tmp/remediate_journald_forwardtosyslog.sh
+        mode: '0700'
+        content: |
+          {% raw %}
+          #!/usr/bin/env bash
+          {
+            [ ! -d /etc/systemd/journald.conf.d/ ] && mkdir /etc/systemd/journald.conf.d/
+            if grep -Psq -- '^\h*\[Journal\]' /etc/systemd/journald.conf.d/60- journald.conf; then
+              printf '%s\n' "ForwardToSyslog=no" >> /etc/systemd/journald.conf.d/60- journald.conf
+            else
+              printf '%s\n' "[Journal]" "ForwardToSyslog=no" >> /etc/systemd/journald.conf.d/60-journald.conf
+            fi
+          }
+          {% endraw %}
+      changed_when: false
+      tags: [execute]
+
+    - name: "Execute remediation script"
+      ansible.builtin.shell: /bin/bash /tmp/remediate_journald_forwardtosyslog.sh
+      args:
+        executable: /bin/bash
+      register: result_01_script
+      failed_when: false
+      changed_when: false
+      notify: reload journald
+      tags: [execute]
+
+    - name: "Remove temporary script"
+      ansible.builtin.file:
+        path: /tmp/remediate_journald_forwardtosyslog.sh
+        state: absent
+      changed_when: false
+      tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Execute remediation script"
+      task_01_cmd: "/bin/bash /tmp/remediate_journald_forwardtosyslog.sh"
+      task_01_rc: >-
+        {%- if skip_remediation | bool -%}-1
+        {%- elif result_01_script is defined and result_01_script.skipped is not defined -%}{{ result_01_script.rc | default(-1) }}
+        {%- else -%}-1
+        {%- endif -%}
+      data_01: >-
+        {%- if skip_remediation | bool -%}Skipped
+        {%- elif result_01_script is defined and result_01_script.skipped is not defined -%}{{ result_01_script.stdout | default('') | trim }}
+        {%- else -%}Script not executed
+        {%- endif -%}
+      status_01: >-
+        {%- if skip_remediation | bool -%}SKIP
+        {%- elif result_01_script is defined and result_01_script.skipped is not defined and result_01_script.rc | default(-1) == 0 -%}PASS
+        {%- else -%}FAIL
+        {%- endif -%}
+      details_01: >-
+        {%- if skip_remediation | bool -%}Skipped because systemd-journald is not active
+        {%- elif result_01_script is defined and result_01_script.skipped is not defined and result_01_script.rc | default(-1) == 0 -%}Remediation script executed successfully
+        {%- else -%}Remediation script failed or was not executed
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Flush handlers to restart journald"
+    meta: flush_handlers
+    when: not (skip_remediation | bool)
+    tags: [execute]
+
+  - name: "Req 02 - Verify ForwardToSyslog is disabled"
+    ansible.builtin.shell: |
+      systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* 2>/dev/null | grep -E '^ForwardToSyslog=no'
+    args:
+      executable: /bin/bash
+    register: result_02_verify
+    when: not (skip_remediation | bool)
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify ForwardToSyslog is disabled"
+      task_02_cmd: "systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* 2>/dev/null | grep -E '^ForwardToSyslog=no'"
+      task_02_rc: "{{ result_02_verify.rc | default(-1) if not (skip_remediation | bool) else -1 }}"
+      data_02: "{{ (result_02_verify.stdout | default('') | trim) if not (skip_remediation | bool) else '' }}"
+      status_02: >-
+        {%- if skip_remediation | bool -%}SKIP
+        {%- elif result_02_verify.rc | default(1) == 0 -%}PASS
+        {%- else -%}FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if skip_remediation | bool -%}Skipped because systemd-journald is not active
+        {%- elif result_02_verify.rc | default(1) == 0 -%}ForwardToSyslog is set to no
+        {%- else -%}ForwardToSyslog is not set to no
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: ""
+      status_04: "PASS"
+      details_04: "Report generated successfully"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 6.2.2.2"
+      - "Reference: CIS Benchmark checkpoint 6.2.2.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Read original journald.conf.d file list"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/journald_conf_d.filelist"
+    register: _restore_journald_d_filelist
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Find current files in journald.conf.d"
+    ansible.builtin.shell: "find /etc/systemd/journald.conf.d/ -maxdepth 1 -type f 2>/dev/null || true"
+    args:
+      executable: /bin/bash
+    register: _restore_journald_d_current
+    changed_when: false
+    failed_when: false
+    when: _restore_journald_d_filelist.content is defined
+    tags: [restore]
+
+  - name: "Restore - Check if journald.conf.d archive exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/journald_conf_d.tar.gz"
+    register: _restore_tar_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Extract journald.conf.d archive"
+    ansible.builtin.shell: "tar xzf {{ backup_dir }}/journald_conf_d.tar.gz -C /etc/systemd/journald.conf.d"
+    args:
+      executable: /bin/bash
+    when: _restore_tar_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete files added during execution"
+    ansible.builtin.file:
+      path: "{{ item }}"
+      state: absent
+    loop: >-
+      {{
+        (_restore_journald_d_current.stdout_lines | default([]))
+        | difference((_restore_journald_d_filelist.content | default('') | b64decode).splitlines())
+      }}
+    when:
+    - "_restore_journald_d_filelist.content is defined"
+    - "_restore_journald_d_current.stdout_lines is defined"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if 60-journald.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-journald.conf.present"
+    register: _restore_journald_conf_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore 60-journald.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/60-journald.conf.present"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: _restore_journald_conf_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if 60-journald.conf absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-journald.conf.absent"
+    register: _restore_journald_conf_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete 60-journald.conf if it was absent before"
+    ansible.builtin.file:
+      path: "{{ config_file }}"
+      state: absent
+    when: _restore_journald_conf_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if temporary script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/temporary_script.absent"
+    register: _restore_script_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove remediation script"
+    ansible.builtin.file:
+      path: "/tmp/remediate_journald_forwardtosyslog.sh"
+      state: absent
+    when: _restore_script_marker.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

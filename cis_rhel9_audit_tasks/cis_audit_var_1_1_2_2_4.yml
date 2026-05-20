@@ -1,0 +1,4 @@
+req_01: "Check if /dev/shm is a separate partition using command: `findmnt -kn /dev/shm`. Expected result: output should show a mount point entry."
+req_02: "Check if the noexec option is set on /dev/shm partition using command: `findmnt -kn /dev/shm | grep -v 'noexec'`. Expected result: no output (empty)."
+req_03: "Summarize overall compliance: if /dev/shm is a separate partition and noexec is set, then compliant; otherwise, non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

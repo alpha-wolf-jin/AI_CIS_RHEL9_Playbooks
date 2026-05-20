@@ -1,0 +1,182 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_5_4.yml
+
+- name: "Ensure backup directory exists"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+  ignore_errors: yes
+
+- name: "Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_stat
+  ignore_errors: yes
+
+- name: "Write marker file indicating prior existence of audit script"
+  ansible.builtin.copy:
+    dest: "{{ backup_dir }}/script_existed"
+    content: "{{ script_stat.stat.exists | ternary('true', 'false') }}"
+    mode: '0644'
+  ignore_errors: yes
+
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+
+  - name: "Req 01 - Gather installed package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+
+  - name: "Req 01 - Set applicability fact"
+    ansible.builtin.set_fact:
+      systemd_installed: "{{ 'systemd' in ansible_facts.packages }}"
+
+  - name: "Req 01 - Deploy audit script"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      content: "{{ audit_script_content }}"
+      mode: '0700'
+    changed_when: false
+    when: systemd_installed
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    when: systemd_installed
+
+  - name: "Req 01 - Remove audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    when: systemd_installed
+
+  - name: "Determine compliance status from audit output"
+    ansible.builtin.set_fact:
+      compliance_status: >-
+        {{ 'NOT_APPLICABLE' if not systemd_installed else
+           ('PASS' if ('** PASS **' in (result_01.stdout | default(''))) else 'FAIL') | trim }}
+      compliance_details: >-
+        {{ 'Systemd not installed, audit not applicable' if not systemd_installed else
+           ('Core dump storage is set to none' if ('** PASS **' in (result_01.stdout | default(''))) else
+            'Core dump storage is not set to none or not configured') | trim }}
+
+  - name: "Req 03 - Store final audit result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ compliance_status | trim }}"
+      task_03_name: "Store final audit result in cis_result"
+      task_03_cmd: "N/A (set_fact)"
+      task_03_rc: 0
+      data_03: "{{ compliance_status | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to compliance status"
+
+  - name: "Req 01 - Store requirement details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute audit script for CIS 1.5.4"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('Audit script output not available') | trim }}"
+      status_01: "{{ 'NOT_APPLICABLE' if not systemd_installed else compliance_status | trim }}"
+      details_01: "{{ 'Systemd not installed - audit not applicable' if not systemd_installed else 'Audit script executed successfully' | trim }}"
+
+  - name: "Req 02 - Prepare summary details"
+    ansible.builtin.set_fact:
+      task_02_name: "Summarise compliance status"
+      task_02_cmd: "N/A (based on audit result)"
+      task_02_rc: 0
+      data_02: "{{ compliance_status | trim }}"
+      status_02: "{{ compliance_status | trim }}"
+      details_02: "Compliance summary generated successfully"
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.5.4"
+      - "Reference: CIS Benchmark checkpoint 1.5.4"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name }}"
+      - "  Command: {{ task_03_cmd }}"
+      - "  Exit code: {{ task_03_rc }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 }}"
+      - "  Details: {{ details_03 }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | trim }}"
+      - "  Details: {{ compliance_details | trim }}"
+      - "========================================================"
+
+  always:
+  - name: "Check if cleanup marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/script_existed"
+    register: marker_stat
+
+  - name: "Read cleanup marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/script_existed"
+    register: marker_slurp
+    when: marker_stat.stat.exists
+
+  - name: "Remove audit script only if it was created by this playbook"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - marker_stat.stat.exists
+    - (marker_slurp.content | b64decode | trim) == 'false'
+
+  - name: "Remove marker file"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/script_existed"
+      state: absent
+
+  - name: "Remove backup directory if empty"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when:
+    - "marker_stat.stat.exists | default(false)"

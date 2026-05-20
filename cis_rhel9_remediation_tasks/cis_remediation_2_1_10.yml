@@ -1,0 +1,315 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_10.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      data_06: "Not collected yet"
+      status_06: "ERROR"
+      details_06: "Not evaluated"
+      data_07: "Not collected yet"
+      status_07: "ERROR"
+      details_07: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      task_07_name: "Not executed"
+      task_07_cmd: "N/A"
+      task_07_rc: -1
+    tags: [execute]
+
+  - name: "Check if ypserv is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set skip_remediation flag"
+    set_fact:
+      skip_remediation: "{{ 'ypserv' not in ansible_facts.packages }}"
+    tags: [execute]
+
+# Requirement 01: Stop ypserv service
+  - name: "Req 01 - Stop ypserv service"
+    ansible.builtin.systemd:
+      name: ypserv
+      state: stopped
+    register: result_01
+    failed_when: false
+    when: not skip_remediation
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Stop ypserv service"
+      task_01_cmd: "systemctl stop ypserv.service"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {% if skip_remediation %}SKIP
+        {% elif result_01.rc | default(-1) == 0 %}PASS
+        {% else %}FAIL
+        {% endif %}
+      details_01: >-
+        {% if skip_remediation %}Skipped: ypserv not installed
+        {% elif result_01.rc | default(-1) == 0 %}Service stopped successfully
+        {% else %}Failed to stop service
+        {% endif %}
+    tags: [execute]
+
+# Requirement 02: Remove ypserv package
+  - name: "Req 02 - Remove ypserv package"
+    ansible.builtin.dnf:
+      name: ypserv
+      state: absent
+    register: result_02
+    failed_when: false
+    when: not skip_remediation
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remove ypserv package"
+      task_02_cmd: "dnf remove ypserv"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {% if skip_remediation %}SKIP
+        {% elif result_02.rc | default(-1) == 0 %}PASS
+        {% else %}FAIL
+        {% endif %}
+      details_02: >-
+        {% if skip_remediation %}Skipped: ypserv not installed
+        {% elif result_02.rc | default(-1) == 0 %}Package removed successfully
+        {% else %}Failed to remove package
+        {% endif %}
+    tags: [execute]
+
+# Requirement 03: Mask ypserv service
+  - name: "Req 03 - Mask ypserv service"
+    ansible.builtin.systemd:
+      name: ypserv
+      masked: true
+    register: result_03
+    failed_when: false
+    when: not skip_remediation
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Mask ypserv service"
+      task_03_cmd: "systemctl mask ypserv.service"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: >-
+        {% if skip_remediation %}SKIP
+        {% elif result_03.rc | default(-1) == 0 %}PASS
+        {% else %}FAIL
+        {% endif %}
+      details_03: >-
+        {% if skip_remediation %}Skipped: ypserv not installed
+        {% elif result_03.rc | default(-1) == 0 %}Service masked successfully
+        {% else %}Failed to mask service
+        {% endif %}
+    tags: [execute]
+
+# Requirement 04: Verify ypserv.service is not running
+  - name: "Req 04 - Verify ypserv service is inactive"
+    shell: systemctl is-active ypserv.service
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: not skip_remediation
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify ypserv service inactive"
+      task_04_cmd: "systemctl is-active ypserv.service"
+      task_04_rc: "{% if skip_remediation %}-1{% else %}{{ result_04.rc | default(-1) }}{% endif %}"
+      data_04: "{% if skip_remediation %}N/A{% else %}{{ result_04.stdout | default('') | trim }}{% endif %}"
+      status_04: >-
+        {% if skip_remediation %}SKIP
+        {% elif result_04.stdout | default('') | trim == 'inactive' %}PASS
+        {% else %}FAIL
+        {% endif %}
+      details_04: >-
+        {% if skip_remediation %}Skipped: ypserv not installed
+        {% elif result_04.stdout | default('') | trim == 'inactive' %}Service is inactive
+        {% else %}Service is still active
+        {% endif %}
+    tags: [execute]
+
+# Requirement 05: Verify ypserv package is not installed
+  - name: "Req 05 - Verify ypserv package is not installed"
+    shell: rpm -q ypserv
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    when: not skip_remediation
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Verify ypserv package not installed"
+      task_05_cmd: "rpm -q ypserv"
+      task_05_rc: "{% if skip_remediation %}-1{% else %}{{ result_05.rc | default(-1) }}{% endif %}"
+      data_05: "{% if skip_remediation %}N/A{% else %}{{ result_05.stdout | default('') | trim }}{% endif %}"
+      status_05: >-
+        {% if skip_remediation %}SKIP
+        {% elif result_05.rc | default(-1) != 0 %}PASS
+        {% else %}FAIL
+        {% endif %}
+      details_05: >-
+        {% if skip_remediation %}Skipped: ypserv not installed
+        {% elif result_05.rc | default(-1) != 0 %}Package is not installed
+        {% else %}Package is still installed
+        {% endif %}
+    tags: [execute]
+
+# Requirement 06: Store cis_result (split to avoid circular reference)
+  - name: "Req 06a - Store final remediation result"
+    set_fact:
+      cis_result: >-
+        {% if skip_remediation %}SKIP
+        {% else %}{{ status_05 | default('ERROR') | trim }}{% endif %}
+    tags: [execute]
+
+  - name: "Req 06b - Store requirement 06 details"
+    set_fact:
+      task_06_name: "Set cis_result fact"
+      task_06_cmd: "set_fact cis_result = {{ cis_result | default('ERROR') | trim }}"
+      task_06_rc: 0
+      data_06: "{{ cis_result | default('ERROR') | trim }}"
+      status_06: "{{ 'PASS' if (cis_result | default('ERROR') | trim in ['PASS', 'SKIP']) else 'FAIL' }}"
+      details_06: "Overall remediation status stored"
+    tags: [execute]
+
+# Requirement 07: Pre-store report metadata, then generate report
+  - name: "Store requirement 07 details for report"
+    set_fact:
+      task_07_name: "Generate remediation report"
+      task_07_cmd: "debug msg"
+      task_07_rc: 0
+      data_07: "Report generated"
+      status_07: "PASS"
+      details_07: "Remediation report generated successfully"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.10"
+      - "Reference: CIS Benchmark checkpoint 2.1.10"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('ERROR') | trim }}"
+      - "  Details: {{ details_07 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

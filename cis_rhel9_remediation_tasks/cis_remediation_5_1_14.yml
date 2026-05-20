@@ -1,0 +1,345 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_14.yml
+
+- name: "State Guard - Remove stale checkpoint if exists"
+  file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if sshd_config exists"
+  stat:
+    path: "{{ sshd_config }}"
+  register: _sg_sshd_stat
+  tags: [snapshot]
+- name: "State Guard - Backup sshd_config"
+  copy:
+    src: "{{ sshd_config }}"
+    dest: "{{ state_guard_dir }}/sshd_config.present"
+    remote_src: true
+  when: _sg_sshd_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Check if 00-cis-logingracetime.conf exists"
+  stat:
+    path: "{{ dropin_conf }}"
+  register: _sg_dropin_stat
+  tags: [snapshot]
+- name: "State Guard - Mark drop-in as absent if not exist"
+  copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/00-cis-logingracetime.conf.absent"
+  when: not _sg_dropin_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark remediation_outcome as absent (will be created by execute)"
+  copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/remediation_outcome.marker"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === STATE GUARD — EXECUTE PHASE ===
+  - name: "Req 01 - Check if openssh-server package is installed"
+    shell: dpkg -l | grep -q openssh-server || rpm -q openssh-server
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if openssh-server package is installed"
+      task_01_cmd: "dpkg -l | grep -q openssh-server || rpm -q openssh-server"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+      details_01: "{{ 'Package installed: ' ~ (result_01.stdout | default('') | trim) if result_01.rc | default(-1) == 0 else 'Package not installed' }}"
+      playbook_skipped: "{{ result_01.rc | default(-1) != 0 }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify current LoginGraceTime in sshd_config"
+    shell: grep -E '^LoginGraceTime' {{ sshd_config }} 2>/dev/null || echo "NOT_FOUND"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify current LoginGraceTime"
+      task_02_cmd: "grep -E '^LoginGraceTime' /etc/ssh/sshd_config"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if result_02.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: "{{ 'LoginGraceTime found' if ('NOT_FOUND' not in (result_02.stdout | default(''))) else 'LoginGraceTime not set' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 03 - Backup current sshd_config"
+    shell: cp {{ sshd_config }} {{ sshd_config }}.bak.$(date +%Y%m%d%H%M%S)
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Backup sshd_config"
+      task_03_cmd: "cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ 'Backup created' if result_03.rc | default(-1) == 0 else 'Backup failed' }}"
+      status_03: "{{ 'PASS' if result_03.rc | default(-1) == 0 else 'FAIL' }}"
+      details_03: "{{ 'Backup file created successfully' if result_03.rc | default(-1) == 0 else 'Backup creation failed' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 04a - Remove any existing LogingGraceTime line from main sshd_config"
+    ansible.builtin.lineinfile:
+      path: "{{ sshd_config }}"
+      regexp: '^LoginGraceTime'
+      state: absent
+    register: result_04_remove
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 04b - Set LoginGraceTime 60 in high-precedence drop-in"
+    ansible.builtin.lineinfile:
+      path: "{{ dropin_conf }}"
+      regexp: '^LoginGraceTime'
+      line: 'LoginGraceTime 60'
+      create: yes
+      mode: '0640'
+    register: result_04
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Set LoginGraceTime via drop-in (remove from main config + create 00-cis-logingracetime.conf)"
+      task_04_cmd: "Remove LoginGraceTime from /etc/ssh/sshd_config if present, then create /etc/ssh/sshd_config.d/00-cis-logingracetime.conf with 'LoginGraceTime 60'"
+      task_04_rc: "{{ 0 if (result_04_remove is not failed and result_04 is not failed) else 1 }}"
+      data_04: "{{ 'Drop-in created' if (result_04_remove is not failed and result_04 is not failed) else 'Drop-in creation failed' }}"
+      status_04: "{{ 'PASS' if (result_04_remove is not failed and result_04 is not failed) else 'FAIL' }}"
+      details_04: "{{ 'LoginGraceTime 60 set in high-precedence drop-in' if (result_04_remove is not failed and result_04 is not failed) else 'Failed to set LoginGraceTime' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 05 - Restart sshd service"
+    service:
+      name: "{{ service_name }}"
+      state: restarted
+    register: result_05
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Restart sshd service"
+      task_05_cmd: "systemctl restart sshd"
+      task_05_rc: "{{ 0 if result_05 is defined and not (result_05.failed | default(false)) else 1 }}"
+      data_05: "{{ 'Service restarted' if result_05 is defined and not (result_05.failed | default(false)) else 'Restart failed' }}"
+      status_05: "{{ 'PASS' if result_05 is defined and not (result_05.failed | default(false)) else 'FAIL' }}"
+      details_05: "{{ 'sshd restarted successfully' if result_05 is defined and not (result_05.failed | default(false)) else 'sshd restart failed' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 06 - Verify LoginGraceTime is active"
+    shell: sshd -T 2>/dev/null | grep -i logingracetime || echo "VERIFY_FAILED"
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Verify LoginGraceTime is active"
+      task_06_cmd: "sshd -T | grep -i logingracetime"
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: "{{ 'PASS' if (result_06.stdout | default('VERIFY_FAILED') | trim) != 'VERIFY_FAILED' and (config_value in (result_06.stdout | default(''))) else 'FAIL' }}"
+      details_06: "{{ 'LoginGraceTime is ' ~ config_value if (result_06.stdout | default('VERIFY_FAILED') | trim) != 'VERIFY_FAILED' and (config_value in (result_06.stdout | default(''))) else 'Verification failed' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 07 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: >-
+        {{ 'PASS' if status_06 in ['PASS','APPLIED'] else
+           'FAIL' if status_06 == 'FAIL' else
+           'SKIP' if status_06 == 'SKIP' else
+           'ERROR' }}
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Persist remediation outcome for restore phase"
+    copy:
+      content: "{{ cis_result }}"
+      dest: "{{ state_guard_dir }}/remediation_outcome"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 5.1.14"
+      - "Reference: CIS Benchmark checkpoint 5.1.14"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read remediation outcome"
+    slurp:
+      src: "{{ state_guard_dir }}/remediation_outcome"
+    register: _sg_outcome_data
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Read remediation_outcome marker"
+    slurp:
+      src: "{{ state_guard_dir }}/remediation_outcome.marker"
+    register: _sg_restore_remediation_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete remediation_outcome file if created during execute"
+    file:
+      path: "{{ state_guard_dir }}/remediation_outcome"
+      state: absent
+    when:
+    - _sg_restore_remediation_marker.content is defined
+    - (_sg_restore_remediation_marker.content | b64decode | trim) == 'absent'
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if sshd_config backup exists"
+    stat:
+      path: "{{ state_guard_dir }}/sshd_config.present"
+    register: _sg_restore_sshd
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore sshd_config if remediation failed"
+    copy:
+      src: "{{ state_guard_dir }}/sshd_config.present"
+      dest: "{{ sshd_config }}"
+      remote_src: true
+    when:
+    - _sg_restore_sshd.stat.exists | default(false)
+    - _sg_outcome_data is defined
+    - _sg_outcome_data.content is defined
+    - (_sg_outcome_data.content | b64decode | trim) in ['FAIL', 'ERROR']
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if drop-in absent marker exists"
+    stat:
+      path: "{{ state_guard_dir }}/00-cis-logingracetime.conf.absent"
+    register: _sg_restore_dropin_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete drop-in config if remediation failed and it was absent before"
+    file:
+      path: "{{ dropin_conf }}"
+      state: absent
+    when:
+    - _sg_outcome_data is defined
+    - _sg_outcome_data.content is defined
+    - (_sg_outcome_data.content | b64decode | trim) in ['FAIL', 'ERROR']
+    - _sg_restore_dropin_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

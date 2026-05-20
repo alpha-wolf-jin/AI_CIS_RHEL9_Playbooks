@@ -1,0 +1,234 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_17.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snap_rules_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-perm_chng.rules.orig"
+    remote_src: true
+  when: "_snap_rules_stat.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'audit' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check if chacl command exists"
+    ansible.builtin.stat:
+      path: "{{ chacl_path }}"
+    register: _chacl_stat
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Get UID_MIN from login.defs"
+    ansible.builtin.shell: |
+      awk '/^\s*UID_MIN/{print $2}' /etc/login.defs
+    args:
+      executable: /bin/bash
+    register: _uid_min_result
+    failed_when: false
+    changed_when: false
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "_chacl_stat.stat.exists | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Add audit rules for chacl command"
+    ansible.builtin.lineinfile:
+      path: "{{ audit_rules_file }}"
+      regexp: '-a always,exit -F path={{ chacl_path }} -F perm=x'
+      line: "-a always,exit -F path={{ chacl_path }} -F perm=x -F auid>={{ _uid_min_result.stdout | trim }} -F auid!=unset -k {{ audit_key }}"
+      create: true
+      mode: '0640'
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "_chacl_stat.stat.exists | default(false) | bool"
+    - "_uid_min_result.stdout | default('') | trim | length > 0"
+    failed_when: false
+    register: _rules_result
+    tags: [execute]
+
+  - name: "Req 01 - Validate audit rules syntax with augenrules --check"
+    ansible.builtin.shell: augenrules --check
+    args:
+      executable: /bin/bash
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "_chacl_stat.stat.exists | default(false) | bool"
+    - "_uid_min_result.stdout | default('') | trim | length > 0"
+    failed_when: false
+    register: _check_result
+    tags: [execute]
+
+  - name: "Req 01 - Load updated audit rules with augenrules"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "_chacl_stat.stat.exists | default(false) | bool"
+    - "_uid_min_result.stdout | default('') | trim | length > 0"
+    failed_when: false
+    register: _augenrules_result
+    tags: [execute]
+
+  - name: "Req 01 - Restart auditd service to activate rules"
+    ansible.builtin.service:
+      name: auditd
+      state: restarted
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "_chacl_stat.stat.exists | default(false) | bool"
+    - "_uid_min_result.stdout | default('') | trim | length > 0"
+    failed_when: false
+    register: _auditd_restart
+    tags: [execute]
+
+  - name: "Req 01 - Check if reboot is required after loading rules"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -s | grep "enabled"
+    args:
+      executable: /bin/bash
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "_chacl_stat.stat.exists | default(false) | bool"
+    - "_uid_min_result.stdout | default('') | trim | length > 0"
+    failed_when: false
+    register: _reboot_check
+    tags: [execute]
+
+  - name: "Req 02 - Verify chacl audit rules are loaded"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -l | grep -F 'path={{ chacl_path }}' || echo 'VERIFY_FAILED'
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false) | bool"
+    failed_when: false
+    register: _verify_result
+    tags: [execute]
+
+  - name: "Req 02 - Fallback verify chacl rules in config file"
+    ansible.builtin.shell: |
+      set -o pipefail
+      grep -F 'path={{ chacl_path }}' {{ audit_rules_file }} || echo 'VERIFY_FAILED'
+    args:
+      executable: /bin/bash
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "'VERIFY_FAILED' in (_verify_result.stdout | default(''))"
+    failed_when: false
+    register: _fallback_verify_result
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Add audit rules for chacl and load with augenrules"
+      task_01_cmd: "lineinfile + augenrules --check + augenrules --load + auditd restart"
+      task_01_rc: "{{ _augenrules_result.rc | default(-1) }}"
+      data_01: "{{ _rules_result.line | default('Rules processed') | trim }}"
+      status_01: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) or not (_chacl_stat.stat.exists | default(false) | bool) or (_uid_min_result.stdout | default('') | trim | length == 0) else ('PASS' if (_augenrules_result.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_01: "{{ 'auditd not installed' if (playbook_skipped | default(false) | bool) else ('chacl not found' if not (_chacl_stat.stat.exists | default(false) | bool) else ('UID_MIN unset' if (_uid_min_result.stdout | default('') | trim | length == 0) else ('Rules applied and loaded successfully' if (_augenrules_result.rc | default(-1)) == 0 else 'Failed to load rules'))) }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify chacl audit rules with auditctl -l and fallback to config file"
+      task_02_cmd: "auditctl -l | grep -F 'path={{ chacl_path }}' || grep -F 'path={{ chacl_path }}' {{ audit_rules_file }}"
+      task_02_rc: "{{ _verify_result.rc | default(-1) }}"
+      data_02: "{{ _verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) or not (_chacl_stat.stat.exists | default(false) | bool) else ('PASS' if ('VERIFY_FAILED' not in (_verify_result.stdout | default('')) or 'VERIFY_FAILED' not in (_fallback_verify_result.stdout | default('VERIFY_FAILED'))) else 'FAIL') }}"
+      details_02: "{{ 'auditd not installed' if (playbook_skipped | default(false) | bool) else ('chacl command not found, skipping verification' if not (_chacl_stat.stat.exists | default(false) | bool) else ('chacl audit rules found and active' if ('VERIFY_FAILED' not in (_verify_result.stdout | default(''))) else ('chacl audit rules found in config file but not active' if ('VERIFY_FAILED' not in (_fallback_verify_result.stdout | default('VERIFY_FAILED'))) else 'chacl audit rules not found in active configuration or config file'))) }}"
+    tags: [execute]
+
+  - name: "Store overall remediation result as cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.3.3.17"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.17"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not executed') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not executed') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if audit rules backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-perm_chng.rules.orig"
+    register: _restore_backup_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite audit rules with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-perm_chng.rules.orig"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: "_restore_backup_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload audit rules after restore"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: "_restore_backup_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

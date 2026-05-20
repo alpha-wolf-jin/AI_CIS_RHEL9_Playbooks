@@ -1,0 +1,129 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_2_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check if tftp is installed"
+    ansible.builtin.shell: "rpm -q tftp"
+    args:
+      executable: /bin/bash
+    register: req01_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove tftp package if installed"
+    ansible.builtin.dnf:
+      name: tftp
+      state: absent
+    register: req01_result
+    when: req01_check.rc == 0
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Remove tftp package"
+      task_01_cmd: "dnf remove -y tftp"
+      task_01_rc: "{{ req01_result.rc | default(-1) }}"
+      data_01: "{{ req01_result.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIP' if req01_check.rc != 0 else ('PASS' if req01_result.rc | default(1) == 0 else 'FAIL') }}"
+      details_01: "{{ 'tftp not installed, nothing to remove.' if req01_check.rc != 0 else ('Removed tftp successfully.' if req01_result.rc | default(1) == 0 else 'Failed to remove tftp.') }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify tftp is not installed"
+    ansible.builtin.shell: "rpm -q tftp"
+    args:
+      executable: /bin/bash
+    register: req02_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify tftp package not installed"
+      task_02_cmd: "rpm -q tftp"
+      task_02_rc: "{{ req02_result.rc | default(-1) }}"
+      data_02: "{{ req02_result.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if req02_result.rc | default(0) != 0 else 'FAIL' }}"
+      details_02: "{{ 'tftp is not installed' if req02_result.rc | default(0) != 0 else 'tftp is still installed' }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result (cis_result)"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Set cis_result variable"
+      task_03_cmd: "N/A"
+      task_03_rc: 0
+      data_03: "cis_result = {{ status_02 | default('ERROR') | trim }}"
+      status_03: "{{ status_02 | default('ERROR') | trim }}"
+      details_03: "Final result based on verification"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.2.5"
+      - "Reference: CIS Benchmark checkpoint 2.2.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,135 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_2_3_3.yml
+
+- name: "Check prerequisite - systemd-analyze available"
+  ansible.builtin.shell: which systemd-analyze
+  args:
+    executable: /bin/bash
+  register: prereq_check
+  failed_when: false
+  changed_when: false
+
+- name: "Set prerequisite fact"
+  ansible.builtin.set_fact:
+    prereq_met: "{{ prereq_check.rc == 0 }}"
+
+- name: "Handle prerequisite not met"
+  ansible.builtin.set_fact:
+    status_01: "SKIPPED"
+    details_01: "systemd-analyze not available; systemd-journald not present"
+    data_01: "N/A"
+    task_01_name: "Check rsyslog installed"
+    task_01_cmd: "dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null"
+    task_01_rc: -1
+    status_02: "SKIPPED"
+    details_02: "systemd-analyze not available; cannot check journald config"
+    data_02: "N/A"
+    task_02_name: "Check journald forward config"
+    task_02_cmd: "systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E '^ForwardToSyslog=yes'"
+    task_02_rc: -1
+    status_03: "NOT_APPLICABLE"
+    details_03: "Prerequisite systemd-journald not met; audit not applicable"
+    data_03: "N/A"
+  when: not prereq_met
+
+- name: "Req 01 - Check rsyslog installed"
+  ansible.builtin.shell: dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: prereq_met
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Rsyslog package is installed' if result_01.rc == 0 else 'Rsyslog package not found') | trim }}"
+    task_01_name: "Check rsyslog installed"
+    task_01_cmd: "dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+  when: prereq_met
+
+- name: "Req 02 - Check journald forward config"
+  ansible.builtin.shell: systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E '^ForwardToSyslog=yes'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: prereq_met
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if result_02.rc == 0 else 'FAIL') | trim }}"
+    details_02: "{{ ('ForwardToSyslog=yes is configured' if result_02.rc == 0 else 'ForwardToSyslog=yes NOT found') | trim }}"
+    task_02_name: "Check journald forward config"
+    task_02_cmd: "systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E '^ForwardToSyslog=yes'"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+  when: prereq_met
+
+- name: "Req 03 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    status_03: >-
+      {%- if not prereq_met -%}
+        NOT_APPLICABLE
+      {%- elif status_01 == 'PASS' and status_02 == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if not prereq_met -%}
+        Prerequisite systemd-journald not met
+      {%- elif status_01 == 'PASS' and status_02 == 'PASS' -%}
+        Both rsyslog installed and ForwardToSyslog=yes configured - compliant
+      {%- else -%}
+        {%- if status_01 != 'PASS' %}Rsyslog not installed. {% endif -%}
+        {%- if status_02 != 'PASS' %}ForwardToSyslog=yes not set. {% endif -%}
+        Overall non-compliant
+      {%- endif -%}
+    data_03: "Compliance evaluation"
+  when: prereq_met
+
+- name: "Set cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.2.3.3"
+    - "Reference: CIS Benchmark checkpoint 6.2.3.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"

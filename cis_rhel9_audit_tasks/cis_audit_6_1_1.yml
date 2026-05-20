@@ -1,0 +1,114 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_1_1.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+  tags: [audit]
+- name: "Req 01 - Check if AIDE is installed using rpm -q aide"
+  ansible.builtin.shell:
+    cmd: rpm -q aide
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  tags: [audit]
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if AIDE is installed using rpm -q aide"
+    task_01_cmd: "rpm -q aide"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: >-
+      {{ 'PASS' if result_01.rc == 0
+         else ('SKIP' if result_01.rc == 1 and 'package aide is not installed' in (result_01.stdout | default(''))
+         else 'FAIL') }}
+    details_01: >-
+      {{ 'AIDE is installed: ' + (result_01.stdout | default('') | trim) if result_01.rc == 0
+         else ('AIDE is not installed, compliance check skipped.' if result_01.rc == 1 and 'package aide is not installed' in (result_01.stdout | default(''))
+         else 'AIDE check failed due to unexpected error') }}
+  tags: [audit]
+- name: "Req 02 - Summarize overall compliance status"
+  ansible.builtin.set_fact:
+    task_02_name: "Summarize overall compliance status"
+    task_02_cmd: "N/A"
+    task_02_rc: "N/A"
+    data_02: "N/A"
+    status_02: >-
+      {{ 'PASS' if result_01.rc == 0
+         else ('SKIP' if (result_01.rc | default(-1)) == 1 and ('package aide is not installed' in (result_01.stdout | default('')))
+         else 'FAIL') }}
+    details_02: >-
+      {{ 'AIDE is installed, compliance met.' if result_01.rc == 0
+         else ('AIDE is not installed, compliance check skipped.' if (result_01.rc | default(-1)) == 1 and ('package aide is not installed' in (result_01.stdout | default('')))
+         else 'Error checking AIDE installation.') }}
+  tags: [audit]
+- name: "Req 03 - Store audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | trim }}"
+  tags: [audit]
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Store audit result in cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: "N/A"
+    data_03: "{{ cis_result }}"
+    status_03: "PASS"
+    details_03: "{{ 'cis_result set to ' + cis_result }}"
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.1.1"
+    - "Reference: CIS Benchmark checkpoint 6.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default('N/A') }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default('N/A') }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: N/A"
+    - "  Status: PASS"
+    - "  Details: Audit report generated"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') }}"
+    - "  Details: {{ 'AIDE is installed and meets the requirement.' if (cis_result | default('UNKNOWN')) == 'PASS' else ('AIDE is not installed, check skipped.' if (cis_result | default('UNKNOWN')) == 'SKIP' else 'AIDE is not installed or check failed.') }}"
+    - "========================================================"
+  tags: [audit, report]

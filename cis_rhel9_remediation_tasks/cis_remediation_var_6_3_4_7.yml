@@ -1,0 +1,8 @@
+playbook_name: "cis_6_3_4_7"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for find and chgrp commands using command: `which find && which chgrp`. Expected result: both commands are available."
+req_02: |
+  Apply group owner change to root for audit configuration files using command: `find /etc/audit/ -type f \( -name '*.conf' -o -name '*.rules' \) ! -group root -exec chgrp root {} +`. Expected result: all audit .conf and .rules files have group owner set to root.
+req_03: |
+  Verify audit configuration files group owner is root using command: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) -exec stat -c '%G' {} + | sort -u`. Expected result: output is 'root'.
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

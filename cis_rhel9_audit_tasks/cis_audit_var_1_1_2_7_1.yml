@@ -1,0 +1,5 @@
+req_01: "Check if auditd is installed using command: `rpm -q audit`. Expected result: package version is returned."
+req_02: "Check if /var/log/audit is a separate partition using command: `findmnt -kn /var/log/audit`. Expected result: output shows a mount point (e.g., /dev/sdb ext4 rw,nosuid,nodev,noexec,relatime,seclabel)."
+req_03: "Summarize overall compliance status: if both checks pass, the requirement is compliant; otherwise, non-compliant."
+package_name: "audit"
+mount_point: "/var/log/audit"

@@ -1,0 +1,8 @@
+playbook_name: "cis_1_7_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: |
+  Apply the site policy warning banner to /etc/issue.net using command: `echo \"Authorized users only. All activity may be monitored and reported.\" > /etc/issue.net`. Expected result: The file /etc/issue.net contains only the specified banner text.
+req_02: |
+  Remove any instances of \\m, \\r, \\s, \\v or references to the OS platform from /etc/issue.net using command: `sed -i 's/\\\\m//g; s/\\\\r//g; s/\\\\s//g; s/\\\\v//g' /etc/issue.net`. Expected result: No OS platform escape sequences remain in the file.
+req_03: "Verify the contents of /etc/issue.net using command: `cat /etc/issue.net`. Expected result: The output shows only the configured warning banner with no OS information."
+expected_banner: "Authorized users only. All activity may be monitored and reported."

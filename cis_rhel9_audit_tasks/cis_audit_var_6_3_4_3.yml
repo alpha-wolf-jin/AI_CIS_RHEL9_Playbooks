@@ -1,0 +1,32 @@
+req_01: "Run the provided audit script to verify Ensure audit log files owner is configured"
+req_02: "VERIFY: Summarise compliance status for Ensure audit log files owner is configured. Expected result: PASS if compliant, FAIL otherwise"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     l_output="" l_output2=""
+     if [ -e "/etc/audit/auditd.conf" ]; then
+        l_audit_log_directory="$(dirname "$(awk -F= '/^\s*log_file\s*/{print $2}' /etc/audit/auditd.conf | xargs)")"
+        if [ -d "$l_audit_log_directory" ]; then
+           while IFS= read -r -d $'\0' l_file; do
+              l_owner="$(stat -Lc '%U' "$l_file")"
+              if [ "$l_owner" != "root" ]; then
+                 l_output2="$l_output2\n  - File: \"$l_file\" is owned by \"$l_owner\" (should be \"root\")\n"
+              fi
+           done < <(find "$l_audit_log_directory" -maxdepth 1 -type f -print0)
+        else
+           l_output2="$l_output2\n  - Log file directory not set in \"/etc/audit/auditd.conf\" please set log file directory"
+        fi
+     else
+        l_output2="$l_output2\n  - File: \"/etc/audit/auditd.conf\" not found.\n  - ** Verify auditd is installed **"
+     fi
+     if [ -z "$l_output2" ]; then
+        l_output="$l_output\n  - All files in \"$l_audit_log_directory\" are owned by \"root\""
+        echo -e "\n- Audit Result:\n  ** PASS **\n - * Correctly configured * :$l_output"
+     else
+        echo -e "\n- Audit Result:\n  ** FAIL **\n - * Reasons for audit failure * :$l_output2\n"
+     fi
+  }
+  {% endraw %}

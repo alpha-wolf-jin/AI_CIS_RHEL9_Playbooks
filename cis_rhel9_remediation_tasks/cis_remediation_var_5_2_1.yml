@@ -1,0 +1,4 @@
+playbook_name: "cis_5_2_1_ensure_sudo_installed"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply install sudo using command: `dnf install sudo`. Expected result: sudo is installed and available on the system."
+req_02: "Verify sudo is installed using command: `rpm -q sudo`. Expected result: The package name and version of sudo are displayed."

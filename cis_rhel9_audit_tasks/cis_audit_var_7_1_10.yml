@@ -1,0 +1,4 @@
+req_01: "Run the audit procedure for Ensure permissions on /etc/security/opasswd are configured: Run the following commands to verify /etc/security/opasswd and /etc/security/opasswd.old are mode 600 or more restrictive, Uid is 0/root and Gid is 0/root if they exist"
+req_02: "VERIFY: Summarise compliance status for Ensure permissions on /etc/security/opasswd are configured. Expected result: PASS if compliant, FAIL otherwise"
+opasswd_file: "/etc/security/opasswd"
+opasswd_old_file: "/etc/security/opasswd.old"

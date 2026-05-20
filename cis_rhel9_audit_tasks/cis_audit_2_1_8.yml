@@ -1,0 +1,267 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_8.yml
+
+- name: "Req 01 - Check if dovecot is installed"
+  shell: "rpm -q dovecot"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check if dovecot is installed"
+    task_01_cmd: "rpm -q dovecot"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    dovecot_installed: "{{ result_01.rc == 0 }}"
+    status_01: "{{ 'PASS' if result_01.rc != 0 else 'FAIL' }}"
+    details_01: "{{ 'PASS: Package dovecot is not installed' if result_01.rc != 0 else 'FAIL: Package dovecot is installed' }}"
+
+# Requirement 2
+- name: "Req 02 - Check if cyrus-imapd is installed"
+  shell: "rpm -q cyrus-imapd"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check if cyrus-imapd is installed"
+    task_02_cmd: "rpm -q cyrus-imapd"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    cyrus_installed: "{{ result_02.rc == 0 }}"
+    status_02: "{{ 'PASS' if result_02.rc != 0 else 'FAIL' }}"
+    details_02: "{{ 'PASS: Package cyrus-imapd is not installed' if result_02.rc != 0 else 'FAIL: Package cyrus-imapd is installed' }}"
+
+# Requirement 3
+- name: "Req 03 - Check if dovecot.socket is enabled"
+  shell: "systemctl is-enabled dovecot.socket 2>/dev/null | grep 'enabled'"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: dovecot_installed | default(false) | bool
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Req 03 - Check if dovecot.socket is enabled"
+    task_03_cmd: "systemctl is-enabled dovecot.socket 2>/dev/null | grep 'enabled'"
+    task_03_rc: "{{ -1 if not (dovecot_installed | default(false) | bool) else (result_03.rc | default(-1)) }}"
+    data_03: "{{ 'N/A' if not (dovecot_installed | default(false) | bool) else (result_03.stdout | default('') | trim) }}"
+    status_03: "{{ 'NOT_APPLICABLE' if not (dovecot_installed | default(false) | bool) else ('PASS' if (result_03.rc | default(-1) != 0) else 'FAIL') }}"
+    details_03: "{{ 'NOT_APPLICABLE: dovecot is not installed' if not (dovecot_installed | default(false) | bool) else ('PASS: dovecot.socket is not enabled' if (result_03.rc | default(-1) != 0) else 'FAIL: dovecot.socket is enabled') }}"
+
+# Requirement 4
+- name: "Req 04 - Check if dovecot.service is enabled"
+  shell: "systemctl is-enabled dovecot.service 2>/dev/null | grep 'enabled'"
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: dovecot_installed | default(false) | bool
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Req 04 - Check if dovecot.service is enabled"
+    task_04_cmd: "systemctl is-enabled dovecot.service 2>/dev/null | grep 'enabled'"
+    task_04_rc: "{{ -1 if not (dovecot_installed | default(false) | bool) else (result_04.rc | default(-1)) }}"
+    data_04: "{{ 'N/A' if not (dovecot_installed | default(false) | bool) else (result_04.stdout | default('') | trim) }}"
+    status_04: "{{ 'NOT_APPLICABLE' if not (dovecot_installed | default(false) | bool) else ('PASS' if (result_04.rc | default(-1) != 0) else 'FAIL') }}"
+    details_04: "{{ 'NOT_APPLICABLE: dovecot is not installed' if not (dovecot_installed | default(false) | bool) else ('PASS: dovecot.service is not enabled' if (result_04.rc | default(-1) != 0) else 'FAIL: dovecot.service is enabled') }}"
+
+# Requirement 5
+- name: "Req 05 - Check if cyrus-imapd.service is enabled"
+  shell: "systemctl is-enabled cyrus-imapd.service 2>/dev/null | grep 'enabled'"
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: cyrus_installed | default(false) | bool
+
+- name: "Store requirement 05 details"
+  set_fact:
+    task_05_name: "Req 05 - Check if cyrus-imapd.service is enabled"
+    task_05_cmd: "systemctl is-enabled cyrus-imapd.service 2>/dev/null | grep 'enabled'"
+    task_05_rc: "{{ -1 if not (cyrus_installed | default(false) | bool) else (result_05.rc | default(-1)) }}"
+    data_05: "{{ 'N/A' if not (cyrus_installed | default(false) | bool) else (result_05.stdout | default('') | trim) }}"
+    status_05: "{{ 'NOT_APPLICABLE' if not (cyrus_installed | default(false) | bool) else ('PASS' if (result_05.rc | default(-1) != 0) else 'FAIL') }}"
+    details_05: "{{ 'NOT_APPLICABLE: cyrus-imapd is not installed' if not (cyrus_installed | default(false) | bool) else ('PASS: cyrus-imapd.service is not enabled' if (result_05.rc | default(-1) != 0) else 'FAIL: cyrus-imapd.service is enabled') }}"
+
+# Requirement 6
+- name: "Req 06 - Check if dovecot.socket is active"
+  shell: "systemctl is-active dovecot.socket 2>/dev/null | grep '^active'"
+  args:
+    executable: /bin/bash
+  register: result_06
+  failed_when: false
+  changed_when: false
+  when: dovecot_installed | default(false) | bool
+
+- name: "Store requirement 06 details"
+  set_fact:
+    task_06_name: "Req 06 - Check if dovecot.socket is active"
+    task_06_cmd: "systemctl is-active dovecot.socket 2>/dev/null | grep '^active'"
+    task_06_rc: "{{ -1 if not (dovecot_installed | default(false) | bool) else (result_06.rc | default(-1)) }}"
+    data_06: "{{ 'N/A' if not (dovecot_installed | default(false) | bool) else (result_06.stdout | default('') | trim) }}"
+    status_06: "{{ 'NOT_APPLICABLE' if not (dovecot_installed | default(false) | bool) else ('PASS' if (result_06.rc | default(-1) != 0) else 'FAIL') }}"
+    details_06: "{{ 'NOT_APPLICABLE: dovecot is not installed' if not (dovecot_installed | default(false) | bool) else ('PASS: dovecot.socket is not active' if (result_06.rc | default(-1) != 0) else 'FAIL: dovecot.socket is active') }}"
+
+# Requirement 7
+- name: "Req 07 - Check if dovecot.service is active"
+  shell: "systemctl is-active dovecot.service 2>/dev/null | grep '^active'"
+  args:
+    executable: /bin/bash
+  register: result_07
+  failed_when: false
+  changed_when: false
+  when: dovecot_installed | default(false) | bool
+
+- name: "Store requirement 07 details"
+  set_fact:
+    task_07_name: "Req 07 - Check if dovecot.service is active"
+    task_07_cmd: "systemctl is-active dovecot.service 2>/dev/null | grep '^active'"
+    task_07_rc: "{{ -1 if not (dovecot_installed | default(false) | bool) else (result_07.rc | default(-1)) }}"
+    data_07: "{{ 'N/A' if not (dovecot_installed | default(false) | bool) else (result_07.stdout | default('') | trim) }}"
+    status_07: "{{ 'NOT_APPLICABLE' if not (dovecot_installed | default(false) | bool) else ('PASS' if (result_07.rc | default(-1) != 0) else 'FAIL') }}"
+    details_07: "{{ 'NOT_APPLICABLE: dovecot is not installed' if not (dovecot_installed | default(false) | bool) else ('PASS: dovecot.service is not active' if (result_07.rc | default(-1) != 0) else 'FAIL: dovecot.service is active') }}"
+
+# Requirement 8
+- name: "Req 08 - Check if cyrus-imapd.service is active"
+  shell: "systemctl is-active cyrus-imapd.service 2>/dev/null | grep '^active'"
+  args:
+    executable: /bin/bash
+  register: result_08
+  failed_when: false
+  changed_when: false
+  when: cyrus_installed | default(false) | bool
+
+- name: "Store requirement 08 details"
+  set_fact:
+    task_08_name: "Req 08 - Check if cyrus-imapd.service is active"
+    task_08_cmd: "systemctl is-active cyrus-imapd.service 2>/dev/null | grep '^active'"
+    task_08_rc: "{{ -1 if not (cyrus_installed | default(false) | bool) else (result_08.rc | default(-1)) }}"
+    data_08: "{{ 'N/A' if not (cyrus_installed | default(false) | bool) else (result_08.stdout | default('') | trim) }}"
+    status_08: "{{ 'NOT_APPLICABLE' if not (cyrus_installed | default(false) | bool) else ('PASS' if (result_08.rc | default(-1) != 0) else 'FAIL') }}"
+    details_08: "{{ 'NOT_APPLICABLE: cyrus-imapd is not installed' if not (cyrus_installed | default(false) | bool) else ('PASS: cyrus-imapd.service is not active' if (result_08.rc | default(-1) != 0) else 'FAIL: cyrus-imapd.service is active') }}"
+
+# Requirement 9 - Summarize overall compliance
+- name: "Req 09 - Summarize overall compliance"
+  set_fact:
+    status_09: "{{ 'PASS' if ('FAIL' not in [status_01, status_02, status_03, status_04, status_05, status_06, status_07, status_08]) else 'FAIL' }}"
+    details_09: "{{ 'Overall compliance: PASS. No message access server services are in use.' if ('FAIL' not in [status_01, status_02, status_03, status_04, status_05, status_06, status_07, status_08]) else 'Overall compliance: FAIL. Some checks failed.' }}"
+    task_09_name: "Req 09 - Summarize overall compliance"
+    task_09_cmd: "N/A"
+    task_09_rc: -1
+    data_09: "N/A"
+
+# Requirement 10 - Store final result
+- name: "Req 10 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_09 }}"
+    task_10_name: "Req 10 - Store final audit result in cis_result"
+    task_10_cmd: "N/A"
+    task_10_rc: -1
+    data_10: "N/A"
+    status_10: "{{ status_09 }}"
+    details_10: "{{ details_09 }}"
+
+# Generate audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.8"
+    - "Reference: CIS Benchmark checkpoint 2.1.8"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('ERROR') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: {{ task_09_name | default('Not recorded') }}"
+    - "  Command: {{ task_09_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_09_rc | default(-1) }}"
+    - "  Data: {{ data_09 | default('') | trim }}"
+    - "  Status: {{ status_09 | default('ERROR') | trim }}"
+    - "  Details: {{ details_09 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 10 - {{ req_10 }}:"
+    - "  Task: {{ task_10_name | default('Not recorded') }}"
+    - "  Command: {{ task_10_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_10_rc | default(-1) }}"
+    - "  Data: {{ data_10 | default('') | trim }}"
+    - "  Status: {{ status_10 | default('ERROR') | trim }}"
+    - "  Details: {{ details_10 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

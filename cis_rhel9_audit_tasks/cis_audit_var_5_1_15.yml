@@ -1,0 +1,6 @@
+req_01: "Check if OpenSSH server is installed using command: `dpkg -l | grep openssh-server || rpm -q openssh-server`. Expected result: package is installed."
+req_02: "Check if sshd is running using command: `systemctl is-active sshd || service sshd status`. Expected result: active or running."
+req_03: "Check the current LogLevel setting in sshd configuration using command: `sshd -T | grep -i loglevel`. Expected result: loglevel VERBOSE or loglevel INFO."
+req_04: "If Match blocks are used, check LogLevel for a specific user (e.g., sshuser) using command: `sshd -T -C user=sshuser | grep -i loglevel`. Expected result: loglevel VERBOSE or loglevel INFO."
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if OpenSSH server is not installed or not running, FAIL if LogLevel is not set to VERBOSE or INFO."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

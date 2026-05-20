@@ -1,0 +1,5 @@
+req_01: "Check if /etc/shells file exists using command: `test -f /etc/shells`. Expected result: file exists."
+req_02: |
+  Check that nologin is not listed in /etc/shells using command: `grep -Ps '^\\h*([^#\\n\\r]+)?\\/nologin\\b' /etc/shells`. Expected result: no output returned.
+req_03: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/shells does not exist, FAIL if nologin is found in /etc/shells."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

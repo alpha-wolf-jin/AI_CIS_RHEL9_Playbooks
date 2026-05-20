@@ -1,0 +1,409 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if IPv4 sysctl config exists"
+  ansible.builtin.stat:
+    path: "{{ sysctl_file_v4 }}"
+  register: _snap_v4_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup IPv4 sysctl config if present"
+  ansible.builtin.copy:
+    src: "{{ sysctl_file_v4 }}"
+    dest: "{{ backup_dir }}/v4.present"
+    remote_src: true
+  when: _snap_v4_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark IPv4 sysctl config as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/v4.absent"
+  when: not _snap_v4_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if IPv6 sysctl config exists"
+  ansible.builtin.stat:
+    path: "{{ sysctl_file_v6 }}"
+  register: _snap_v6_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup IPv6 sysctl config if present"
+  ansible.builtin.copy:
+    src: "{{ sysctl_file_v6 }}"
+    dest: "{{ backup_dir }}/v6.present"
+    remote_src: true
+  when: _snap_v6_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark IPv6 sysctl config as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/v6.absent"
+  when: not _snap_v6_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Capture net.ipv4.conf.all.accept_redirects"
+  ansible.builtin.shell: sysctl -n net.ipv4.conf.all.accept_redirects
+  register: _snap_ipv4_all
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save IPv4 all value"
+  ansible.builtin.copy:
+    content: "{{ _snap_ipv4_all.stdout | default('') }}"
+    dest: "{{ backup_dir }}/ipv4_all.txt"
+  tags: [snapshot]
+- name: "Snapshot - Capture net.ipv4.conf.default.accept_redirects"
+  ansible.builtin.shell: sysctl -n net.ipv4.conf.default.accept_redirects
+  register: _snap_ipv4_default
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save IPv4 default value"
+  ansible.builtin.copy:
+    content: "{{ _snap_ipv4_default.stdout | default('') }}"
+    dest: "{{ backup_dir }}/ipv4_default.txt"
+  tags: [snapshot]
+- name: "Snapshot - Capture net.ipv6.conf.all.accept_redirects"
+  ansible.builtin.shell: sysctl -n net.ipv6.conf.all.accept_redirects
+  register: _snap_ipv6_all
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save IPv6 all value"
+  ansible.builtin.copy:
+    content: "{{ _snap_ipv6_all.stdout | default('') }}"
+    dest: "{{ backup_dir }}/ipv6_all.txt"
+  tags: [snapshot]
+- name: "Snapshot - Capture net.ipv6.conf.default.accept_redirects"
+  ansible.builtin.shell: sysctl -n net.ipv6.conf.default.accept_redirects
+  register: _snap_ipv6_default
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save IPv6 default value"
+  ansible.builtin.copy:
+    content: "{{ _snap_ipv6_default.stdout | default('') }}"
+    dest: "{{ backup_dir }}/ipv6_default.txt"
+  tags: [snapshot]
+- name: "Snapshot - Check if /tmp/cis_335_remediate.sh exists"
+  ansible.builtin.stat:
+    path: /tmp/cis_335_remediate.sh
+  register: _snap_remediate_exists
+  tags: [snapshot]
+- name: "Snapshot - Mark /tmp/cis_335_remediate.sh as absent (if not present)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/cis_335_remediate.sh.absent"
+  when: not _snap_remediate_exists.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /tmp/cis_335_verify.sh exists"
+  ansible.builtin.stat:
+    path: /tmp/cis_335_verify.sh
+  register: _snap_verify_exists
+  tags: [snapshot]
+- name: "Snapshot - Mark /tmp/cis_335_verify.sh as absent (if not present)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/cis_335_verify.sh.absent"
+  when: not _snap_verify_exists.stat.exists
+  tags: [snapshot]
+
+- block:
+# === EXECUTE (tag: execute) ===
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      dest: /tmp/cis_335_remediate.sh
+      mode: '0700'
+      content: "{{ remediation_script }}"
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_335_remediate.sh
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove remediation script"
+    ansible.builtin.file:
+      path: /tmp/cis_335_remediate.sh
+      state: absent
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Store requirement 01 details"
+    set_fact:
+      task_01_name: "Run remediation script for icmp redirects"
+      task_01_cmd: "/bin/bash /tmp/cis_335_remediate.sh"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'Remediation script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Remediation script failed' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Deploy verification script"
+    ansible.builtin.copy:
+      dest: /tmp/cis_335_verify.sh
+      mode: '0700'
+      content: "{{ verification_script }}"
+    tags: [execute]
+
+  - name: "Req 02 - Execute verification script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_335_verify.sh
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Remove verification script"
+    ansible.builtin.file:
+      path: /tmp/cis_335_verify.sh
+      state: absent
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify icmp redirect settings"
+      task_02_cmd: "/bin/bash /tmp/cis_335_verify.sh"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (result_02.stdout | default('') | trim) == 'PASS' else 'FAIL') | trim }}"
+      details_02: "{{ 'Verification passed' if (result_02.stdout | default('') | trim) == 'PASS' else 'Verification failed' }}"
+    tags: [execute]
+
+  - name: "Req 03 - Set cis_result fact"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store requirement 03 details"
+    set_fact:
+      task_03_name: "Set cis_result fact"
+      task_03_cmd: "set_fact"
+      task_03_rc: "0"
+      data_03: "{{ cis_result }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ cis_result }}"
+    tags: [execute]
+
+  - name: "Req 04 - Store requirement 04 details"
+    set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug"
+      task_04_rc: "0"
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Report displayed"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 3.3.5"
+      - "Reference: CIS Benchmark checkpoint 3.3.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name }}"
+      - "  Command: {{ task_03_cmd }}"
+      - "  Exit code: {{ task_03_rc }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 }}"
+      - "  Details: {{ details_03 }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name }}"
+      - "  Command: {{ task_04_cmd }}"
+      - "  Exit code: {{ task_04_rc }}"
+      - "  Data: {{ data_04 }}"
+      - "  Status: {{ status_04 }}"
+      - "  Details: {{ details_04 }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === RESTORE (tag: restore) ===
+  - name: "Restore - Check if IPv4 config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/v4.present"
+    register: _rest_v4_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore IPv4 config from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/v4.present"
+      dest: "{{ sysctl_file_v4 }}"
+      remote_src: true
+    when: _rest_v4_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if IPv4 config absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/v4.absent"
+    register: _rest_v4_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete IPv4 config if it was absent"
+    ansible.builtin.file:
+      path: "{{ sysctl_file_v4 }}"
+      state: absent
+    when: _rest_v4_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if IPv6 config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/v6.present"
+    register: _rest_v6_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore IPv6 config from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/v6.present"
+      dest: "{{ sysctl_file_v6 }}"
+      remote_src: true
+    when: _rest_v6_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if IPv6 config absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/v6.absent"
+    register: _rest_v6_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete IPv6 config if it was absent"
+    ansible.builtin.file:
+      path: "{{ sysctl_file_v6 }}"
+      state: absent
+    when: _rest_v6_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original IPv4 all value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/ipv4_all.txt"
+    register: _rest_ipv4_all_data
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply original IPv4 all value"
+    ansible.builtin.shell: sysctl -w net.ipv4.conf.all.accept_redirects={{ _rest_ipv4_all_data.content | b64decode | trim }}
+    args:
+      executable: /bin/bash
+    when: _rest_ipv4_all_data is not failed and _rest_ipv4_all_data.content is defined and (_rest_ipv4_all_data.content | b64decode | trim) != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original IPv4 default value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/ipv4_default.txt"
+    register: _rest_ipv4_default_data
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply original IPv4 default value"
+    ansible.builtin.shell: sysctl -w net.ipv4.conf.default.accept_redirects={{ _rest_ipv4_default_data.content | b64decode | trim }}
+    args:
+      executable: /bin/bash
+    when: _rest_ipv4_default_data is not failed and _rest_ipv4_default_data.content is defined and (_rest_ipv4_default_data.content | b64decode | trim) != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original IPv6 all value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/ipv6_all.txt"
+    register: _rest_ipv6_all_data
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply original IPv6 all value"
+    ansible.builtin.shell: sysctl -w net.ipv6.conf.all.accept_redirects={{ _rest_ipv6_all_data.content | b64decode | trim }}
+    args:
+      executable: /bin/bash
+    when: _rest_ipv6_all_data is not failed and _rest_ipv6_all_data.content is defined and (_rest_ipv6_all_data.content | b64decode | trim) != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original IPv6 default value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/ipv6_default.txt"
+    register: _rest_ipv6_default_data
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply original IPv6 default value"
+    ansible.builtin.shell: sysctl -w net.ipv6.conf.default.accept_redirects={{ _rest_ipv6_default_data.content | b64decode | trim }}
+    args:
+      executable: /bin/bash
+    when: _rest_ipv6_default_data is not failed and _rest_ipv6_default_data.content is defined and (_rest_ipv6_default_data.content | b64decode | trim) != ''
+    failed_when: false
+    tags: [restore]
+
+# --- Restore temporary script files (clean up if they were absent originally) ---
+  - name: "Restore - Check if /tmp/cis_335_remediate.sh absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cis_335_remediate.sh.absent"
+    register: _rest_remediate_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove /tmp/cis_335_remediate.sh (if originally absent)"
+    ansible.builtin.file:
+      path: /tmp/cis_335_remediate.sh
+      state: absent
+    when: _rest_remediate_marker.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if /tmp/cis_335_verify.sh absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cis_335_verify.sh.absent"
+    register: _rest_verify_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove /tmp/cis_335_verify.sh (if originally absent)"
+    ansible.builtin.file:
+      path: /tmp/cis_335_verify.sh
+      state: absent
+    when: _rest_verify_marker.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,7 @@
+req_01: "Check if pwquality is installed using command: `dpkg -l libpwquality-common 2>/dev/null || rpm -q libpwquality 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check that dictcheck is not set to 0 in pwquality configuration files using command: `grep -Psi -- '^\\h*dictcheck\\h*=\\h*0\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf`. Expected result: no output (nothing returned).
+req_03: |
+  Check that dictcheck is not set to 0 as a module argument in PAM files using command: `grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?dictcheck\\h*=\\h*0\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: no output (nothing returned).
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if pwquality is not installed, FAIL if any check returns output."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

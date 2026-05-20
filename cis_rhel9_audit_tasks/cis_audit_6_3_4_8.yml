@@ -1,0 +1,107 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_4_8.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [audit]
+- name: "Set auditd package installation status"
+  ansible.builtin.set_fact:
+    auditd_installed: "{{ 'audit' in ansible_facts.packages or 'auditd' in ansible_facts.packages }}"
+  tags: [audit]
+- name: "Block: Deploy, execute script, and ensure cleanup"
+  when: auditd_installed | bool
+  block:
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      content: "{{ audit_script_content }}"
+      mode: '0700'
+    changed_when: false
+    failed_when: false
+    tags: [audit]
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+    tags: [audit]
+
+  always:
+  - name: "Req 01 - Remove temporary script (guaranteed cleanup)"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    failed_when: false
+    tags: [audit]
+
+- name: "Set requirement 01 details (when audit package installed)"
+  ansible.builtin.set_fact:
+    task_01_name: "Execute audit script for audit tools mode check"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if audit_result.rc | default(-1) | int == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Script executed successfully' if audit_result.rc | default(-1) | int == 0 else 'Script execution failed') | trim }}"
+  when: auditd_installed | bool and audit_result is defined
+  failed_when: false
+  tags: [audit]
+- name: "Set requirement 01 details (when audit package not installed)"
+  ansible.builtin.set_fact:
+    task_01_name: "Execute audit script (skipped)"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Package auditd not installed"
+    status_01: "SKIPPED"
+    details_01: "Prerequisite auditd not installed; script not executed"
+  when: not (auditd_installed | bool)
+  failed_when: false
+  tags: [audit]
+- name: "Set requirement 02 details (evaluate compliance)"
+  ansible.builtin.set_fact:
+    task_02_name: "Evaluate compliance from audit script output"
+    task_02_cmd: "Analyze script output"
+    task_02_rc: 0
+    data_02: "{{ audit_result.stdout | default('Not applicable') | trim }}"
+    status_02: "{{ 'NOT_APPLICABLE' if not (auditd_installed | bool) else 'PASS' if (audit_result is defined and '** PASS **' in audit_result.stdout) else 'FAIL' if (audit_result is defined and '** FAIL **' in audit_result.stdout) else 'UNKNOWN' | trim }}"
+    details_02: "{{ 'Prerequisite auditd not installed' if not (auditd_installed | bool) else 'All audit tools have correct mode' if (audit_result is defined and '** PASS **' in audit_result.stdout) else 'Some audit tools have incorrect mode' if (audit_result is defined and '** FAIL **' in audit_result.stdout) else 'Unable to determine compliance from script output' | trim }}"
+  failed_when: false
+  tags: [audit]
+- name: "Store overall compliance result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | trim }}"
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.4.8"
+    - "Reference: CIS Benchmark checkpoint 6.3.4.8"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"
+  tags: [audit]

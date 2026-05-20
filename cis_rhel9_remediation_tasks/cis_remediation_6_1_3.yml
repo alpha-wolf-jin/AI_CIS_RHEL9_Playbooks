@@ -1,0 +1,205 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/aide.conf exists"
+  ansible.builtin.stat:
+    path: /etc/aide.conf
+  register: _aide_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Check if backup of /etc/aide.conf already exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/aide.conf.present"
+  register: _aide_backup_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/aide.conf if exists and backup not already created"
+  ansible.builtin.copy:
+    src: /etc/aide.conf
+    dest: "{{ backup_dir }}/aide.conf.present"
+    remote_src: true
+  when:
+  - _aide_conf_stat.stat.exists
+  - not _aide_backup_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if AIDE is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Install AIDE if not present"
+    ansible.builtin.package:
+      name: aide
+      state: present
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Determine absolute path to audit tools directory"
+    ansible.builtin.shell: readlink -f /sbin
+    args:
+      executable: /bin/bash
+    register: result_02
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Ensure audit tools integrity block in /etc/aide.conf"
+    ansible.builtin.blockinfile:
+      path: /etc/aide.conf
+      block: |
+        # Audit Tools
+        {{ result_02.stdout }}/auditctl p+i+n+u+g+s+b+acl+xattrs+sha512
+        {{ result_02.stdout }}/auditd p+i+n+u+g+s+b+acl+xattrs+sha512
+        {{ result_02.stdout }}/ausearch p+i+n+u+g+s+b+acl+xattrs+sha512
+        {{ result_02.stdout }}/aureport p+i+n+u+g+s+b+acl+xattrs+sha512
+        {{ result_02.stdout }}/autrace p+i+n+u+g+s+b+acl+xattrs+sha512
+        {{ result_02.stdout }}/augenrules p+i+n+u+g+s+b+acl+xattrs+sha512
+      insertafter: EOF
+      marker: "# {mark} ANSIBLE MANAGED BLOCK - CIS 6.1.3 audit tools"
+    register: result_03
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 04 - Verify audit tools entries in /etc/aide.conf"
+    ansible.builtin.shell: |
+      grep -E '^/usr/sbin/(auditctl|auditd|ausearch|aureport|autrace|augenrules) p\+i\+n\+u\+g\+s\+b\+acl\+xattrs\+sha512' /etc/aide.conf || grep -E '^/sbin/(auditctl|auditd|ausearch|aureport|autrace|augenrules) p\+i\+n\+u\+g\+s\+b\+acl\+xattrs\+sha512' /etc/aide.conf
+    args:
+      executable: /bin/bash
+    register: result_04
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement details"
+    set_fact:
+      task_01_name: "Install AIDE package"
+      task_01_cmd: "apt-get install aide -y"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+      details_01: "{{ 'AIDE installed successfully' if result_01.rc | default(-1) == 0 else 'Failed to install AIDE' }}"
+
+      task_02_name: "Determine audit tools path"
+      task_02_cmd: "readlink -f /sbin"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if result_02.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: "{{ 'Path determined: ' + result_02.stdout | default('') | trim if result_02.rc | default(-1) == 0 else 'Failed to determine path' }}"
+
+      task_03_name: "Ensure audit tools integrity block in /etc/aide.conf"
+      task_03_cmd: "ansible.builtin.blockinfile with marker 'ANSIBLE MANAGED BLOCK - CIS 6.1.3 audit tools'"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "Block {{ 'added' if result_03.changed else 'already present' }}"
+      status_03: "{{ 'PASS' if result_03 is not failed else 'FAIL' }}"
+      details_03: "Audit tools integrity block ensured in /etc/aide.conf"
+
+      task_04_name: "Verify audit tools entries"
+      task_04_cmd: "grep -E ... /etc/aide.conf"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if result_04.rc | default(-1) == 0 else 'FAIL' }}"
+      details_04: "{{ 'All six audit tool lines verified' if result_04.rc | default(-1) == 0 else 'Verification failed - some lines missing' }}"
+    tags: [execute]
+
+  - name: "Req 05 - Store final remediation result"
+    set_fact:
+      cis_result: >-
+        {%- if status_04 == 'PASS' -%}PASS
+        {%- elif status_04 == 'FAIL' -%}FAIL
+        {%- else -%}ERROR
+        {%- endif -%}
+      task_05_name: "Store overall remediation result"
+      task_05_cmd: "set_fact based on verification status"
+      task_05_rc: 0
+      data_05: >-
+        {%- if status_04 == 'PASS' -%}PASS
+        {%- elif status_04 == 'FAIL' -%}FAIL
+        {%- else -%}ERROR
+        {%- endif -%}
+      status_05: "PASS"
+      details_05: "Overall remediation result stored as cis_result"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 6.1.3"
+      - "Reference: CIS Benchmark checkpoint 6.1.3"
+      - ""
+      - "Requirement 1 - {{ req_01 }}"
+      - "  Task: {{ task_01_name | default('Not executed') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 2 - {{ req_02 }}"
+      - "  Task: {{ task_02_name | default('Not executed') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 3 - {{ req_03 }}"
+      - "  Task: {{ task_03_name | default('Not executed') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 4 - {{ req_04 }}"
+      - "  Task: {{ task_04_name | default('Not executed') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 5 - {{ req_05 }}"
+      - "  Task: {{ task_05_name | default('Not executed') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/aide.conf.present"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite /etc/aide.conf with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/aide.conf.present"
+      dest: /etc/aide.conf
+      remote_src: true
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

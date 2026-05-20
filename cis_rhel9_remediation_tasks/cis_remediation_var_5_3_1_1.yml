@@ -1,0 +1,9 @@
+playbook_name: "cis_5_3_1_1_pam_version"
+checkpoint_id: "cis_5_3_1_1"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: |
+  Check if the version of PAM is less than pam-1.5.1-19 using command: `rpm -q pam | grep -E '^pam-1\\.([0-4]\\.|[0-4][^0-9]|5\\.0\\.|5\\.1\\.0|5\\.1\\.1[0-8])'`. Expected result: If the version is less than pam-1.5.1-19, the command will output the package name; otherwise, no output.
+req_02: "Apply update to the latest version of PAM using command: `dnf upgrade pam`. Expected result: The pam package is updated to the latest available version."
+req_03: |
+  Verify the updated version of PAM is at least pam-1.5.1-19 using command: `rpm -q pam | grep -E '^pam-1\\.5\\.1-19' || rpm -q pam | grep -E '^pam-1\\.([5-9]\\.|[6-9])'`. Expected result: The command outputs the package name indicating the version is pam-1.5.1-19 or newer.

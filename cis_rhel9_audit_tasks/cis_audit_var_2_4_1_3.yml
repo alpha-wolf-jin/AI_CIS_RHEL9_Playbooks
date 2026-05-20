@@ -1,0 +1,3 @@
+req_01: "Check if cron is installed on the system using command: `which cron || dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null`. Expected result: cron is installed."
+req_02: "Check permissions on /etc/cron.hourly/ using command: `stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.hourly/`. Expected result: Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)"
+req_03: "Summarize overall compliance status: All checks passed."

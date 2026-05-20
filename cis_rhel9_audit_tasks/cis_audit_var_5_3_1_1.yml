@@ -1,0 +1,4 @@
+req_01: "Check if PAM is installed using command: `rpm -q pam`. Expected result: package is installed and version is displayed."
+req_02: "Check the version of PAM using command: `rpm -q pam`. Expected result: version is pam-1.5.1-19 or greater (e.g., pam-1.5.1-19.el9.x86_64)."
+req_03: "Summarize overall compliance: PASS if PAM is installed and version is 1.5.1-19 or greater; SKIP if PAM is not installed; FAIL if PAM is installed but version is less than 1.5.1-19."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

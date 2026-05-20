@@ -1,0 +1,36 @@
+---
+- name: Dynamic CIS Remediation Task Runner
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    remediation_result: []
+
+  tasks:
+    - debug:
+        msg: "{{ inventory_hostname }}"
+
+    - name: Clean stale State Guard checkpoints
+      ansible.builtin.file:
+        path: /usr/local/bin/cis/.cis_state_guard
+        state: absent
+      failed_when: false
+      tags: [snapshot]
+
+    - name: Parse comma-separated index into selection list
+      ansible.builtin.set_fact:
+        selections: "{{ index.replace(' ', '').split(',') | list }}"
+
+    - debug: var=selections
+
+    - name: Load the master index list
+      include_vars:
+        file: rhel9_cis.yml
+
+    - name: Include remediation actions for each selection
+      ansible.builtin.include_tasks: remediation_actions.yaml
+      loop: "{{ selections }}"
+      loop_control:
+        loop_var: selection
+
+    - debug: var=all_results

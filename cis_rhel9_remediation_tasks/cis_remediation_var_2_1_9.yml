@@ -1,0 +1,8 @@
+playbook_name: "cis_2_1_9_remediation"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply stop the nfs-server service using command: `systemctl stop nfs-server.service`. Expected result: The nfs-server service is stopped."
+req_02: "Apply remove the nfs-utils package using command: `dnf remove nfs-utils`. Expected result: The nfs-utils package is removed from the system."
+req_03: "Apply mask the nfs-server service (if nfs-utils is required as a dependency) using command: `systemctl mask nfs-server.service`. Expected result: The nfs-server service is masked and cannot be started."
+req_04: "Verify that the nfs-server service is not running and either the package is removed or the service is masked using command: `systemctl status nfs-server.service && rpm -q nfs-utils`. Expected result: The service status shows inactive or masked, and the package query returns 'package nfs-utils is not installed' or the service is masked."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_06: "Generate remediation report with formatted output using debug"

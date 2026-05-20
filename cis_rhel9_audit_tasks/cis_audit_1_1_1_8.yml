@@ -1,0 +1,100 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1_8.yml
+
+- name: "Snapshot - Stat audit script path"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_pre_stat
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Write pre-existence marker"
+  ansible.builtin.copy:
+    dest: "{{ audit_script }}.pre_existed"
+    content: "{{ 'true' if script_pre_stat.stat.exists else 'false' }}"
+  failed_when: false
+  tags: [snapshot]
+
+- name: "Execute audit checks"
+  block:
+  - name: "Req 01 - Deploy audit script for usb-storage kernel module"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      content: "{{ audit_script_content }}"
+      mode: '0700'
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01 - Execute CIS audit script for usb-storage kernel module"
+    ansible.builtin.shell: "/bin/bash {{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+
+  always:
+  - name: "Restore - Read pre-existence marker"
+    ansible.builtin.slurp:
+      src: "{{ audit_script }}.pre_existed"
+    register: pre_existed_content
+    failed_when: false
+
+  - name: "Restore - Remove audit script if it was created by this playbook"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: "(pre_existed_content.content | b64decode | trim) == 'false'"
+
+  - name: "Restore - Remove pre-existence marker"
+    ansible.builtin.file:
+      path: "{{ audit_script }}.pre_existed"
+      state: absent
+    when: "pre_existed_content is defined"
+
+- name: "Req 01 - Record audit script execution status"
+  set_fact:
+    task_01_name: "Execute CIS audit script for usb-storage kernel module"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Script executed successfully' if result_01.rc | default(-1) == 0 else 'Script execution failed') | trim }}"
+
+- name: "Req 02 - Summarise compliance status from audit script output"
+  set_fact:
+    task_02_name: "Summarise compliance status from audit script output"
+    task_02_cmd: "N/A (derived from audit script output)"
+    task_02_rc: -1
+    data_02: "{{ result_01.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if '** PASS **' in result_01.stdout | default('') else 'FAIL') | trim }}"
+    details_02: "{{ ('Compliant' if '** PASS **' in result_01.stdout | default('') else 'Non-compliant') | trim }}"
+
+- name: "Req 03 - Store final compliance result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Req 04 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.1.8"
+    - "Reference: CIS Benchmark checkpoint 1.1.1.8"
+    - ""
+    - "REQUIREMENT 1 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 2 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"

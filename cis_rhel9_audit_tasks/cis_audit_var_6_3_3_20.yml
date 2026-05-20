@@ -1,0 +1,10 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null`. Expected result: package is installed."
+req_02: "Check if the audit rules directory exists using command: `ls /etc/audit/rules.d/`. Expected result: directory exists and contains .rules files."
+req_03: |
+  Check that the immutable flag is set in audit rules using command: `grep -Ph -- '^\\h*-e\\h+2\\b' /etc/audit/rules.d/*.rules | tail -1`. Expected result: -e 2
+req_04: "Summarize overall compliance status: if all checks pass, the audit configuration is immutable; otherwise, it is non-compliant."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+audit_cmd_01: "dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null"
+audit_cmd_02: "ls /etc/audit/rules.d/*.rules 2>/dev/null"
+audit_cmd_03: >-
+  grep -Ph -- '^\h*-e\h+2\b' /etc/audit/rules.d/*.rules | tail -1

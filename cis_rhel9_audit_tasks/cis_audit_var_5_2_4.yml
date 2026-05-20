@@ -1,0 +1,5 @@
+req_01: "Check if sudo is installed. Expected result: PASS if sudo found, FAIL if not."
+req_02: |
+  Check for any NOPASSWD entries in /etc/sudoers and /etc/sudoers.d/* files using command: `grep -r \"^[^#].*NOPASSWD\" /etc/sudoers*`. Expected result: No output (no lines found).
+req_03: "Summarize overall compliance: PASS if no NOPASSWD entries found; SKIP if sudo is not installed; FAIL if any NOPASSWD entry is found."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

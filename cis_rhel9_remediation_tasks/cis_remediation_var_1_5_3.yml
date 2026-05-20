@@ -1,0 +1,8 @@
+checkpoint_id: "cis_1_5_3"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+config_file: "/etc/systemd/coredump.conf.d/60- coredump.conf"
+config_dir: "/etc/systemd/coredump.conf.d"
+req_1: "Run the provided remediation script to set ProcessSizeMax=0 in coredump configuration"
+req_2: "VERIFY: Ensure ProcessSizeMax=0 is set in coredump configuration"
+req_3: "Generate remediation report"

@@ -1,0 +1,191 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_19.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set auditd installation status"
+  ansible.builtin.set_fact:
+    auditd_installed: "{{ ('audit' in ansible_facts.packages) or ('auditd' in ansible_facts.packages) }}"
+
+    # ------------------------------------------------------------------
+    # Requirment 1 - Audit tasks (only if auditd is installed)
+# ------------------------------------------------------------------
+- name: "Req 01 - Audit on-disk rules"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ ondisk_script_content }}"
+    executable: /bin/bash
+  register: ondisk_result
+  when: auditd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Audit loaded rules"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ loaded_script_content }}"
+    executable: /bin/bash
+  register: loaded_result
+  when: auditd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Audit symlinks"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ symlink_script_content }}"
+    executable: /bin/bash
+  register: symlink_result
+  when: auditd_installed | bool
+  failed_when: false
+  changed_when: false
+
+    # ------------------------------------------------------------------
+    # Store requirement 01 details (auditd installed case)
+    # Split into two tasks to avoid circular variable references
+# ------------------------------------------------------------------
+- name: "Set requirement 01 booleans"
+  ansible.builtin.set_fact:
+    ondisk_ok: "{{ ('init_module' in (ondisk_result.stdout | default('')) and 'path=/usr/bin/kmod' in (ondisk_result.stdout | default(''))) }}"
+    loaded_ok: "{{ ('create_module' in (loaded_result.stdout | default('')) and '/usr/bin/kmod' in (loaded_result.stdout | default(''))) }}"
+    symlink_ok: "{{ 'Issue with symlink' not in (symlink_result.stdout | default('')) }}"
+    data_01: |
+      {{ (ondisk_result.stdout | default('') | trim) + '\n' + (loaded_result.stdout | default('') | trim) + '\n' + (symlink_result.stdout | default('') | trim) }}
+  when:
+  - "auditd_installed | bool"
+  - ondisk_result is defined
+  - loaded_result is defined
+  - symlink_result is defined
+  failed_when: false
+
+- name: "Evaluate requirement 01 status"
+  ansible.builtin.set_fact:
+    task_01_name: "Audit kernel module loading collection"
+    task_01_cmd: "Audit scripts - on-disk rules, loaded rules, symlink checks"
+    task_01_rc: "{{ 0 if (ondisk_ok and loaded_ok and symlink_ok) else 1 }}"
+    status_01: "{{ 'PASS' if (ondisk_ok and loaded_ok and symlink_ok) else 'FAIL' }}"
+    details_01: >-
+      {{ 'All checks passed' if (ondisk_ok and loaded_ok and symlink_ok)
+         else 'One or more checks failed: ondisk=' ~ ondisk_ok | string ~
+              ' loaded=' ~ loaded_ok | string ~
+              ' symlinks=' ~ symlink_ok | string }}
+  when:
+  - "auditd_installed | bool"
+  - ondisk_ok is defined
+  - loaded_ok is defined
+  - symlink_ok is defined
+  failed_when: false
+
+    # ------------------------------------------------------------------
+    # Store requirement 01 details (auditd NOT installed case)
+# ------------------------------------------------------------------
+- name: "Set requirement 01 not applicable"
+  ansible.builtin.set_fact:
+    task_01_name: "Audit kernel module loading collection"
+    task_01_cmd: "Audit scripts - on-disk rules, loaded rules, symlink checks"
+    task_01_rc: -1
+    data_01: "auditd not installed"
+    status_01: "NOT_APPLICABLE"
+    details_01: "auditd package is not installed on the system"
+  when:
+  - "not (auditd_installed | bool)"
+  failed_when: false
+
+    # ------------------------------------------------------------------
+    # Requirement 2 - Compliance evaluation
+# ------------------------------------------------------------------
+- name: "Evaluate compliance status"
+  ansible.builtin.set_fact:
+    compliance_status: >-
+      {% if not (auditd_installed | bool) %}
+        NOT_APPLICABLE
+      {% else %}
+        {%- set safe_ondisk = (ondisk_result | default({'stdout': ''})).stdout -%}
+        {%- set safe_loaded = (loaded_result | default({'stdout': ''})).stdout -%}
+        {%- set safe_symlink = (symlink_result | default({'stdout': ''})).stdout -%}
+        {%- set has_syscall = safe_ondisk | regex_search('(init_module|finit_module|delete_module|create_module|query_module).*-k kernel_modules') -%}
+        {%- set has_kmod_ondisk = safe_ondisk | regex_search('path=/usr/bin/kmod.*-k kernel_modules') -%}
+        {%- set has_syscall_loaded = safe_loaded | regex_search('create_module,init_module,delete_module,query_module,finit_module.*-F key=kernel_modules') -%}
+        {%- set has_kmod_loaded = safe_loaded | regex_search('-S all.*-F path=/usr/bin/kmod.*-F key=kernel_modules') -%}
+        {%- set symlink_ok = 'Issue with symlink' not in safe_symlink -%}
+        {% if has_syscall and has_kmod_ondisk and has_syscall_loaded and has_kmod_loaded and symlink_ok %}
+          PASS
+        {% else %}
+          FAIL
+        {% endif %}
+      {% endif %}
+  failed_when: false
+
+- name: "Set compliance summary details"
+  ansible.builtin.set_fact:
+    task_02_name: "Summarize compliance status"
+    task_02_cmd: "N/A (evaluation)"
+    task_02_rc: 0
+    data_02: "{{ compliance_status }}"
+    status_02: "{{ compliance_status }}"
+    details_02: >-
+      {% if not (auditd_installed | bool) %}
+        auditd package not installed
+      {% elif compliance_status == 'PASS' %}
+        All checks passed - kernel module audit collection is compliant
+      {% else %}
+        One or more checks failed - kernel module audit collection is not fully compliant
+      {% endif %}
+    task_03_name: "Generate audit report"
+    task_03_cmd: "debug msg"
+    task_03_rc: 0
+    data_03: "AUDIT REPORT GENERATED"
+    status_03: "PASS"
+    details_03: "Report displayed below"
+  failed_when: false
+
+    # ------------------------------------------------------------------
+    # Store final audit result in cis_result (as required)
+# ------------------------------------------------------------------
+- name: "Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ compliance_status | trim }}"
+  failed_when: false
+
+    # ------------------------------------------------------------------
+    # Final audit report
+# ------------------------------------------------------------------
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.19"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.19"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

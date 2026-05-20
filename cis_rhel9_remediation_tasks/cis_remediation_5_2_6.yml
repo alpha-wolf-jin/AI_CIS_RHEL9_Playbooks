@@ -1,0 +1,669 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_2_6.yml
+
+- name: "State Guard - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Create state guard directory for tracking remediation artifacts"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/sudoers from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/sudoers.present"
+    dest: "/etc/sudoers"
+    remote_src: true
+  when: "_sg_flag.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/sudoers.d directory from prior checkpoint"
+  ansible.builtin.unarchive:
+    src: "{{ state_guard_dir }}/sudoers_d.present.tar.gz"
+    dest: /etc/
+    remote_src: true
+  when: "_sg_flag.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete /etc/sudoers.d if absent marker exists"
+  ansible.builtin.file:
+    path: /etc/sudoers.d
+    state: absent
+  when: "_sg_flag.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore specific sudoers target file from prior checkpoint"
+  ansible.builtin.shell: |
+    if [ -f "{{ state_guard_dir }}/sudoers_target_path.txt" ]; then
+      target_path=$(cat "{{ state_guard_dir }}/sudoers_target_path.txt")
+      if [ -f "{{ state_guard_dir }}/sudoers_target_content.present" ]; then
+        cp "{{ state_guard_dir }}/sudoers_target_content.present" "$target_path"
+      elif [ -f "{{ state_guard_dir }}/sudoers_target_content.absent" ]; then
+        rm -f "$target_path"
+      fi
+    fi
+  args:
+    executable: /bin/bash
+  when: "_sg_flag.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Stat main sudoers file"
+  ansible.builtin.stat:
+    path: "/etc/sudoers"
+  register: _sg_sudoers_file_stat
+  tags: [snapshot]
+- name: "State Guard - Set sudoers target file fact"
+  ansible.builtin.set_fact:
+    sudoers_target_file: "{{ '/etc/sudoers' if _sg_sudoers_file_stat.stat.exists else '/etc/sudoers.d/00_base' }}"
+  tags: [snapshot]
+- name: "State Guard - Save sudoers target file path"
+  ansible.builtin.copy:
+    content: "{{ sudoers_target_file }}"
+    dest: "{{ state_guard_dir }}/sudoers_target_path.txt"
+  tags: [snapshot]
+- name: "State Guard - Check if sudoers target file exists"
+  ansible.builtin.stat:
+    path: "{{ sudoers_target_file }}"
+  register: _sg_target_file_stat
+  tags: [snapshot]
+- name: "State Guard - Backup sudoers target file content (present)"
+  ansible.builtin.copy:
+    src: "{{ sudoers_target_file }}"
+    dest: "{{ state_guard_dir }}/sudoers_target_content.present"
+    remote_src: true
+  when: "_sg_target_file_stat.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Mark sudoers target file as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/sudoers_target_content.absent"
+  when: "not (_sg_target_file_stat.stat.exists | default(false))"
+  tags: [snapshot]
+- name: "State Guard - Create snapshot marker for sudoers target file existence"
+  ansible.builtin.copy:
+    content: "{{ 'present' if _sg_target_file_stat.stat.exists else 'absent' }}"
+    dest: "{{ state_guard_dir }}/sudoers_target_existence.marker"
+  tags: [snapshot]
+- name: "Snapshot - Backup sudoers target file to backup_dir"
+  ansible.builtin.copy:
+    src: "{{ sudoers_target_file }}"
+    dest: "{{ backup_dir }}/sudoers_target.orig"
+    remote_src: true
+  when: "_sg_target_file_stat.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/sudoers exists"
+  ansible.builtin.stat:
+    path: "/etc/sudoers"
+  register: _sg_sudoers_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/sudoers"
+  ansible.builtin.copy:
+    src: "/etc/sudoers"
+    dest: "{{ state_guard_dir }}/sudoers.present"
+    remote_src: true
+  when: "_sg_sudoers_stat.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/sudoers as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/sudoers.absent"
+  when: "not (_sg_sudoers_stat.stat.exists | default(false))"
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/sudoers.d directory exists"
+  ansible.builtin.stat:
+    path: /etc/sudoers.d
+  register: _sg_sudoers_d_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/sudoers.d directory"
+  ansible.builtin.archive:
+    path: /etc/sudoers.d
+    dest: "{{ state_guard_dir }}/sudoers_d.present.tar.gz"
+    format: gz
+  when: "_sg_sudoers_d_stat.stat.isdir | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/sudoers.d directory as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/sudoers_d.absent"
+  when: "not (_sg_sudoers_d_stat.stat.isdir | default(false))"
+  tags: [snapshot]
+- name: "Snapshot - Save sudoers target path to backup_dir"
+  ansible.builtin.copy:
+    content: "{{ sudoers_target_file }}"
+    dest: "{{ backup_dir }}/sudoers_target.path"
+  tags: [snapshot]
+- name: "Snapshot - Backup sudoers target file to backup_dir (copy)"
+  ansible.builtin.copy:
+    src: "{{ sudoers_target_file }}"
+    dest: "{{ backup_dir }}/sudoers_target.backup"
+    remote_src: true
+  when: "_sg_target_file_stat.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Mark backup absence if target file did not exist"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/sudoers_target.absent"
+  when: "not (_sg_target_file_stat.stat.exists | default(false))"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize report variables"
+    ansible.builtin.set_fact:
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      data_05: "Not collected yet"
+      status_05: "UNKNOWN"
+      details_05: "Not evaluated"
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      data_06: "Not collected yet"
+      status_06: "UNKNOWN"
+      details_06: "Not evaluated"
+      task_07_name: "Not executed"
+      task_07_cmd: "N/A"
+      task_07_rc: -1
+      data_07: "Not collected yet"
+      status_07: "UNKNOWN"
+      details_07: "Not evaluated"
+    tags: [execute]
+
+  - name: "Req 01 - Check if sudo is installed"
+    ansible.builtin.shell: "which sudo"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if sudo is installed"
+      task_01_cmd: "which sudo"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'SKIP' }}"
+      details_01: "{{ 'sudo found at: ' ~ (result_01.stdout | trim) if (result_01.rc | default(-1)) == 0 else 'sudo not found - remediation will be skipped' }}"
+      sudo_installed: "{{ (result_01.rc | default(-1)) == 0 }}"
+    tags: [execute]
+
+  - name: "Req 02 - Identify sudoers file containing timestamp_timeout"
+    ansible.builtin.shell: |
+      target=$(grep -rl 'timestamp_timeout' /etc/sudoers /etc/sudoers.d/* 2>/dev/null | head -1)
+      if [ -n "$target" ]; then
+        echo "$target"
+      elif [ -f /etc/sudoers ]; then
+        echo "/etc/sudoers"
+      else
+        echo "/etc/sudoers"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Identify sudoers file path"
+      task_02_cmd: "grep -rl 'timestamp_timeout' /etc/sudoers /etc/sudoers.d/* | head -1 || echo /etc/sudoers"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('/etc/sudoers') | trim }}"
+      sudoers_target_file: "{{ result_02.stdout | default('/etc/sudoers') | trim }}"
+      status_02: "{{ 'PASS' if (result_02.stdout | default('') | trim | length > 0) else 'FAIL' }}"
+      details_02: "{{ 'Identified file: ' ~ (result_02.stdout | default('/etc/sudoers') | trim) if (result_02.stdout | default('') | trim | length > 0) else 'Unable to identify sudoers file' }}"
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Backup - Backup target sudoers file before modification"
+    ansible.builtin.copy:
+      src: "{{ sudoers_target_file | default('/etc/sudoers') }}"
+      dest: "{{ backup_dir }}/sudoers_target.backup"
+      remote_src: true
+    register: result_backup
+    failed_when: false
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Backup - Save target sudoers file path"
+    ansible.builtin.copy:
+      content: "{{ sudoers_target_file | default('/etc/sudoers') }}"
+      dest: "{{ backup_dir }}/sudoers_target.path"
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 03 - Check current timestamp_timeout value"
+    ansible.builtin.shell: |
+      grep -E '^Defaults.*timestamp_timeout' /etc/sudoers /etc/sudoers.d/* 2>/dev/null || echo "NOT_FOUND"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Check current timestamp_timeout value"
+      task_03_cmd: "grep -E '^Defaults.*timestamp_timeout' /etc/sudoers /etc/sudoers.d/*"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "PASS"
+      details_03: "{{ 'Current setting: ' ~ (result_03.stdout | trim) if (result_03.stdout | default('') | trim) != '' and (result_03.stdout | default('') | trim) != 'NOT_FOUND' else 'No timestamp_timeout configured (default 15m, compliant)' }}"
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 04 - Determine if remediation is needed"
+    ansible.builtin.shell: |
+      timeout_line=$(grep -E '^Defaults.*timestamp_timeout' /etc/sudoers /etc/sudoers.d/* 2>/dev/null || echo "NOT_FOUND")
+      if [ "$timeout_line" = "NOT_FOUND" ]; then
+        echo "COMPLIANT"
+      else
+        current_timeout=$(echo "$timeout_line" | grep -oP 'timestamp_timeout=\K\d+')
+        if [ -n "$current_timeout" ] && [ "$current_timeout" -gt "{{ max_timeout }}" ]; then
+          echo "NEEDS_REMEDIATION"
+        else
+          echo "COMPLIANT"
+        fi
+      fi
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Check if timeout exceeds 15 minutes"
+      task_04_cmd: "timeout check script"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'FAIL' if (result_04.stdout | default('') | trim) == 'NEEDS_REMEDIATION' else 'PASS' }}"
+      details_04: "{{ 'Timeout > 15, remediation will be applied' if (result_04.stdout | default('') | trim) == 'NEEDS_REMEDIATION' else 'Timeout is already compliant or not explicitly set (default 15m)' }}"
+      needs_remediation: "{{ (result_04.stdout | default('') | trim) == 'NEEDS_REMEDIATION' }}"
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 05 - Set timestamp_timeout to 15 in sudoers file"
+    ansible.builtin.lineinfile:
+      path: "{{ sudoers_target_file | default('/etc/sudoers') }}"
+      regexp: |
+        ^(\s*Defaults\s+.*)timestamp_timeout=\d+(.*)$
+      line: |
+        \1timestamp_timeout={{ timeout_value }}\2
+      backrefs: true
+      validate: '/usr/sbin/visudo -cf %s'
+      backup: true
+    register: result_05
+    failed_when: false
+    when:
+    - "sudo_installed | default(false)"
+    - "needs_remediation | default(false) | bool"
+    - "sudoers_target_file is defined"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Set timestamp_timeout to 15 in sudoers file"
+      task_05_cmd: |
+        lineinfile: regexp='^(\\s*Defaults\\s+.*)timestamp_timeout=\\d+(.*)$' line='\\1timestamp_timeout=15\\2' backrefs=yes
+      task_05_rc: "{{ 0 if (result_05 is defined and not (result_05.skipped | default(false)) and not (result_05.failed | default(false))) else -1 }}"
+      data_05: "{{ 'timestamp_timeout=15 set' if (result_05 is defined and not (result_05.skipped | default(false)) and not (result_05.failed | default(false))) else ('No change needed' if (result_05 is defined and (result_05.skipped | default(false))) else 'Failed to set') }}"
+      status_05: "{{ 'PASS' if (result_05 is defined and not (result_05.skipped | default(false)) and not (result_05.failed | default(false))) else ('SKIP' if (result_05 is defined and (result_05.skipped | default(false))) else 'FAIL') }}"
+      details_05: "{{ 'timestamp_timeout set to 15 minutes' if (result_05 is defined and not (result_05.skipped | default(false)) and not (result_05.failed | default(false))) else ('Already compliant - no change needed' if (result_05 is defined and (result_05.skipped | default(false))) else 'Failed to set timeout') }}"
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 06 - Verify timestamp_timeout is 15 or less"
+    ansible.builtin.shell: |
+      grep -E '^Defaults.*timestamp_timeout' /etc/sudoers /etc/sudoers.d/* 2>/dev/null || echo "NOT_FOUND"
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 06 details - status and data"
+    ansible.builtin.set_fact:
+      task_06_name: "Verify timestamp_timeout is 15 or less"
+      task_06_cmd: "grep -E '^Defaults.*timestamp_timeout' /etc/sudoers /etc/sudoers.d/*"
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: |
+        {{ 'PASS' if (result_06.stdout | default('') | trim == '' or result_06.stdout | default('') | trim == 'NOT_FOUND' or (result_06.stdout | default('') | trim | regex_findall('timestamp_timeout=(\\d+)') | length > 0 and (result_06.stdout | default('') | trim | regex_findall('timestamp_timeout=(\\d+)') | first | int) <= (max_timeout | int))) else 'FAIL' }}
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 06 details - details text"
+    ansible.builtin.set_fact:
+      details_06: "{{ 'Compliant: timeout ' ~ data_06 | trim if status_06 | trim == 'PASS' else ('Non-compliant: timeout > ' ~ max_timeout | string) }}"
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Adjust status_06 if sudo was not available"
+    ansible.builtin.set_fact:
+      status_06: "SKIP"
+      data_06: "N/A"
+      details_06: "sudo not installed - remediation skipped"
+    when: "not (sudo_installed | default(false))"
+    tags: [execute]
+
+  - name: "Req 07 - Store final remediation result"
+    ansible.builtin.set_fact:
+      task_07_name: "Store cis_result"
+      task_07_cmd: "set_fact: cis_result={{ status_06 | default('ERROR') | trim }}"
+      task_07_rc: 0
+      data_07: "{{ status_06 | default('ERROR') | trim }}"
+      status_07: "{{ status_06 | default('ERROR') | trim }}"
+      details_07: "Overall remediation status: {{ status_06 | default('ERROR') | trim }}"
+      cis_result: "{{ status_06 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.2.6"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.2.6"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if /etc/sudoers backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sudoers.present"
+    register: _sg_restore_sudoers
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/sudoers from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/sudoers.present"
+      dest: "/etc/sudoers"
+      remote_src: true
+    when: "_sg_restore_sudoers.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if /etc/sudoers absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sudoers.absent"
+    register: _sg_restore_sudoers_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /etc/sudoers if absent marker"
+    ansible.builtin.file:
+      path: "/etc/sudoers"
+      state: absent
+    when: "_sg_restore_sudoers_absent.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if /etc/sudoers.d backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sudoers_d.present.tar.gz"
+    register: _sg_restore_sudoers_d
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove current /etc/sudoers.d to ensure clean restore"
+    ansible.builtin.file:
+      path: /etc/sudoers.d
+      state: absent
+    when: "_sg_restore_sudoers_d.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/sudoers.d from backup"
+    ansible.builtin.unarchive:
+      src: "{{ state_guard_dir }}/sudoers_d.present.tar.gz"
+      dest: /etc/
+      remote_src: true
+    when: "_sg_restore_sudoers_d.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if /etc/sudoers.d absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sudoers_d.absent"
+    register: _sg_restore_sudoers_d_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /etc/sudoers.d if absent marker"
+    ansible.builtin.file:
+      path: /etc/sudoers.d
+      state: absent
+    when: "_sg_restore_sudoers_d_absent.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+# --- Restore the specific sudoers target file (using state guard snapshot) ---
+  - name: "State Guard Restore - Read target path from state guard snapshot"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/sudoers_target_path.txt"
+    register: _restore_target_path_slurp
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read sudoers target existence marker"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/sudoers_target_existence.marker"
+    register: _restore_target_existence
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore sudoers target file content if it existed"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/sudoers_target_content.present"
+      dest: "{{ _restore_target_path_slurp.content | default('') | b64decode | trim }}"
+      remote_src: true
+    when:
+    - "_restore_target_path_slurp.content is defined"
+    - "(_restore_target_path_slurp.content | default('') | b64decode | trim) | length > 0"
+    - "_restore_target_existence.content is defined"
+    - "(_restore_target_existence.content | b64decode | trim) == 'present'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete sudoers target file if it was absent originally"
+    ansible.builtin.file:
+      path: "{{ _restore_target_path_slurp.content | default('') | b64decode | trim }}"
+      state: absent
+    when:
+    - "_restore_target_path_slurp.content is defined"
+    - "(_restore_target_path_slurp.content | default('') | b64decode | trim) | length > 0"
+    - "_restore_target_existence.content is defined"
+    - "(_restore_target_existence.content | b64decode | trim) == 'absent'"
+    failed_when: false
+    tags: [restore]
+
+# --- Restore sudoers target file from backup_dir snapshot ---
+  - name: "State Guard Restore - Check if sudoers_target.absent exists in backup_dir"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sudoers_target.absent"
+    register: _restore_target_absent_backup_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete sudoers target file if absent marker present in backup_dir"
+    ansible.builtin.file:
+      path: "{{ _restore_target_path_slurp.content | default('') | b64decode | trim }}"
+      state: absent
+    when:
+    - "_restore_target_path_slurp.content is defined"
+    - "(_restore_target_path_slurp.content | default('') | b64decode | trim) | length > 0"
+    - "_restore_target_absent_backup_marker.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if sudoers_target.orig exists in backup_dir"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sudoers_target.orig"
+    register: _restore_target_backup_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore sudoers target from backup_dir snapshot"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/sudoers_target.orig"
+      dest: "{{ _restore_target_path_slurp.content | default('') | b64decode | trim }}"
+      remote_src: true
+    when:
+    - "_restore_target_path_slurp.content is defined"
+    - "(_restore_target_path_slurp.content | default('') | b64decode | trim) | length > 0"
+    - "_restore_target_backup_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+# --- Cleanup ---
+  - name: "State Guard Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

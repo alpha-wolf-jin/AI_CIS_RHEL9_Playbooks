@@ -1,0 +1,89 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_3_1_1.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+- name: "Req 01 - Check if SELinux is installed using rpm"
+  ansible.builtin.shell: "rpm -q libselinux"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if libselinux package is installed"
+    task_01_cmd: "rpm -q libselinux"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' | trim }}"
+    details_01: "{{ 'Package found: ' ~ (result_01.stdout | default('') | trim) if result_01.rc | default(-1) == 0 else 'Package not installed' | trim }}"
+
+- name: "Req 02 - Determine SELinux installation compliance status"
+  set_fact:
+    task_02_name: "Determine overall compliance status"
+    task_02_cmd: "N/A (derived from requirement 01)"
+    task_02_rc: "N/A"
+    data_02: "See requirement 01 data"
+    status_02: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' | trim }}"
+    details_02: "{{ 'SELinux is installed (libselinux package found: ' ~ (result_01.stdout | default('') | trim) ~ ')' if result_01.rc | default(-1) == 0 else 'SELinux is not installed' | trim }}"
+
+- name: "Req 03 - Store audit result in cis_result"
+  set_fact:
+    task_03_name: "Store final audit result in cis_result"
+    task_03_cmd: "set_fact: cis_result = {{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_rc: "N/A"
+    data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+    status_03: "PASS"
+    details_03: "cis_result set to {{ status_02 | default('UNKNOWN') | trim }}"
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.3.1.1"
+    - "Reference: CIS Benchmark checkpoint 1.3.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default('N/A') }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default('N/A') }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

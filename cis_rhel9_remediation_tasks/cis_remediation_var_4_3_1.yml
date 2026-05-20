@@ -1,0 +1,11 @@
+playbook_name: "CIS_4_3_1"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if firewalld is in use; if so, skip this remediation. Expected result: No action required if firewalld is active."
+req_02: "Check if nftables utility is installed using command: `which nft`. Expected result: Path to nft binary is returned."
+req_03: |
+  Apply create base chain for input hook using command: `nft create chain inet filter input { type filter hook input priority 0 \\; }`. Expected result: Chain created or error if already exists (use add command instead).
+req_04: |
+  Apply create base chain for forward hook using command: `nft create chain inet filter forward { type filter hook forward priority 0 \\; }`. Expected result: Chain created or error if already exists (use add command instead).
+req_05: |
+  Apply create base chain for output hook using command: `nft create chain inet filter output { type filter hook output priority 0 \\; }`. Expected result: Chain created or error if already exists (use add command instead).
+req_06: "Verify base chains exist using command: `nft list chains inet filter`. Expected result: List includes input, forward, and output chains."

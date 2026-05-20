@@ -1,0 +1,4 @@
+req_01: "Check if AIDE is installed using command: `rpm -q aide`. Expected result: aide-<version>"
+req_02: "Summarize overall compliance: PASS if AIDE is installed, SKIP if the package is not installed, FAIL otherwise."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Generate audit report (requirement 4)"

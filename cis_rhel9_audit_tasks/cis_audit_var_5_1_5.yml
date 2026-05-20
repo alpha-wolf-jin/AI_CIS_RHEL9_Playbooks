@@ -1,0 +1,6 @@
+req_01: "Check if OpenSSH server is installed using command: `dpkg -l | grep -q openssh-server || rpm -q openssh-server 2>/dev/null`. Expected result: exit code 0 (package installed)."
+req_02: "Check if sshd is running using command: `systemctl is-active sshd 2>/dev/null || service sshd status 2>/dev/null`. Expected result: active (running)."
+req_03: |
+  Check that no weak Key Exchange algorithms are configured in sshd using command: `sshd -T | grep -Pi -- 'kexalgorithms\\h+([^#\\n\\r]+,)?(diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1)\\b'`. Expected result: no output (empty).
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if OpenSSH server is not installed or not running, FAIL if the feature exists but is misconfigured."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

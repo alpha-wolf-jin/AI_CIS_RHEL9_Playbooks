@@ -1,0 +1,194 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_3.yml
+
+- name: "Pre - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Pre - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _conf_stat
+  tags: [snapshot]
+- name: "Pre - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/60-netipv4_sysctl.conf.bak"
+    remote_src: true
+    mode: '0644'
+  when: _conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Pre - Capture current sysctl value for {{ sysctl_param_icmp }}"
+  ansible.builtin.shell: "sysctl -n {{ sysctl_param_icmp }}"
+  args:
+    executable: /bin/bash
+  register: _snap_icmp
+  changed_when: false
+  tags: [snapshot]
+- name: "Pre - Capture current sysctl value for {{ sysctl_param_flush }}"
+  ansible.builtin.shell: "sysctl -n {{ sysctl_param_flush }}"
+  args:
+    executable: /bin/bash
+  register: _snap_flush
+  changed_when: false
+  tags: [snapshot]
+- name: "Pre - Save sysctl runtime state to backup file"
+  ansible.builtin.copy:
+    content: |
+      {{ _snap_icmp.stdout | trim }}\n{{ _snap_flush.stdout | trim }}
+    dest: "{{ backup_dir }}/sysctl_state.bak"
+    mode: '0600'
+  tags: [snapshot]
+
+- block:
+  - name: "Req 1 - Set net.ipv4.icmp_ignore_bogus_error_responses in sysctl config"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: '^net.ipv4.icmp_ignore_bogus_error_responses'
+      line: 'net.ipv4.icmp_ignore_bogus_error_responses = 1'
+      create: yes
+      mode: '0644'
+    register: _line_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Apply kernel parameters (script)"
+    ansible.builtin.shell: |
+      sysctl -w net.ipv4.icmp_ignore_bogus_error_responses=1
+      sysctl -w net.ipv4.route.flush=1
+    args:
+      executable: /bin/bash
+    register: _script_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Verify kernel parameter"
+    ansible.builtin.shell: sysctl net.ipv4.icmp_ignore_bogus_error_responses
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'PASS' if (_verify_result.stdout | default('') | trim is search('= 1')) else 'FAIL' }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 3.3.3"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 3.3.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Set config file + apply script"
+      - "  Command: sysctl -w net.ipv4.icmp_ignore_bogus_error_responses=1; sysctl -w net.ipv4.route.flush=1"
+      - "  Exit code: {{ _script_result.rc | default(-1) }}"
+      - "  Data: {{ _script_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if _script_result.rc | default(-1) == 0 else 'FAIL' }}"
+      - "  Details: {{ 'Sysctl parameters applied successfully' if _script_result.rc | default(-1) == 0 else 'Failed to apply sysctl parameters' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Audit check (sysctl verify)"
+      - "  Command: sysctl net.ipv4.icmp_ignore_bogus_error_responses"
+      - "  Exit code: {{ _verify_result.rc | default(-1) }}"
+      - "  Data: {{ _verify_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if _verify_result.stdout | default('') | trim is search('= 1') else 'FAIL' }}"
+      - "  Details: {{ 'Parameter is set to 1' if _verify_result.stdout | default('') | trim is search('= 1') else 'Parameter not set correctly' }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ 'System is compliant' if cis_result == 'PASS' else 'System not compliant' }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if config file backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-netipv4_sysctl.conf.bak"
+    register: _backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore config file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/60-netipv4_sysctl.conf.bak"
+      dest: "{{ config_file }}"
+      remote_src: true
+      mode: '0644'
+    when:
+    - _backup_stat.stat.exists
+    - revert_backup | bool
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove config file if it was created (no backup)"
+    ansible.builtin.file:
+      path: "{{ config_file }}"
+      state: absent
+    when:
+    - not _backup_stat.stat.exists
+    - revert_backup | bool
+    failed_when: false
+    tags: [restore]
+
+# Restore sysctl runtime state from saved file
+  - name: "Restore - Check if sysctl state backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sysctl_state.bak"
+    register: _sysctl_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved sysctl state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/sysctl_state.bak"
+    register: _sysctl_state_data
+    when: _sysctl_backup_stat.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply saved sysctl values"
+    ansible.builtin.shell: |
+      saved_state=$(echo "{{ _sysctl_state_data.content | b64decode }}" | head -2)
+      saved_icmp=$(echo "$saved_state" | sed -n '1p')
+      saved_flush=$(echo "$saved_state" | sed -n '2p')
+      if [ -n "$saved_icmp" ]; then
+        sysctl -w net.ipv4.icmp_ignore_bogus_error_responses="$saved_icmp"
+      fi
+      if [ -n "$saved_flush" ]; then
+        sysctl -w net.ipv4.route.flush="$saved_flush"
+      fi
+    args:
+      executable: /bin/bash
+    when:
+    - _sysctl_backup_stat.stat.exists
+    - revert_backup | bool
+    - _sysctl_state_data.content is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove sysctl state backup"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/sysctl_state.bak"
+      state: absent
+    when:
+    - _sysctl_backup_stat.stat.exists
+    - revert_backup | bool
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: revert_backup | bool
+    failed_when: false
+    tags: [restore]

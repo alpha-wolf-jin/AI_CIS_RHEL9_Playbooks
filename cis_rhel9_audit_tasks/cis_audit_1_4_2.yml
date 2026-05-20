@@ -1,0 +1,191 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_4_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script exists before execution"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: audit_script_pre_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark audit script pre-existence"
+  ansible.builtin.copy:
+    content: "{{ audit_script_pre_stat.stat.exists | default(false) | string }}"
+    dest: "{{ backup_dir }}/audit_script_existed.txt"
+    force: yes
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      status_01: "SKIPPED"
+      details_01: "Audit not applicable (grub not installed)"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: "-1"
+      data_01: "N/A"
+      status_02: "SKIPPED"
+      details_02: "Compliance check not applicable (grub not installed)"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: "-1"
+      data_02: "N/A"
+      status_03: "SKIPPED"
+      details_03: "cis_result not stored (grub not installed)"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: "-1"
+      data_03: "N/A"
+      status_04: "PASS"
+      details_04: "Report always generated"
+      task_04_name: "Generate audit report"
+      task_04_cmd: "debug msg"
+      task_04_rc: "0"
+      data_04: "Audit report"
+
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+
+  - name: "Determine if grub is installed"
+    ansible.builtin.set_fact:
+      grub_installed: "{{ ansible_facts.packages.keys() | select('match', '^grub2') | list | length > 0 or 'grub' in ansible_facts.packages }}"
+
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    when: "grub_installed | default(false) | bool"
+
+  - name: "Req 01 - Execute bootloader audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+    when: "grub_installed | default(false) | bool"
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute bootloader audit script"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if audit_result.rc | default(-1) | int == 0 else 'FAIL' }}"
+      details_01: "{{ 'Audit script executed successfully' if audit_result.rc | default(-1) | int == 0 else 'Audit script execution failed' }}"
+    when: "grub_installed | default(false) | bool"
+
+  - name: "Verify compliance and store requirement 02 details"
+    ansible.builtin.set_fact:
+      status_02: "{{ 'PASS' if '*** PASS ***' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'UNKNOWN') }}"
+      details_02: "{{ 'Bootloader config permissions and ownership are correctly configured.' if '*** PASS ***' in audit_result.stdout | default('') else ('Bootloader config permissions/ownership do not meet requirements.' if '** FAIL **' in audit_result.stdout | default('') else 'Unable to determine compliance from script output.') }}"
+      task_02_name: "Verify compliance status"
+      task_02_cmd: "Check for PASS/FAIL in audit script output"
+      task_02_rc: "0"
+      data_02: "{{ ('Compliance status: PASS' if '*** PASS ***' in audit_result.stdout | default('') else ('Compliance status: FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'Compliance status: UNKNOWN')) }}"
+    when: "grub_installed | default(false) | bool"
+
+  - name: "Req 03 - Store final compliance result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('SKIPPED') | trim }}"
+    when: "grub_installed | default(false) | bool"
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Store cis_result variable"
+      task_03_cmd: "set_fact cis_result={{ status_02 }}"
+      task_03_rc: "0"
+      data_03: "cis_result set to {{ status_02 }}"
+      status_03: "PASS"
+      details_03: "Overall compliance result stored in cis_result"
+    when: "grub_installed | default(false) | bool"
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Generate audit report"
+      task_04_cmd: "debug msg"
+      task_04_rc: "0"
+      data_04: "Audit report displayed"
+      status_04: "PASS"
+      details_04: "Report generated inline"
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg: |
+        AUDIT REPORT — CIS 1.4.2
+        Reference: CIS Benchmark checkpoint 1.4.2
+
+        REQUIREMENT 01 - {{ req_01 | default('Unknown') }}:
+          Task: {{ task_01_name | default('Not recorded') }}
+          Command: {{ task_01_cmd | default('N/A') }}
+          Exit code: {{ task_01_rc | default(-1) }}
+          Data: {{ data_01 | default('') | trim }}
+          Status: {{ status_01 | default('UNKNOWN') | trim }}
+          Details: {{ details_01 | default('') | trim }}
+
+        REQUIREMENT 02 - {{ req_02 | default('Unknown') }}:
+          Task: {{ task_02_name | default('Not recorded') }}
+          Command: {{ task_02_cmd | default('N/A') }}
+          Exit code: {{ task_02_rc | default(-1) }}
+          Data: {{ data_02 | default('') | trim }}
+          Status: {{ status_02 | default('UNKNOWN') | trim }}
+          Details: {{ details_02 | default('') | trim }}
+
+        REQUIREMENT 03 - {{ req_03 | default('Unknown') }}:
+          Task: {{ task_03_name | default('Not recorded') }}
+          Command: {{ task_03_cmd | default('N/A') }}
+          Exit code: {{ task_03_rc | default(-1) }}
+          Data: {{ data_03 | default('') | trim }}
+          Status: {{ status_03 | default('UNKNOWN') | trim }}
+          Details: {{ details_03 | default('') | trim }}
+
+        REQUIREMENT 04 - {{ req_04 | default('Unknown') }}:
+          Task: {{ task_04_name | default('Not recorded') }}
+          Command: {{ task_04_cmd | default('N/A') }}
+          Exit code: {{ task_04_rc | default(-1) }}
+          Data: {{ data_04 | default('') | trim }}
+          Status: {{ status_04 | default('UNKNOWN') | trim }}
+          Details: {{ details_04 | default('') | trim }}
+
+        ========================================================
+        OVERALL COMPLIANCE:
+          Result: {{ cis_result | default('UNKNOWN') | trim }}
+        ========================================================
+  tags: [execute]
+  always:
+  - name: "Restore - Check if audit script should be removed"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/audit_script_existed.txt"
+    register: marker_stat
+    tags: [restore]
+
+  - name: "Restore - Read pre-existence status"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/audit_script_existed.txt"
+    register: marker_content
+    when: "marker_stat.stat.exists"
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if it was not present before execution"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - "marker_content is defined"
+    - "marker_content.content | b64decode | trim == 'False'"
+    tags: [restore]
+
+  - name: "Restore - Remove marker file"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/audit_script_existed.txt"
+      state: absent
+    tags: [restore]

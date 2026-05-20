@@ -1,0 +1,246 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_16.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Not collected"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "Not collected"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "Not collected"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_04: "Not collected"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_05: "Not collected"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+
+- name: "Req 01 - Check if OpenSSH server package is installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  changed_when: false
+
+- name: "Set sshd installation facts"
+  ansible.builtin.set_fact:
+    sshd_installed: "{{ sshd_package_name in (ansible_facts.packages | default({})) }}"
+    playbook_skipped: "{{ sshd_package_name not in (ansible_facts.packages | default({})) }}"
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check OpenSSH server installation"
+    task_01_cmd: "dpkg -l | grep openssh-server or rpm -q openssh-server (via package_facts)"
+    task_01_rc: "{{ 0 if sshd_installed | bool else 1 }}"
+    data_01: "{{ 'openssh-server is installed' if sshd_installed | bool else 'NOT_APPLICABLE - OpenSSH server not installed' }}"
+    status_01: "{{ 'PASS' if sshd_installed | bool else 'NOT_APPLICABLE' }}"
+    details_01: "{{ 'Package openssh-server found' if sshd_installed | bool else 'NOT_APPLICABLE – OpenSSH server not installed – audit not applicable' }}"
+
+    # -----------------------------------------------------------------
+    # Requirement 02 - Check global MaxAuthTries
+# -----------------------------------------------------------------
+- name: "Req 02 - Check global MaxAuthTries setting – extract numeric value"
+  ansible.builtin.shell: |
+    sshd -T | awk '/maxauthtries/{print $2; exit}'
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: "not playbook_skipped | bool"
+  failed_when: false
+  changed_when: false
+
+- name: "Store and evaluate requirement 02"
+  ansible.builtin.set_fact:
+    task_02_name: "Check global MaxAuthTries"
+    task_02_cmd: "sshd -T | grep maxauthtries (via awk)"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ (result_02.stdout | default('') | trim) or '-1' }}"
+    maxauth_global: "{{ (result_02.stdout | default('') | trim) or '-1' }}"
+  when: "not playbook_skipped | bool and result_02 is defined"
+
+- name: "Set requirement 02 status"
+  ansible.builtin.set_fact:
+    status_02: "{{ 'FAIL' if (maxauth_global | int > 4) or (maxauth_global | int == -1) else 'PASS' }}"
+    details_02: >-
+      {{
+        'MaxAuthTries is ' ~ maxauth_global ~ ' ' ~
+        ('(<=4)' if (maxauth_global | int <= 4 and maxauth_global | int != -1) else
+         ('(>4)' if maxauth_global | int > 4 else '(not set)'))
+      | trim }}
+  when: "not playbook_skipped | bool and maxauth_global is defined"
+
+- name: "Store requirement 02 details (sshd not installed)"
+  ansible.builtin.set_fact:
+    task_02_name: "Check global MaxAuthTries"
+    task_02_cmd: "sshd -T | grep maxauthtries"
+    task_02_rc: -1
+    data_02: "NOT_APPLICABLE - OpenSSH server not installed"
+    status_02: "NOT_APPLICABLE"
+    details_02: "NOT_APPLICABLE – OpenSSH server not installed – audit not applicable"
+  when: "playbook_skipped | bool"
+
+    # -----------------------------------------------------------------
+    # Requirement 03 - Check Match block MaxAuthTries for user sshuser
+# -----------------------------------------------------------------
+- name: "Req 03 - Detect Match blocks in sshd_config"
+  ansible.builtin.shell: grep -c '^Match' /etc/ssh/sshd_config 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: match_block_check
+  when: "not playbook_skipped | bool"
+  failed_when: false
+  changed_when: false
+
+- name: "Req 03 - Check MaxAuthTries for user sshuser in Match block – extract value"
+  ansible.builtin.shell: |
+    sshd -T -C user=sshuser | awk '/maxauthtries/{print $2; exit}'
+  args:
+    executable: /bin/bash
+  register: result_03
+  when:
+  - "not playbook_skipped | bool"
+  - "((match_block_check.stdout | default('0')) | int) > 0"
+  failed_when: false
+  changed_when: false
+
+- name: "Store and evaluate requirement 03 (Match block executed)"
+  ansible.builtin.set_fact:
+    task_03_name: "Check MaxAuthTries for user sshuser (Match block)"
+    task_03_cmd: "sshd -T -C user=sshuser | grep maxauthtries (via awk)"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    maxauth_match: "{{ result_03.stdout | default('') | trim }}"
+  when: "not playbook_skipped | bool and result_03 is defined and result_03 is not skipped"
+
+- name: "Set requirement 03 status"
+  ansible.builtin.set_fact:
+    status_03: >-
+      {{ ('PASS' if (maxauth_match | default('') | trim | length > 0 and maxauth_match | int <= 4) else 'FAIL') | trim }}
+    details_03: >-
+      {{ 
+        'MaxAuthTries is ' ~ maxauth_match ~
+        (' (<=4)' if (maxauth_match | default('') | trim | length > 0 and maxauth_match | int <= 4) else
+         (' (>4 or not set)' if maxauth_match | default('') | trim | length > 0 else ' (not set)'))
+      | trim }}
+  when: "not playbook_skipped | bool and maxauth_match is defined"
+
+- name: "Store requirement 03 details (no Match blocks present)"
+  ansible.builtin.set_fact:
+    task_03_name: "Check MaxAuthTries for user sshuser (Match block)"
+    task_03_cmd: "sshd -T -C user=sshuser | grep maxauthtries"
+    task_03_rc: -1
+    data_03: "SKIPPED - No Match blocks configured"
+    status_03: "SKIPPED"
+    details_03: "SKIPPED – No Match blocks configured – check not applicable"
+  when:
+  - "not playbook_skipped | bool"
+  - "((match_block_check.stdout | default('0')) | int) == 0"
+
+- name: "Store requirement 03 details (sshd not installed)"
+  ansible.builtin.set_fact:
+    task_03_name: "Check MaxAuthTries for user sshuser (Match block)"
+    task_03_cmd: "sshd -T -C user=sshuser | grep maxauthtries"
+    task_03_rc: -1
+    data_03: "NOT_APPLICABLE - OpenSSH server not installed"
+    status_03: "NOT_APPLICABLE"
+    details_03: "NOT_APPLICABLE – OpenSSH server not installed – audit not applicable"
+  when: "playbook_skipped | bool"
+
+    # -----------------------------------------------------------------
+    # Requirement 04 - Overall compliance
+# -----------------------------------------------------------------
+- name: "Req 04 - Determine overall compliance"
+  ansible.builtin.set_fact:
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "Overall compliance evaluation"
+    status_04: "{{ 'NOT_APPLICABLE' if playbook_skipped | bool else ('PASS' if (status_02 | default('UNKNOWN')) == 'PASS' and ((status_03 | default('UNKNOWN')) == 'PASS' or (status_03 | default('UNKNOWN')) == 'SKIPPED') else 'FAIL') | trim }}"
+    details_04: "{{ 'NOT_APPLICABLE – OpenSSH server not installed – audit not applicable' if playbook_skipped | bool else ('All applicable checks passed – MaxAuthTries is 4 or less' if (status_02 | default('UNKNOWN')) == 'PASS' and ((status_03 | default('UNKNOWN')) == 'PASS' or (status_03 | default('UNKNOWN')) == 'SKIPPED') else 'One or more checks failed or could not be evaluated') | trim }}"
+
+    # -----------------------------------------------------------------
+    # Requirement 05 - Store final audit result in cis_result
+# -----------------------------------------------------------------
+- name: "Req 05 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_04 | trim }}"
+    task_05_name: "Store final audit result in cis_result"
+    task_05_cmd: "set_fact cis_result: {{ status_04 | trim }}"
+    task_05_rc: 0
+    data_05: "{{ status_04 | trim }}"
+    status_05: "PASS"
+    details_05: "Stored final audit result variable cis_result"
+
+    # -----------------------------------------------------------------
+    # Final audit report
+# -----------------------------------------------------------------
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.16"
+    - "Reference: CIS Benchmark checkpoint 5.1.16"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

@@ -1,0 +1,232 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_2_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snap_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/{{ config_file | basename }}.present"
+    remote_src: true
+  when: _snap_config_stat.stat.exists
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    playbook_skipped: false
+  tags: [execute]
+- block:
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'auditd' in ansible_facts.packages or 'audit' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Store prerequisite check details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if auditd package is installed"
+      task_01_cmd: "package_facts module"
+      task_01_rc: 0
+      data_01: "{{ 'auditd installed: ' ~ auditd_installed | string }}"
+      status_01: "{{ 'PASS' if auditd_installed else 'SKIPPED' }}"
+      details_01: "{{ 'auditd package found, proceeding with remediation' if auditd_installed else 'auditd package not installed, skipping remediation' }}"
+      playbook_skipped: "{{ not auditd_installed }}"
+    tags: [execute]
+
+  - name: "Remove existing disk_full_action and disk_error_action lines"
+    ansible.builtin.replace:
+      path: "{{ config_file }}"
+      regexp: '^[[:space:]]*(disk_full_action|disk_error_action)[[:space:]]*=.*$'
+      replace: ''
+      backup: false
+    failed_when: false
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Req 02 - Ensure disk_full_action is set to {{ disk_full_action_value }}"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: '^disk_full_action[[:space:]]*={{ disk_full_action_value }}$'
+      line: "disk_full_action = {{ disk_full_action_value }}"
+      state: present
+      backup: false
+    register: result_02
+    failed_when: false
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Req 02 - Store disk_full_action details"
+    ansible.builtin.set_fact:
+      task_02_name: "Set disk_full_action to {{ disk_full_action_value }}"
+      task_02_cmd: |
+        lineinfile: regexp='^disk_full_action[[:space:]]*={{ disk_full_action_value }}$' line='disk_full_action = {{ disk_full_action_value }}'
+      task_02_rc: "{{ 0 if not result_02.failed | default(false) else 1 }}"
+      data_02: "{{ 'disk_full_action set to ' ~ disk_full_action_value if not result_02.failed | default(false) else result_02.msg | default('Unknown error') }}"
+      status_02: "{{ 'PASS' if not result_02.failed | default(false) else 'FAIL' }}"
+      details_02: "{{ 'Parameter updated successfully (duplicates removed before setting)' if not result_02.failed | default(false) else 'Failed to update parameter' }}"
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Req 03 - Ensure disk_error_action is set to {{ disk_error_action_value }}"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: '^disk_error_action[[:space:]]*={{ disk_error_action_value }}$'
+      line: "disk_error_action = {{ disk_error_action_value }}"
+      state: present
+      backup: false
+    register: result_03
+    failed_when: false
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Req 03 - Store disk_error_action details"
+    ansible.builtin.set_fact:
+      task_03_name: "Set disk_error_action to {{ disk_error_action_value }}"
+      task_03_cmd: |
+        lineinfile: regexp='^disk_error_action[[:space:]]*={{ disk_error_action_value }}$' line='disk_error_action = {{ disk_error_action_value }}'
+      task_03_rc: "{{ 0 if not result_03.failed | default(false) else 1 }}"
+      data_03: "{{ 'disk_error_action set to ' ~ disk_error_action_value if not result_03.failed | default(false) else result_03.msg | default('Unknown error') }}"
+      status_03: "{{ 'PASS' if not result_03.failed | default(false) else 'FAIL' }}"
+      details_03: "{{ 'Parameter updated successfully (duplicates removed before setting)' if not result_03.failed | default(false) else 'Failed to update parameter' }}"
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Req 04 - Verify disk_full_action and disk_error_action are set correctly"
+    ansible.builtin.shell:
+      cmd: |
+        grep -qx 'disk_full_action = {{ disk_full_action_value }}' {{ config_file }} && \
+        grep -qx 'disk_error_action = {{ disk_error_action_value }}' {{ config_file }}
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Req 04 - Store verification details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify disk_full_action and disk_error_action exact values"
+      task_04_cmd: "grep -qx 'disk_full_action = {{ disk_full_action_value }}' {{ config_file }} && grep -qx 'disk_error_action = {{ disk_error_action_value }}' {{ config_file }}"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if result_04.rc | default(-1) | int == 0 else 'FAIL' }}"
+      details_04: "{{ 'Both parameters set correctly' if result_04.rc | default(-1) | int == 0 else 'Parameters not set to required values (may contain duplicates or missing entries)' }}"
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Set cis_result variable"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'PASS' if status_04 | default('UNKNOWN') | trim == 'PASS' else 'FAIL' }}"
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.3.2.3"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 6.3.2.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/{{ config_file | basename }}.present"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/{{ config_file | basename }}.present"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

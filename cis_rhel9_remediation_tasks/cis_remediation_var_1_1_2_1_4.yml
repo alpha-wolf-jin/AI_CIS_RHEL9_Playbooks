@@ -1,0 +1,2 @@
+playbook_name: "CIS_1.1.2.1.4_noexec_tmp"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"

@@ -1,0 +1,105 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1_6.yml
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_pre_stat
+
+- name: "Snapshot - Create cleanup marker if script does not exist"
+  ansible.builtin.file:
+    path: "/tmp/.audit_squashfs_cleanup_marker"
+    state: touch
+    mode: '0644'
+  when: not script_pre_stat.stat.exists
+
+
+- block:
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Evaluate script execution status"
+    set_fact:
+      script_status: "{{ 'PASS' if audit_result.rc | default(-1) == 0 else 'FAIL' }}"
+
+  - name: "Req 02 - Summarize compliance status"
+    set_fact:
+      compliance_status: "{{ 'PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'INCONCLUSIVE') }}"
+      compliance_details: "{{ ('Audit passed: module not available or properly disabled' if '** PASS **' in audit_result.stdout | default('') else ('Audit failed: squashfs module is available and not properly disabled' if '** FAIL **' in audit_result.stdout | default('') else 'Unable to determine compliance from script output')) }}"
+
+  - name: "Req 03 - Store final audit result in cis_result"
+    set_fact:
+      cis_result: "{{ compliance_status }}"
+      cis_details: "{{ compliance_details }}"
+
+  - name: "Generate audit report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        AUDIT REPORT — CIS 1.1.1.6"
+      - "========================================================"
+      - ""
+      - "Reference: CIS Benchmark checkpoint 1.1.1.6"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Req 01 - Execute audit script"
+      - "  Command: /bin/bash {{ audit_script }}"
+      - "  Exit code: {{ audit_result.rc | default(-1) }}"
+      - "  Data:"
+      - "{{ audit_result.stdout | default('') | trim }}"
+      - "  Status: {{ script_status | default('UNKNOWN') | trim }}"
+      - "  Details: Script execution {{ 'succeeded' if script_status == 'PASS' else 'failed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Req 02 - Summarize compliance status"
+      - "  Command: Parsed audit script output"
+      - "  Exit code: N/A"
+      - "  Data: {{ compliance_details | default('') | trim }}"
+      - "  Status: {{ compliance_status | default('UNKNOWN') | trim }}"
+      - "  Details: {{ compliance_details | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Req 03 - Store cis_result"
+      - "  Command: set_fact cis_result = compliance_status"
+      - "  Exit code: N/A"
+      - "  Data: {{ cis_result | default('') | trim }}"
+      - "  Status: PASS"
+      - "  Details: cis_result stored as {{ cis_result | default('UNKNOWN') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ cis_details | default('Not evaluated') | trim }}"
+      - "========================================================"
+
+  always:
+  - name: "Restore - Check for cleanup marker"
+    ansible.builtin.stat:
+      path: "/tmp/.audit_squashfs_cleanup_marker"
+    register: marker_stat
+
+  - name: "Restore - Remove audit script if we created it"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: marker_stat.stat.exists | default(false)
+
+  - name: "Restore - Remove cleanup marker"
+    ansible.builtin.file:
+      path: "/tmp/.audit_squashfs_cleanup_marker"
+      state: absent
+    when: marker_stat.stat.exists | default(false)

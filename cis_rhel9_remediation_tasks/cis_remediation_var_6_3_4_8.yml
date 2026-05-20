@@ -1,0 +1,12 @@
+playbook_name: "cis_6_3_4_8"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for audit tools using command: `which chmod && which /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules`. Expected result: All paths exist and chmod is available."
+req_02: "Apply restrictive permissions to audit tools using command: `chmod go-w /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules`. Expected result: Group and others write permissions are removed from all specified audit tool binaries."
+req_03: "Verify audit tools mode is configured using command: `ls -l /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules`. Expected result: Each file shows permissions without 'w' for group and others (e.g., -rwxr-xr-x)."
+audit_tools:
+  - /sbin/auditctl
+  - /sbin/aureport
+  - /sbin/ausearch
+  - /sbin/autrace
+  - /sbin/auditd
+  - /sbin/augenrules

@@ -1,0 +1,7 @@
+req_01: "Check if sudo is installed using command: `which sudo`. Expected result: Path to sudo binary (e.g., /usr/bin/sudo)."
+req_02: |
+  Check the configured sudo authentication timestamp timeout using command: `grep -roP \"timestamp_timeout=\\K[0-9]*\" /etc/sudoers*`. Expected result: A numeric value (0-15) or no output if not configured.
+req_03: |
+  Check the default sudo authentication timestamp timeout using command: `sudo -V | grep \"Authentication timestamp timeout:\"`. Expected result: A line indicating the timeout in minutes (e.g., \"Authentication timestamp timeout: 5\").
+req_04: "Verify that the sudo authentication timeout is no more than 15 minutes (and not -1) using the results from the previous checks. Expected result: The timeout value is between 0 and 15 inclusive, and not -1."
+req_05: "Summarize overall compliance status: The sudo authentication timeout is correctly configured (≤15 minutes) or not. Expected result: Compliant or Non-compliant based on the checks."

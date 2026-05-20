@@ -1,0 +1,53 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_2_1.yml
+
+- name: "Req 1 - Check if ftp package is installed using rpm -q ftp"
+  ansible.builtin.shell: rpm -q ftp
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details and set overall compliance"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if ftp package is installed using rpm -q ftp"
+    task_01_cmd: "rpm -q ftp"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 1 else ('FAIL' if result_01.rc | default(-1) == 0 else 'ERROR') }}"
+    details_01: "{{ 'ftp client is not installed' if result_01.rc | default(-1) == 1 else ('ftp client is installed' if result_01.rc | default(-1) == 0 else 'Unable to determine') }}"
+    task_02_name: "Summarize overall compliance status"
+    task_02_cmd: "N/A"
+    task_02_rc: "0"
+    data_02: "Compliance status derived from requirement 01"
+    status_02: "{{ 'PASS' if result_01.rc | default(-1) == 1 else ('FAIL' if result_01.rc | default(-1) == 0 else 'ERROR') }}"
+    details_02: "{{ 'The system is compliant: ftp client is not installed' if result_01.rc | default(-1) == 1 else ('The system is non-compliant: ftp client is installed' if result_01.rc | default(-1) == 0 else 'Compliance status could not be determined') }}"
+    cis_result: "{{ 'PASS' if result_01.rc | default(-1) == 1 else ('FAIL' if result_01.rc | default(-1) == 0 else 'ERROR') }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.2.1"
+    - "Reference: CIS Benchmark checkpoint 2.2.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"

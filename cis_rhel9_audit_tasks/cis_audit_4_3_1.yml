@@ -1,0 +1,309 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_4_3_1.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "ERROR"
+    details_07: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+
+# Requirement 1 – Check nft availability
+- name: "Req 1 - Check if nftables utility is in use"
+  ansible.builtin.shell: "command -v nft"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check nftables utility installed"
+    task_01_cmd: "command -v nft"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('nft utility found at ' + (result_01.stdout | default('') | trim)) if result_01.rc | default(-1) == 0 else 'nft utility not found' | trim }}"
+    nft_available: "{{ result_01.rc | default(-1) == 0 }}"
+
+# Requirement 2 – Check firewalld status
+- name: "Req 2 - Check if Firewalld is in use"
+  ansible.builtin.shell: "systemctl is-active firewalld 2>/dev/null || echo 'inactive'"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check if Firewalld is active"
+    task_02_cmd: "systemctl is-active firewalld 2>/dev/null || echo 'inactive'"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ ('SKIP' if ('active' in result_02.stdout | default('') | trim) else 'PASS') | trim }}"
+    details_02: "{{ ('Firewalld is active - audit will be skipped' if ('active' in result_02.stdout | default('') | trim) else 'Firewalld is not active - proceed with audit') | trim }}"
+    skip_hooks: "{{ 'active' in result_02.stdout | default('') | trim }}"
+
+# Requirement 3 – INPUT hook
+- name: "Req 3 - Check if nftables base chain exists for INPUT filter hook"
+  ansible.builtin.shell: "nft list ruleset | grep 'hook input'"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when:
+  - nft_available | default(false)
+  - not (skip_hooks | default(false))
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check INPUT filter hook"
+    task_03_cmd: "nft list ruleset | grep 'hook input'"
+    task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined and not result_03.skipped else -1 }}"
+    data_03: "{{ result_03.stdout | default('') | trim if result_03 is defined and not result_03.skipped else '' }}"
+    status_03: >-
+      {%- if not (nft_available | default(false)) -%}
+        SKIP
+      {%- elif skip_hooks | default(false) -%}
+        SKIP
+      {%- elif result_03.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+    details_03: >-
+      {%- if not (nft_available | default(false)) -%}
+        nft utility not installed - check not applicable
+      {%- elif skip_hooks | default(false) -%}
+        Firewalld active – check skipped per audit procedure
+      {%- elif result_03.rc | default(-1) == 0 -%}
+        Base chain for INPUT filter hook found
+      {%- else -%}
+        Base chain for INPUT not found
+      {%- endif %}
+
+# Requirement 4 – FORWARD hook
+- name: "Req 4 - Check if nftables base chain exists for FORWARD filter hook"
+  ansible.builtin.shell: "nft list ruleset | grep 'hook forward'"
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when:
+  - nft_available | default(false)
+  - not (skip_hooks | default(false))
+
+- name: "Store requirement 04 details"
+  ansible.builtin.set_fact:
+    task_04_name: "Check FORWARD filter hook"
+    task_04_cmd: "nft list ruleset | grep 'hook forward'"
+    task_04_rc: "{{ result_04.rc | default(-1) if result_04 is defined and not result_04.skipped else -1 }}"
+    data_04: "{{ result_04.stdout | default('') | trim if result_04 is defined and not result_04.skipped else '' }}"
+    status_04: >-
+      {%- if not (nft_available | default(false)) -%}
+        SKIP
+      {%- elif skip_hooks | default(false) -%}
+        SKIP
+      {%- elif result_04.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+    details_04: >-
+      {%- if not (nft_available | default(false)) -%}
+        nft utility not installed - check not applicable
+      {%- elif skip_hooks | default(false) -%}
+        Firewalld active – check skipped per audit procedure
+      {%- elif result_04.rc | default(-1) == 0 -%}
+        Base chain for FORWARD filter hook found
+      {%- else -%}
+        Base chain for FORWARD not found
+      {%- endif %}
+
+# Requirement 5 – OUTPUT hook
+- name: "Req 5 - Check if nftables base chain exists for OUTPUT filter hook"
+  ansible.builtin.shell: "nft list ruleset | grep 'hook output'"
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when:
+  - nft_available | default(false)
+  - not (skip_hooks | default(false))
+
+- name: "Store requirement 05 details"
+  ansible.builtin.set_fact:
+    task_05_name: "Check OUTPUT filter hook"
+    task_05_cmd: "nft list ruleset | grep 'hook output'"
+    task_05_rc: "{{ result_05.rc | default(-1) if result_05 is defined and not result_05.skipped else -1 }}"
+    data_05: "{{ result_05.stdout | default('') | trim if result_05 is defined and not result_05.skipped else '' }}"
+    status_05: >-
+      {%- if not (nft_available | default(false)) -%}
+        SKIP
+      {%- elif skip_hooks | default(false) -%}
+        SKIP
+      {%- elif result_05.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+    details_05: >-
+      {%- if not (nft_available | default(false)) -%}
+        nft utility not installed - check not applicable
+      {%- elif skip_hooks | default(false) -%}
+        Firewalld active – check skipped per audit procedure
+      {%- elif result_05.rc | default(-1) == 0 -%}
+        Base chain for OUTPUT filter hook found
+      {%- else -%}
+        Base chain for OUTPUT not found
+      {%- endif %}
+
+# Requirement 6 – Summarize overall compliance
+- name: "Req 6 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    status_06: >-
+      {%- if not (nft_available | default(false)) -%}
+        SKIP
+      {%- elif skip_hooks | default(false) -%}
+        SKIP
+      {%- elif status_03 | trim == 'PASS' and status_04 | trim == 'PASS' and status_05 | trim == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+    details_06: >-
+      {%- if not (nft_available | default(false)) -%}
+        nftables utility not installed; no base chain checks performed
+      {%- elif skip_hooks | default(false) -%}
+        Firewalld is active; base chain checks skipped per audit procedure
+      {%- elif status_03 | trim == 'PASS' and status_04 | trim == 'PASS' and status_05 | trim == 'PASS' -%}
+        All required base chains exist
+      {%- else -%}
+        One or more base chains missing
+      {%- endif %}
+    task_06_name: "Summarize overall compliance"
+    task_06_cmd: "N/A"
+    task_06_rc: 0
+    data_06: ""
+
+# Requirement 7 – Store final audit result
+- name: "Req 7 - Store final audit result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_06 | default('ERROR') | trim }}"
+    status_07: "{{ status_06 | default('ERROR') | trim }}"
+    details_07: "Final audit result stored"
+    task_07_name: "Store final audit result"
+    task_07_cmd: "set_fact"
+    task_07_rc: 0
+    data_07: "{{ status_06 | default('ERROR') | trim }}"
+
+# Audit report
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 4.3.1"
+    - "Reference: CIS Benchmark checkpoint 4.3.1"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

@@ -1,0 +1,5 @@
+req_01: "Check if grubby is installed using command: command -v grubby. Expected result: path to binary."
+req_02: |
+  Check if audit=1 parameter is set in kernel command line using command: grubby --info=ALL | grep -Po '\\baudit=1\\b'. Expected result: audit=1
+req_03: "Summarize overall compliance: PASS if audit=1 found, SKIP if grubby not installed, FAIL otherwise."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact."

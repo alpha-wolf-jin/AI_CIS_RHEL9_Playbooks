@@ -1,0 +1,8 @@
+playbook_name: "cis_6_3_4_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+auditd_conf: "/etc/audit/auditd.conf"
+req_01: "Apply prerequisite check for auditd configuration file using command: `[ -f /etc/audit/auditd.conf ]`. Expected result: File exists and command returns exit code 0."
+req_02: |
+  Apply ownership change to root for audit log files using command: `find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' /etc/audit/auditd.conf | xargs))\" -type f ! -user root -exec chown root {} +`. Expected result: All audit log files are owned by root user.
+req_03: |
+  Verify audit log files owner is root using command: `find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' /etc/audit/auditd.conf | xargs))\" -type f ! -user root`. Expected result: No output (all files are owned by root).

@@ -1,0 +1,104 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_1_6.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Check if shadow-utils package is installed"
+  ansible.builtin.set_fact:
+    prerequisite_met: "{{ 'shadow-utils' in ansible_facts.packages }}"
+    skip_reason: "shadow-utils package not installed"
+  failed_when: false
+
+- name: "Req 01 - Run audit script"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ audit_script_content }}"
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: prerequisite_met | default(false)
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Run audit script"
+    task_01_cmd: "/bin/bash with stdin containing audit script"
+    task_01_rc: "{{ result_01.rc | default(-1) if result_01 is defined else -1 }}"
+    data_01: "{{ result_01.stdout | default('') | trim if result_01 is defined else 'N/A' }}"
+    status_01: >-
+      {%- if not (prerequisite_met | default(false)) -%}
+        SKIPPED
+      {%- elif result_01.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_01: >-
+      {%- if not (prerequisite_met | default(false)) -%}
+        shadow-utils package not installed
+      {%- elif result_01.rc | default(-1) == 0 -%}
+        Script executed successfully
+      {%- else -%}
+        Script execution failed (rc={{ result_01.rc | default(-1) }})
+      {%- endif -%}
+  failed_when: false
+
+- name: "Req 02 - Evaluate compliance"
+  ansible.builtin.set_fact:
+    task_02_name: "Evaluate compliance from audit script output"
+    task_02_cmd: "Check if script output is empty"
+    task_02_rc: "{{ result_01.rc | default(-1) if result_01 is defined else -1 }}"
+    data_02: "{{ result_01.stdout | default('') | trim if result_01 is defined else 'N/A' }}"
+    status_02: >-
+      {%- if not (prerequisite_met | default(false)) -%}
+        NOT_APPLICABLE
+      {%- elif (result_01.stdout | default('') | trim) | length == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not (prerequisite_met | default(false)) -%}
+        shadow-utils package not installed; cannot perform audit
+      {%- elif (result_01.stdout | default('') | trim) | length == 0 -%}
+        All users last password change dates are in the past (no future dates)
+      {%- else -%}
+        Future password change dates found for some users
+      {%- endif -%}
+  failed_when: false
+
+- name: "Set cis_result for final compliance status"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.4.1.6"
+    - "Reference: CIS Benchmark checkpoint 5.4.1.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ details_02 }}"
+    - "========================================================"

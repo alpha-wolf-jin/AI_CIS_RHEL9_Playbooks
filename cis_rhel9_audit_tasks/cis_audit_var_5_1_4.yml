@@ -1,0 +1,7 @@
+req_01: "Check if OpenSSH server is installed using command: `dpkg -l | grep -q openssh-server || rpm -q openssh-server 2>/dev/null`. Expected result: package is installed."
+req_02: "Check if sshd is running using command: `systemctl is-active sshd 2>/dev/null || service sshd status 2>/dev/null`. Expected result: service is active."
+req_03: |
+  Check that no weak ciphers are configured in sshd using command: `sshd -T | grep -Pi -- '^ciphers\\h+\\\"?([^#\\n\\r]+,)?((3des|blowfish|cast128|aes(128|192|256))-cbc|arcfour(128|256)?|rijndael-cbc@lysator\\.liu\\.se|chacha20-poly1305@openssh\\.com)\\b'`. Expected result: no output (empty).
+req_04: "If the previous command returns chacha20-poly1305@openssh.com, verify system is patched for CVE-2023-48795 using command: `sshd -T | grep -i 'chacha20-poly1305@openssh.com'`. Expected result: if present, confirm patch status per site policy."
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if OpenSSH server is not installed, FAIL if weak ciphers are found or chacha20-poly1305 is present without patching."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

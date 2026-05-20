@@ -1,0 +1,140 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_4_1_2.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  register: pkg_facts
+  failed_when: false
+  changed_when: false
+
+- name: "Set firewall_packages_installed fact"
+  ansible.builtin.set_fact:
+    firewall_packages_installed: >-
+      {{ ('firewalld' in ansible_facts.packages.keys() | default([])) or
+         ('nftables' in ansible_facts.packages.keys() | default([])) }}
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "{{ 'No firewall packages installed' if not firewall_packages_installed | bool else 'Not collected yet' }}"
+    status_01: "{{ 'SKIP' if not firewall_packages_installed | bool else 'ERROR' }}"
+    details_01: "{{ 'No firewall packages (firewalld/nftables) installed; audit not applicable' if not firewall_packages_installed | bool else 'Not evaluated' }}"
+    data_02: "{{ 'No firewall packages installed' if not firewall_packages_installed | bool else 'Not collected yet' }}"
+    status_02: "{{ 'SKIP' if not firewall_packages_installed | bool else 'ERROR' }}"
+    details_02: "{{ 'No firewall packages installed; audit not applicable' if not firewall_packages_installed | bool else 'Not evaluated' }}"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- block:
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+    when: firewall_packages_installed | bool
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    when: firewall_packages_installed | bool
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute CIS 4.1.2 audit script"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) if firewall_packages_installed | bool else -1 }}"
+      data_01: "{{ result_01.stdout | default('') | trim if firewall_packages_installed | bool else 'No firewall packages installed' }}"
+      status_01: >-
+        {{ ('SKIP' if not firewall_packages_installed | bool
+            else ('PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL')) | trim }}
+      details_01: >-
+        {{ ('No firewall packages (firewalld/nftables) installed; audit not applicable' if not firewall_packages_installed | bool
+            else ('Script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Script execution failed with rc=' + (result_01.rc | default(-1) | string))) | trim }}
+    when: firewall_packages_installed | bool
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify compliance from audit script output"
+      task_02_cmd: "Check for '** Pass **' in audit script output"
+      task_02_rc: >-
+        {{ (1 if firewall_packages_installed | bool and '** Pass **' not in (result_01.stdout | default('')) else 0) | int }}
+      data_02: >-
+        {{ (result_01.stdout | default('') | trim if firewall_packages_installed | bool else 'No firewall packages installed') }}
+      status_02: >-
+        {{ ('SKIP' if not firewall_packages_installed | bool
+            else ('PASS' if '** Pass **' in (result_01.stdout | default('')) else 'FAIL')) | trim }}
+      details_02: >-
+        {{ ('No firewall packages installed; audit not applicable' if not firewall_packages_installed | bool
+            else ('Compliant: a single firewall utility is in use' if '** Pass **' in (result_01.stdout | default(''))
+            else 'Non-compliant: multiple or no firewall utilities properly configured')) | trim }}
+    when: firewall_packages_installed | bool
+
+  - name: "Store requirement 03 details - set cis_result"
+    ansible.builtin.set_fact:
+      task_03_name: "Set cis_result from compliance status"
+      task_03_cmd: "set_fact based on status_02"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "{{ status_02 | default('ERROR') | trim }}"
+      details_03: "{{ ('Overall compliance: ' + (status_02 | default('ERROR') | trim)) | trim }}"
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+
+  always:
+  - name: "Cleanup - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    failed_when: false
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 4.1.2"
+    - "Reference: CIS Benchmark checkpoint 4.1.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

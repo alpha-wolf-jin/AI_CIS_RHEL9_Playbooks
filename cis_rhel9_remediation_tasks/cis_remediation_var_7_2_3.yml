@@ -1,0 +1,10 @@
+playbook_name: "cis_7_2_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for awk and cut using command: `which awk && which cut`. Expected result: Paths to awk and cut are displayed."
+req_02: |
+  Apply identification of groups in /etc/passwd not in /etc/group using command: `awk -F: '{print $4}' /etc/passwd | sort -u | while read gid; do if ! cut -d: -f3 /etc/group | grep -qx \"${gid}\"; then echo \"Missing GID: ${gid}\"; fi; done`. Expected result: List of GIDs that exist in /etc/passwd but not in /etc/group.
+req_03: |
+  Apply creation of missing groups using command: `for gid in $(awk -F: '{print $4}' /etc/passwd | sort -u | while read gid; do if ! cut -d: -f3 /etc/group | grep -qx \"${gid}\"; then echo \"${gid}\"; fi; done); do groupadd -g \"${gid}\" \"group_${gid}\"; done`. Expected result: Each missing GID is added to /etc/group with a placeholder group name (e.g., group_<GID>).
+req_04: |
+  Apply verification that all groups in /etc/passwd exist in /etc/group using command: `awk -F: '{print $4}' /etc/passwd | sort -u | while read gid; do if ! cut -d: -f3 /etc/group | grep -qx \"${gid}\"; then echo \"FAIL: GID ${gid} missing\"; fi; done; echo \"VERIFY: All groups in /etc/passwd exist in /etc/group\"`. Expected result: Output shows 'VERIFY: All groups in /etc/passwd exist in /etc/group' with no FAIL lines.
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

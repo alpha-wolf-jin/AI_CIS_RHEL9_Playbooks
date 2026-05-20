@@ -1,0 +1,178 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_2_6.yml
+
+- name: "Req 01 - Check if sudo is installed"
+  ansible.builtin.shell:
+    cmd: which sudo
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store sudo installation status"
+  ansible.builtin.set_fact:
+    sudo_installed: "{{ result_01.rc == 0 }}"
+
+- name: "Req 02 - Check configured sudo authentication timestamp timeout"
+  ansible.builtin.shell:
+    cmd: |
+      grep -roP "timestamp_timeout=\K[0-9]*" /etc/sudoers*
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "sudo_installed | bool"
+
+- name: "Req 03 - Check default sudo authentication timestamp timeout"
+  ansible.builtin.shell:
+    cmd: |
+      sudo -V | grep "Authentication timestamp timeout:"
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "sudo_installed | bool"
+
+- name: "Compute compliance statuses"
+  ansible.builtin.set_fact:
+    status_01: "{{ 'PASS' if (result_01.rc | default(1) == 0) else 'FAIL' }}"
+    details_01: "{{ ('Sudo found at ' ~ (result_01.stdout | trim)) if (result_01.rc | default(1) == 0) else 'Sudo not installed' }}"
+    status_02: "{{ 'NOT_APPLICABLE' if not (sudo_installed | bool) else ('PASS' if (result_02.rc | default(2) <= 1) else 'FAIL') }}"
+    details_02: >-
+      {% filter trim %}
+      {% if not (sudo_installed | bool) %}Sudo not installed
+      {% elif result_02.rc | default(2) == 0 %}Found: {{ result_02.stdout | trim }}
+      {% elif result_02.rc | default(2) == 1 %}No configured timestamp_timeout found
+      {% else %}Error executing grep
+      {% endif %}
+      {% endfilter %}
+    status_03: "{{ 'NOT_APPLICABLE' if not (sudo_installed | bool) else ('PASS' if (result_03.rc | default(2) <= 1) else 'FAIL') }}"
+    details_03: >-
+      {% filter trim %}
+      {% if not (sudo_installed | bool) %}Sudo not installed
+      {% elif result_03.rc | default(2) == 0 %}Default timeout: {{ result_03.stdout | trim }}
+      {% elif result_03.rc | default(2) == 1 %}Could not extract default timeout
+      {% else %}Error executing sudo -V
+      {% endif %}
+      {% endfilter %}
+    status_04: >-
+      {% filter trim %}
+      {% if not (sudo_installed | bool) %}NOT_APPLICABLE
+      {% else %}
+        {% set configured = result_02.stdout | default('') | trim %}
+        {% set default_line = result_03.stdout | default('') %}
+        {% set default_val = default_line | regex_replace('^.*Authentication timestamp timeout:\s*(\d+).*$', '\\1') %}
+        {% set effective = configured if (configured | length > 0) else (default_val if default_val | default('') != '' else '') %}
+        {% if effective == '' %}UNKNOWN
+        {% elif effective | int == -1 or (effective | int > 15) %}FAIL
+        {% else %}PASS
+        {% endif %}
+      {% endif %}
+      {% endfilter %}
+    details_04: >-
+      {% filter trim %}
+      {% if not (sudo_installed | bool) %}Sudo not installed
+      {% else %}
+        {% set configured = result_02.stdout | default('') | trim %}
+        {% set default_line = result_03.stdout | default('') %}
+        {% set default_val = default_line | regex_replace('^.*Authentication timestamp timeout:\s*(\d+).*$', '\\1') %}
+        {% set effective = configured if (configured | length > 0) else (default_val if default_val | default('') != '' else '') %}
+        {% if effective == '' %}Unable to determine timeout value
+        {% elif effective | int == -1 %}Timeout is disabled (-1), not allowed
+        {% elif effective | int > 15 %}Timeout {{ effective }} exceeds 15 minutes
+        {% else %}Timeout {{ effective }} is within limits (<=15, not -1)
+        {% endif %}
+      {% endif %}
+      {% endfilter %}
+    status_05: >-
+      {% filter trim %}
+      {% if not (sudo_installed | bool) %}Not applicable
+      {% else %}
+        {% set configured = result_02.stdout | default('') | trim %}
+        {% set default_line = result_03.stdout | default('') %}
+        {% set default_val = default_line | regex_replace('^.*Authentication timestamp timeout:\s*(\d+).*$', '\\1') %}
+        {% set effective = configured if (configured | length > 0) else (default_val if default_val | default('') != '' else '') %}
+        {% if effective == '' %}UNKNOWN
+        {% elif effective | int == -1 or (effective | int > 15) %}Non-compliant
+        {% else %}Compliant
+        {% endif %}
+      {% endif %}
+      {% endfilter %}
+    details_05: >-
+      {% filter trim %}
+      {% if not (sudo_installed | bool) %}Sudo not installed
+      {% else %}
+        {% set configured = result_02.stdout | default('') | trim %}
+        {% set default_line = result_03.stdout | default('') %}
+        {% set default_val = default_line | regex_replace('^.*Authentication timestamp timeout:\s*(\d+).*$', '\\1') %}
+        {% set effective = configured if (configured | length > 0) else (default_val if default_val | default('') != '' else '') %}
+        {% if effective == '' %}Unable to determine compliance status
+        {% elif effective | int == -1 %}Sudo authentication timeout is disabled, non-compliant
+        {% elif effective | int > 15 %}Sudo authentication timeout is {{ effective }} minutes (exceeds 15), non-compliant
+        {% else %}Sudo authentication timeout is {{ effective }} minutes, compliant
+        {% endif %}
+      {% endif %}
+      {% endfilter %}
+
+- name: "Set cis_result for final compliance status"
+  ansible.builtin.set_fact:
+    cis_result: >-
+      {%- if status_05 == 'Compliant' -%}PASS
+      {%- elif status_05 == 'Non-compliant' -%}FAIL
+      {%- elif status_05 == 'Not applicable' -%}SKIPPED
+      {%- elif status_05 == 'UNKNOWN' -%}UNKNOWN
+      {%- else -%}UNKNOWN
+      {%- endif -%}
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.2.6"
+    - "Reference: CIS Benchmark checkpoint 5.2.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Req 01 - Check if sudo is installed"
+    - "  Command: which sudo"
+    - "  Exit code: {{ result_01.rc | default(-1) }}"
+    - "  Data: {{ result_01.stdout | default('') | trim }}"
+    - "  Status: {{ status_01 | trim }}"
+    - "  Details: {{ details_01 | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Req 02 - Check configured sudo authentication timestamp timeout"
+    - "  Command: grep -roP \"timestamp_timeout=\\K[0-9]*\" /etc/sudoers*"
+    - "  Exit code: {{ result_02.rc | default(-1) }}"
+    - "  Data: {{ result_02.stdout | default('') | trim }}"
+    - "  Status: {{ status_02 | trim }}"
+    - "  Details: {{ details_02 | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Req 03 - Check default sudo authentication timestamp timeout"
+    - "  Command: sudo -V | grep \"Authentication timestamp timeout:\""
+    - "  Exit code: {{ result_03.rc | default(-1) }}"
+    - "  Data: {{ result_03.stdout | default('') | trim }}"
+    - "  Status: {{ status_03 | trim }}"
+    - "  Details: {{ details_03 | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Req 04 - Verify sudo authentication timeout is within allowed range"
+    - "  Command: N/A (evaluation)"
+    - "  Exit code: 0"
+    - "  Data: N/A"
+    - "  Status: {{ status_04 | trim }}"
+    - "  Details: {{ details_04 | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: Req 05 - Summarize overall compliance status"
+    - "  Command: N/A (evaluation)"
+    - "  Exit code: 0"
+    - "  Data: N/A"
+    - "  Status: {{ status_05 | trim }}"
+    - "  Details: {{ details_05 | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ details_05 | trim }}"
+    - "========================================================"

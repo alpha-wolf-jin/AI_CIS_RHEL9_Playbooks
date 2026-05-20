@@ -1,0 +1,9 @@
+playbook_name: "cis_7_1_13_suid_sgid_review"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check that prerequisite software (e.g., find, stat, awk) is available using command: `which find && which stat && which awk`. Expected result: Paths to each utility are printed."
+req_02: |
+  Review all SUID and SGID files on the system using command: `find / -type f \\( -perm -4000 -o -perm -2000 \\) -exec ls -la {} \\; 2>/dev/null`. Expected result: A list of files with SUID or SGID permissions set.
+req_03: |
+  Confirm the integrity of each listed binary by comparing its hash against a known good baseline or package manager database using command: `for f in $(find / -type f \\( -perm -4000 -o -perm -2000 \\) 2>/dev/null); do sha256sum \"$f\"; done`. Expected result: SHA256 hashes for all SUID/SGID files.
+req_04: |
+  Verify that no unauthorized or unexpected SUID/SGID files remain after remediation using command: `find / -type f \\( -perm -4000 -o -perm -2000 \\) 2>/dev/null | wc -l`. Expected result: The count matches the expected baseline of authorized SUID/SGID binaries.

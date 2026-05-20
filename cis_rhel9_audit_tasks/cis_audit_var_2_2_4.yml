@@ -1,0 +1,2 @@
+req_01: "Check if telnet client package is installed using command: `rpm -q telnet`. Expected result: package telnet is not installed"
+req_02: "Summarize overall compliance status: telnet client is not installed, meeting the requirement."

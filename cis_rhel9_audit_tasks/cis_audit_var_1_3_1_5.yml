@@ -1,0 +1,4 @@
+req_01: "Check if SELinux is installed using command: `which getenforce`. Expected result: path to getenforce binary"
+req_02: "Check the current SELinux mode using command: `getenforce`. Expected result: Enforcing"
+req_03: "Check the configured SELinux mode in /etc/selinux/config using command: `grep -i SELINUX=enforcing /etc/selinux/config`. Expected result: SELINUX=enforcing"
+req_04: "Summarize overall compliance: SELinux mode is enforcing both currently and in configuration."

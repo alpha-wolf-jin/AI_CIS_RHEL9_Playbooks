@@ -1,0 +1,355 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_22.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "ERROR"
+    details_07: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+
+- name: "Req 01 - Check if ss command is available"
+  shell: "which ss"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if ss command is available"
+    task_01_cmd: "which ss"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc == 0 else 'SKIP') | trim }}"
+    details_01: "{{ 'ss binary found at ' + (result_01.stdout | trim) if result_01.rc == 0 else 'ss command not found; audit cannot proceed' }}"
+    ss_available: "{{ result_01.rc == 0 }}"
+
+- name: "Check if approved services list file exists"
+  stat:
+    path: "{{ approved_services_list_path }}"
+  register: approved_list_stat
+  failed_when: false
+
+- name: "Req 02 - Check all listening TCP and UDP services"
+  shell: "ss -plntu"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  when: ss_available | bool
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check all listening TCP and UDP services"
+    task_02_cmd: "ss -plntu"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: >-
+      {%- if not ss_available -%}
+        SKIP
+      {%- elif result_02 is defined and result_02.rc == 0 and not (result_02.skipped | default(false)) -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not ss_available -%}
+        Skipped: ss command not available
+      {%- elif result_02 is defined and result_02.rc == 0 and not (result_02.skipped | default(false)) -%}
+        Command executed successfully
+      {%- else -%}
+        Command failed
+      {%- endif -%}
+
+- name: "Req 03 - Check that all listed services match approved service list (formatted output with comparison)"
+  shell: "ss -plntu | awk 'NR>1 {print $1, $4, $5, $7}' | grep -v -f {{ approved_services_list_path }}"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  when:
+  - ss_available | bool
+  - approved_list_stat.stat.exists | default(false)
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check that all listed services match approved service list (formatted output with comparison)"
+    task_03_cmd: "ss -plntu | awk 'NR>1 {print $1, $4, $5, $7}' | grep -v -f {{ approved_services_list_path }}"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: >-
+      {%- if not (ss_available | bool) -%}
+        SKIP
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        SKIP
+      {%- elif result_03 is defined and result_03.rc == 1 and (result_03.stdout | default('') | trim) == '' -%}
+        PASS
+      {%- elif result_03 is defined and result_03.rc == 0 -%}
+        FAIL
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_03: >-
+      {%- if not (ss_available | bool) -%}
+        Skipped: ss command not available
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        Skipped: Approved services list file {{ approved_services_list_path }} does not exist
+      {%- elif result_03 is defined and result_03.rc == 1 and (result_03.stdout | default('') | trim) == '' -%}
+        All listed services are approved
+      {%- elif result_03 is defined and result_03.rc == 0 -%}
+        Unapproved services detected: {{ result_03.stdout | trim }}
+      {%- else -%}
+        Unknown error checking services approval
+      {%- endif -%}
+
+- name: "Req 04 - Check port and interface combinations approval (formatted output with comparison)"
+  shell: "ss -plntu | awk 'NR>1 {print $4, $5}' | grep -v -f {{ approved_services_list_path }}"
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  when:
+  - ss_available | bool
+  - approved_list_stat.stat.exists | default(false)
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Check port and interface combinations approval (formatted output with comparison)"
+    task_04_cmd: "ss -plntu | awk 'NR>1 {print $4, $5}' | grep -v -f {{ approved_services_list_path }}"
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: >-
+      {%- if not (ss_available | bool) -%}
+        SKIP
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        SKIP
+      {%- elif result_04 is defined and result_04.rc == 1 and (result_04.stdout | default('') | trim) == '' -%}
+        PASS
+      {%- elif result_04 is defined and result_04.rc == 0 -%}
+        FAIL
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_04: >-
+      {%- if not (ss_available | bool) -%}
+        Skipped: ss command not available
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        Skipped: Approved services list file {{ approved_services_list_path }} does not exist
+      {%- elif result_04 is defined and result_04.rc == 1 and (result_04.stdout | default('') | trim) == '' -%}
+        All port/interface combinations are approved
+      {%- elif result_04 is defined and result_04.rc == 0 -%}
+        Unapproved port/interface combinations detected: {{ result_04.stdout | trim }}
+      {%- else -%}
+        Unknown error checking port/interface approval
+      {%- endif -%}
+
+- name: "Req 05 - Check for unapproved services using approved list"
+  shell: "ss -plntu | grep -v -f {{ approved_services_list_path }}"
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  when:
+  - ss_available | bool
+  - approved_list_stat.stat.exists | default(false)
+
+- name: "Store requirement 05 details"
+  set_fact:
+    task_05_name: "Check for unapproved services using approved list"
+    task_05_cmd: "ss -plntu | grep -v -f {{ approved_services_list_path }}"
+    task_05_rc: "{{ result_05.rc | default(-1) }}"
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+    status_05: >-
+      {%- if not (ss_available | bool) -%}
+        SKIP
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        SKIP
+      {%- elif result_05 is defined and result_05.rc == 1 and (result_05.stdout | default('') | trim) == '' -%}
+        PASS
+      {%- elif result_05 is defined and result_05.rc == 0 -%}
+        FAIL
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_05: >-
+      {%- if not (ss_available | bool) -%}
+        Skipped: ss command not available
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        Skipped: Approved services list file {{ approved_services_list_path }} does not exist
+      {%- elif result_05 is defined and result_05.rc == 1 and (result_05.stdout | default('') | trim) == '' -%}
+        No unapproved services found
+      {%- elif result_05 is defined and result_05.rc == 0 -%}
+        Unapproved services detected: {{ result_05.stdout | trim }}
+      {%- else -%}
+        Unknown error checking unapproved services
+      {%- endif -%}
+
+- name: "Req 06 - Summarize overall compliance status (part 1: compute overall_compliance)"
+  set_fact:
+    overall_compliance: >-
+      {%- if not (ss_available | bool) -%}
+        SKIP
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        SKIP
+      {%- elif status_03 == 'FAIL' or status_04 == 'FAIL' or status_05 == 'FAIL' -%}
+        FAIL
+      {%- elif status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' -%}
+        PASS
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    task_06_name: "Summarize overall compliance status"
+    task_06_cmd: "N/A"
+    task_06_rc: 0
+    status_06: >-
+      {%- if not (ss_available | bool) -%}
+        SKIP
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        SKIP
+      {%- elif status_03 == 'FAIL' or status_04 == 'FAIL' or status_05 == 'FAIL' -%}
+        FAIL
+      {%- elif status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' -%}
+        PASS
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_06: >-
+      {%- if not (ss_available | bool) -%}
+        Skipped: ss command not available
+      {%- elif not (approved_list_stat.stat.exists | default(false)) -%}
+        Skipped: Approved services list file {{ approved_services_list_path }} does not exist
+      {%- elif status_03 == 'FAIL' or status_04 == 'FAIL' or status_05 == 'FAIL' -%}
+        Unapproved services or port/interface combinations present
+      {%- elif status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' -%}
+        All services and interfaces are approved
+      {%- else -%}
+        Unable to determine compliance due to missing data or errors
+      {%- endif -%}
+  failed_when: false
+
+- name: "Req 06 - Summarize overall compliance status (part 2: set data_06 from overall_compliance)"
+  set_fact:
+    data_06: "{{ overall_compliance | default('') | trim }}"
+  failed_when: false
+
+- name: "Req 07 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ overall_compliance | default('ERROR') | trim }}"
+    task_07_name: "Store final audit result in cis_result"
+    task_07_cmd: "set_fact cis_result"
+    task_07_rc: 0
+    status_07: "PASS"
+    details_07: "Final result stored"
+  failed_when: false
+
+- name: "Populate data_07 with cis_result for audit report"
+  set_fact:
+    data_07: "{{ cis_result }}"
+  failed_when: false
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.22"
+    - "Reference: CIS Benchmark checkpoint 2.1.22"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

@@ -1,0 +1,3 @@
+req_01: "Check if auditd packages are installed using command: `rpm -q audit audit-libs`. Expected result: audit-<version> and audit-libs-<version> are displayed."
+req_02: "Verify that the output from the previous command shows both audit and audit-libs packages with version numbers. Expected result: Both packages are listed with their respective versions."
+req_03: "Summarize overall compliance status: If both packages are installed, the system is compliant; otherwise, it is non-compliant."

@@ -1,0 +1,210 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_18.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    sshd_installed: false
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "SKIPPED"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "SKIPPED"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "SKIPPED"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_05: "Not calculated"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check if OpenSSH server is installed"
+  ansible.builtin.shell: "dpkg -l | grep -i openssh-server || rpm -q openssh-server"
+  args:
+    executable: /bin/bash
+  register: result_01_pkg
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    sshd_installed: "{{ result_01_pkg.rc == 0 }}"
+    data_01: "{{ result_01_pkg.stdout | default('') | trim }}"
+    task_01_name: "Check if OpenSSH server is installed"
+    task_01_cmd: "dpkg -l | grep -i openssh-server || rpm -q openssh-server"
+    task_01_rc: "{{ result_01_pkg.rc | default(-1) }}"
+    status_01: "{{ 'PASS' if result_01_pkg.rc == 0 else 'SKIP' }}"
+    details_01: "{{ 'OpenSSH server package is installed' if result_01_pkg.rc == 0 else 'OpenSSH server not installed, audit not applicable' }}"
+
+- name: "Req 02 - Check MaxSessions running config"
+  ansible.builtin.shell: "sshd -T | grep -i maxsessions"
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: sshd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    task_02_name: "Check MaxSessions in running SSH daemon config"
+    task_02_cmd: "sshd -T | grep -i maxsessions"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    status_02: >-
+      {%- set raw = result_02.stdout | default('') | trim -%}
+      {%- set val = raw | split() | last | int if raw != '' else -1 -%}
+      {{ 'PASS' if val >= 0 and val <= 10 else 'FAIL' }}
+    details_02: >-
+      {%- set raw = result_02.stdout | default('') | trim -%}
+      {%- set val = raw | split() | last | int if raw != '' else -1 -%}
+      {%- if val >= 0 and val <= 10 -%}
+        MaxSessions is {{ val }} – compliant
+      {%- else -%}
+        MaxSessions not set to ≤10 or not found
+      {%- endif -%}
+  when: sshd_installed | bool
+
+- name: "Req 03 - Check MaxSessions values >10 in files"
+  ansible.builtin.shell: |
+    grep -Psi -- '^\h*MaxSessions\h+\"?(1[1-9]|[2-9][0-9]|[1-9][0-9][0-9]+)\b' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: sshd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    task_03_name: "Check for MaxSessions >10 in SSH config files"
+    task_03_cmd: |
+      grep -Psi -- '^\h*MaxSessions\h+\"?(1[1-9]|[2-9][0-9]|[1-9][0-9][0-9]+)\b' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    status_03: "{{ 'PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL' }}"
+    details_03: "{{ 'No MaxSessions >10 found' if (result_03.stdout | default('') | trim) == '' else 'Invalid MaxSessions values detected' }}"
+  when: sshd_installed | bool
+
+- name: "Req 04 - Check MaxSessions for Match blocks"
+  ansible.builtin.shell: |
+    if grep -Psi -- '^\s*Match\b' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf >/dev/null 2>&1; then
+      sshd -T -C user=sshuser | grep -i maxsessions
+    else
+      echo 'maxsessions 10'
+    fi
+  args:
+    executable: /bin/bash
+  register: result_04
+  when: sshd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 04 details"
+  ansible.builtin.set_fact:
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    task_04_name: "Check MaxSessions for user=sshuser in Match blocks"
+    task_04_cmd: |
+      if grep -Psi -- '^\s*Match\b' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf >/dev/null 2>&1; then sshd -T -C user=sshuser | grep -i maxsessions; else echo 'maxsessions 10'; fi
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    status_04: >-
+      {%- set raw = result_04.stdout | default('') | trim -%}
+      {%- set val = raw | split() | last | int if raw != '' else -1 -%}
+      {{ 'PASS' if val >= 0 and val <= 10 else 'FAIL' }}
+    details_04: >-
+      {%- set raw = result_04.stdout | default('') | trim -%}
+      {%- set val = raw | split() | last | int if raw != '' else -1 -%}
+      {%- if val >= 0 and val <= 10 -%}
+        MaxSessions for Match user=sshuser is {{ val }} – compliant
+      {%- else -%}
+        MaxSessions for Match user=sshuser invalid or not found
+      {%- endif -%}
+  when: sshd_installed | bool
+
+- name: "Compute overall compliance"
+  ansible.builtin.set_fact:
+    status_05: >-
+      {{ 'SKIP' if not (sshd_installed | bool)
+         else 'PASS' if (status_02 | trim == 'PASS' and status_03 | trim == 'PASS' and status_04 | trim == 'PASS')
+         else 'FAIL' }}
+    details_05: >-
+      {{ 'OpenSSH server not installed – audit not applicable' if not (sshd_installed | bool)
+         else 'All checks passed' if (status_02 | trim == 'PASS' and status_03 | trim == 'PASS' and status_04 | trim == 'PASS')
+         else 'One or more checks failed' }}
+    task_05_name: "Summarize overall compliance"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "See individual requirements"
+
+- name: "Store cis_result variable"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_05 | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.18"
+    - "Reference: CIS Benchmark checkpoint 5.1.18"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

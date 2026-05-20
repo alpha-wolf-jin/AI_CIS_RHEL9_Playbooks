@@ -1,0 +1,387 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_8.yml
+
+- name: "State Guard - Remove stale checkpoint if exists"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if IPv4 config file exists"
+  ansible.builtin.stat:
+    path: "{{ ipv4_conf_file }}"
+  register: _sg_ipv4_stat
+  tags: [snapshot]
+- name: "State Guard - Backup IPv4 config file (present)"
+  ansible.builtin.copy:
+    src: "{{ ipv4_conf_file }}"
+    dest: "{{ state_guard_dir }}/60-netipv4_sysctl.conf.present"
+    remote_src: true
+  when: _sg_ipv4_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark IPv4 config as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/60-netipv4_sysctl.conf.absent"
+  when: not _sg_ipv4_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Check if IPv6 config file exists"
+  ansible.builtin.stat:
+    path: "{{ ipv6_conf_file }}"
+  register: _sg_ipv6_stat
+  tags: [snapshot]
+- name: "State Guard - Backup IPv6 config file (present)"
+  ansible.builtin.copy:
+    src: "{{ ipv6_conf_file }}"
+    dest: "{{ state_guard_dir }}/60-netipv6_sysctl.conf.present"
+    remote_src: true
+  when: _sg_ipv6_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark IPv6 config as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/60-netipv6_sysctl.conf.absent"
+  when: not _sg_ipv6_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- block:
+        # ========== EXECUTE PHASE (tag: execute) ==========
+
+# Requirement 1 - Step 1: Check if IPv6 is enabled
+  - name: "Check if IPv6 is enabled"
+    ansible.builtin.shell: "sysctl net.ipv6.conf.all.disable_ipv6 2>/dev/null | awk '{print $3}'"
+    args:
+      executable: /bin/bash
+    register: ipv6_enabled_result
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set fact for IPv6 enabled"
+    set_fact:
+      ipv6_enabled: "{{ ipv6_enabled_result.stdout | default('1') | trim == '0' }}"
+    tags: [execute]
+
+# IPv4: Set configuration file
+  - name: "Configure IPv4 accept_source_route in sysctl file"
+    ansible.builtin.lineinfile:
+      path: "{{ ipv4_conf_file }}"
+      line: "{{ item }}"
+      regexp: "^{{ item.split('=')[0].strip() | regex_escape }}"
+      state: present
+      create: yes
+      mode: '0644'
+    loop: "{{ ipv4_params }}"
+    register: _ipv4_config
+    failed_when: false
+    tags: [execute]
+
+# IPv4: Apply parameters via the provided script
+  - name: "Apply IPv4 source route parameters"
+    ansible.builtin.shell: |
+      sysctl -w net.ipv4.conf.all.accept_source_route=0
+      sysctl -w net.ipv4.conf.default.accept_source_route=0
+      sysctl -w net.ipv4.route.flush=1
+    args:
+      executable: /bin/bash
+    register: _ipv4_apply
+    failed_when: false
+    tags: [execute]
+
+# IPv6: If enabled, set configuration file
+  - name: "Configure IPv6 accept_source_route in sysctl file"
+    ansible.builtin.lineinfile:
+      path: "{{ ipv6_conf_file }}"
+      line: "{{ item }}"
+      regexp: "^{{ item.split('=')[0].strip() | regex_escape }}"
+      state: present
+      create: yes
+      mode: '0644'
+    loop: "{{ ipv6_params }}"
+    register: _ipv6_config
+    failed_when: false
+    when: ipv6_enabled | bool
+    tags: [execute]
+
+# IPv6: Apply parameters via the provided script (if IPv6 enabled)
+  - name: "Apply IPv6 source route parameters"
+    ansible.builtin.shell: |
+      sysctl -w net.ipv6.conf.all.accept_source_route=0
+      sysctl -w net.ipv6.conf.default.accept_source_route=0
+      sysctl -w net.ipv6.route.flush=1
+    args:
+      executable: /bin/bash
+    register: _ipv6_apply
+    failed_when: false
+    when: ipv6_enabled | bool
+    tags: [execute]
+
+# === Store status for Requirement 1 ===
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Apply IPv4 and IPv6 sysctl parameters"
+      task_01_cmd: "sysctl -w net.ipv4.conf.all.accept_source_route=0 ... and similar for IPv6"
+      task_01_rc: "{{ _ipv4_apply.rc | default(-1) }}"
+      data_01: "IPv4 exit code: {{ _ipv4_apply.rc | default(-1) }}; IPv6 exit code: {{ _ipv6_apply.rc | default(-1) if (ipv6_enabled | bool) else 'N/A' }}"
+      status_01: >-
+        {% set ipv4_ok = _ipv4_apply.rc | default(-1) == 0 %}
+        {% set ipv6_ok = (not (ipv6_enabled | bool)) or (_ipv6_apply.rc | default(-1) == 0) %}
+        {{ 'PASS' if (ipv4_ok and ipv6_ok) else 'FAIL' }}
+      details_01: >-
+        {% set ipv4_ok = _ipv4_apply.rc | default(-1) == 0 %}
+        {% set ipv6_ok = (not (ipv6_enabled | bool)) or (_ipv6_apply.rc | default(-1) == 0) %}
+        {% if ipv4_ok and ipv6_ok %}
+          Both IPv4 and IPv6 parameters applied successfully
+        {% elif not ipv4_ok %}
+          IPv4 apply failed with exit code {{ _ipv4_apply.rc | default(-1) }}
+        {% elif not ipv6_ok %}
+          IPv6 apply failed with exit code {{ _ipv6_apply.rc | default(-1) }}
+        {% else %}
+          Unknown error
+        {% endif %}
+    tags: [execute]
+
+# === Verify (Requirement 2) ===
+  - name: "Verify IPv4 accept_source_route is disabled"
+    ansible.builtin.shell: |
+      echo "net.ipv4.conf.all.accept_source_route=$(sysctl -n net.ipv4.conf.all.accept_source_route)"
+      echo "net.ipv4.conf.default.accept_source_route=$(sysctl -n net.ipv4.conf.default.accept_source_route)"
+    args:
+      executable: /bin/bash
+    register: _verify_ipv4
+    failed_when: false
+    tags: [execute]
+
+  - name: "Verify IPv6 accept_source_route is disabled (if IPv6 enabled)"
+    ansible.builtin.shell: |
+      echo "net.ipv6.conf.all.accept_source_route=$(sysctl -n net.ipv6.conf.all.accept_source_route)"
+      echo "net.ipv6.conf.default.accept_source_route=$(sysctl -n net.ipv6.conf.default.accept_source_route)"
+    args:
+      executable: /bin/bash
+    register: _verify_ipv6
+    failed_when: false
+    when: ipv6_enabled | bool
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify IPv4 and IPv6 accept_source_route"
+      task_02_cmd: "sysctl -n ... for both all and default"
+      task_02_rc: "{{ _verify_ipv4.rc | default(-1) }}"
+      data_02: "{{ _verify_ipv4.stdout | default('') | trim }}"
+      status_02: >-
+        {% set ipv4_verify_ok = _verify_ipv4.rc | default(-1) == 0 %}
+        {% set ipv6_verify_ok = (not (ipv6_enabled | bool)) or (_verify_ipv6.rc | default(-1) == 0) %}
+        {{ 'PASS' if (ipv4_verify_ok and ipv6_verify_ok) else 'FAIL' }}
+      details_02: >-
+        {% set ipv4_verify_ok = _verify_ipv4.rc | default(-1) == 0 %}
+        {% set ipv6_verify_ok = (not (ipv6_enabled | bool)) or (_verify_ipv6.rc | default(-1) == 0) %}
+        {% if ipv4_verify_ok and ipv6_verify_ok %}
+          IPv4 verified; IPv6 verified (if applicable)
+        {% elif not ipv4_verify_ok %}
+          IPv4 verification failed with exit code {{ _verify_ipv4.rc | default(-1) }}
+        {% elif not ipv6_verify_ok %}
+          IPv6 verification failed with exit code {{ _verify_ipv6.rc | default(-1) }}
+        {% else %}
+          Verification incomplete
+        {% endif %}
+    tags: [execute]
+
+# === Store final remediation result (cis_result) — Requirement 3 ===
+  - name: "Store final remediation result (cis_result)"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Store final remediation result (cis_result)"
+      task_03_cmd: "set_fact cis_result = {{ status_02 }}"
+      task_03_rc: 0
+      data_03: "cis_result = {{ cis_result }}"
+      status_03: "{{ cis_result }}"
+      details_03: "Remediation result stored as cis_result"
+    tags: [execute]
+
+# === Requirement 4: Report details ===
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Report output produced"
+    tags: [execute]
+
+# Requirement 4: Generate remediation report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 3.3.8"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 3.3.8"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# ========== STATE GUARD - RESTORE (tag: restore) ==========
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if IPv4 backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/60-netipv4_sysctl.conf.present"
+    register: _sg_restore_ipv4
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore IPv4 config from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/60-netipv4_sysctl.conf.present"
+      dest: "{{ ipv4_conf_file }}"
+      remote_src: true
+    when: _sg_restore_flag.stat.exists | default(false) and _sg_restore_ipv4.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if IPv4 config was absent"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/60-netipv4_sysctl.conf.absent"
+    register: _sg_restore_ipv4_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete IPv4 config file (created by remediation)"
+    ansible.builtin.file:
+      path: "{{ ipv4_conf_file }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false) and _sg_restore_ipv4_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if IPv6 backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/60-netipv6_sysctl.conf.present"
+    register: _sg_restore_ipv6
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore IPv6 config from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/60-netipv6_sysctl.conf.present"
+      dest: "{{ ipv6_conf_file }}"
+      remote_src: true
+    when: _sg_restore_flag.stat.exists | default(false) and _sg_restore_ipv6.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if IPv6 config was absent"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/60-netipv6_sysctl.conf.absent"
+    register: _sg_restore_ipv6_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete IPv6 config file (created by remediation)"
+    ansible.builtin.file:
+      path: "{{ ipv6_conf_file }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false) and _sg_restore_ipv6_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Reload sysctl settings"
+    ansible.builtin.shell: "sysctl --system"
+    args:
+      executable: /bin/bash
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

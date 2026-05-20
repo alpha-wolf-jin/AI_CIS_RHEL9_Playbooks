@@ -1,0 +1,5 @@
+playbook_name: "cis_1_7_6"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply ownership to /etc/issue.net using command: `chown root:root $(readlink -e /etc/issue.net)`. Expected result: The file /etc/issue.net is owned by root:root."
+req_02: "Apply permissions to /etc/issue.net using command: `chmod u-x,go-wx $(readlink -e /etc/issue.net)`. Expected result: The file /etc/issue.net has permissions u-x,go-wx (e.g., 644 or similar, removing execute for owner and write/execute for group and others)."
+req_03: "Verify ownership and permissions using command: `stat -L -c '%a %U:%G' /etc/issue.net`. Expected result: Output shows permissions (e.g., 644) and owner:group as root:root."

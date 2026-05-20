@@ -1,0 +1,5 @@
+req_01: "Check if xinetd package is installed using command: `rpm -q xinetd`. Expected result: package xinetd is not installed"
+req_02: "If xinetd package is required as a dependency, check if xinetd.service is enabled using command: `systemctl is-enabled xinetd.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If xinetd package is required as a dependency, check if xinetd.service is active using command: `systemctl is-active xinetd.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "If xinetd package is required as a dependency, verify that the dependent package is approved by local site policy and that stopping and masking the service and/or socket meets local site policy. Expected result: Compliance with local policy"
+req_05: "Summarize overall compliance status: Ensure xinetd services are not in use, based on the results of the above checks."

@@ -1,0 +1,205 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_2_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if sudoers file exists"
+  ansible.builtin.stat:
+    path: "{{ sudoers_file }}"
+  register: _snap_sudoers_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup sudoers file if exists"
+  ansible.builtin.copy:
+    src: "{{ sudoers_file }}"
+    dest: "{{ backup_dir }}/sudoers.orig"
+    remote_src: true
+    creates: "{{ backup_dir }}/sudoers.orig"
+  when: "_snap_sudoers_stat.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "SKIP"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+  tags: [execute]
+- block:
+  - name: "Req 01 - Check if sudo package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Check if visudo binary exists"
+    ansible.builtin.shell: "which visudo"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    when: "'sudo' in ansible_facts.packages"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if visudo binary exists"
+      task_01_cmd: "which visudo"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if 'sudo' not in ansible_facts.packages else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      details_01: "{{ 'sudo package not installed' if 'sudo' not in ansible_facts.packages else ('visudo found at ' + result_01.stdout | default('') | trim if result_01.rc | default(-1) == 0 else 'visudo not found') }}"
+    tags: [execute]
+
+  - name: "Req 02 - Add sudo log file configuration to sudoers"
+    ansible.builtin.lineinfile:
+      path: "{{ sudoers_file }}"
+      regexp: |
+        ^Defaults\s+logfile
+      line: "{{ sudo_log_line }}"
+      state: present
+      validate: '/usr/sbin/visudo -cf %s'
+    register: result_02
+    failed_when: false
+    when: "'sudo' in ansible_facts.packages"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Add sudo log file configuration to sudoers"
+      task_02_cmd: |
+        lineinfile: path={{ sudoers_file }} regexp='^Defaults\\s+logfile' line='{{ sudo_log_line }}'
+      task_02_rc: "{{ 0 if result_02 is not failed else 1 }}"
+      data_02: "{{ 'line added/verified' if result_02 is not failed else 'failed' }}"
+      status_02: "{{ 'SKIPPED' if 'sudo' not in ansible_facts.packages else ('PASS' if result_02 is not failed else 'FAIL') }}"
+      details_02: "{{ 'sudo package not installed' if 'sudo' not in ansible_facts.packages else ('Configuration applied successfully' if result_02 is not failed else 'Failed to apply configuration') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Verify sudo log file configuration"
+    ansible.builtin.shell: "grep -E '^Defaults.*logfile' {{ sudoers_file }} /etc/sudoers.d/* 2>/dev/null || echo 'NOT_FOUND'"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    when: "'sudo' in ansible_facts.packages"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Verify sudo log file configuration"
+      task_03_cmd: "grep -E '^Defaults.*logfile' {{ sudoers_file }} /etc/sudoers.d/* 2>/dev/null"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'SKIPPED' if 'sudo' not in ansible_facts.packages else ('PASS' if 'logfile' in result_03.stdout | default('') else 'FAIL') }}"
+      details_03: "{{ 'sudo package not installed' if 'sudo' not in ansible_facts.packages else ('Configuration verified' if 'logfile' in result_03.stdout | default('') else 'Configuration not found') }}"
+    tags: [execute]
+
+  - name: "Req 04 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ status_03 | default('ERROR') | trim }}"
+      task_04_name: "Store final remediation result in cis_result"
+      task_04_cmd: "set_fact cis_result = status_03"
+      task_04_rc: "{{ 0 if status_03 | default('ERROR') | trim in ['PASS','FAIL','SKIP'] else 1 }}"
+      data_04: "{{ status_03 | default('ERROR') | trim }}"
+      status_04: "{{ status_03 | default('ERROR') | trim }}"
+      details_04: "{{ 'cis_result derived from status_03: ' + (status_03 | default('ERROR') | trim) }}"
+    when: "'sudo' in ansible_facts.packages"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.2.3"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.2.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if sudoers backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sudoers.orig"
+    register: _restore_sudoers_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite sudoers with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/sudoers.orig"
+      dest: "{{ sudoers_file }}"
+      remote_src: true
+    when: "_restore_sudoers_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

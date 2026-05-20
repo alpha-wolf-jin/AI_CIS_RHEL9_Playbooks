@@ -1,0 +1,7 @@
+req_01: "Check if nftables utility is in use on the system using command: `command -v nft`. Expected result: path to nft binary (e.g., /usr/sbin/nft)."
+req_02: "Check if Firewalld is in use (if yes, skip this audit) using command: `systemctl is-active firewalld 2>/dev/null || echo 'inactive'`. Expected result: 'inactive' or 'unknown' to proceed."
+req_03: "Check that a base chain exists for the INPUT filter hook using command: `nft list ruleset | grep 'hook input'`. Expected result: output includes 'type filter hook input'."
+req_04: "Check that a base chain exists for the FORWARD filter hook using command: `nft list ruleset | grep 'hook forward'`. Expected result: output includes 'type filter hook forward'."
+req_05: "Check that a base chain exists for the OUTPUT filter hook using command: `nft list ruleset | grep 'hook output'`. Expected result: output includes 'type filter hook output'."
+req_06: "Summarize overall compliance: PASS if all checks pass, SKIP if nftables is not installed or Firewalld is active, FAIL if nftables is installed and Firewalld is inactive but any base chain check fails."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

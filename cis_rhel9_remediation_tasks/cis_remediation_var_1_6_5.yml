@@ -1,0 +1,8 @@
+playbook_name: "cis_1_6_5_crypto_cbc_disable"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for crypto-policies package using command: `rpm -q crypto-policies`. Expected result: package is installed."
+req_02: |
+  Create or edit the subpolicy file to disable CBC ciphers for SSH using command: `printf '%s\\n' \"# This is a subpolicy to disable all CBC mode ciphers\" \"# for the SSH protocol (libssh and OpenSSH)\" \"cipher@SSH = -*-CBC\" >> /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod`. Expected result: file /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod is created with the specified content.
+req_03: "Apply the system-wide cryptographic policy including the NO-SSHCBC subpolicy using command: `update-crypto-policies --set DEFAULT:NO-SSHCBC`. Expected result: command succeeds without error."
+req_04: "Reboot the system to make cryptographic settings effective using command: `reboot`. Expected result: system reboots successfully."
+req_05: "Verify that CBC ciphers are disabled for SSH using command: `update-crypto-policies --show`. Expected result: output includes NO-SSHCBC in the active policy."

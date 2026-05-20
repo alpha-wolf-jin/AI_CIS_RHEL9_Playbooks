@@ -1,0 +1,7 @@
+playbook_name: "cis_1_3_1_3_selinux_policy"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+
+# Requirement texts (used in the final report)
+req_01: "Ensure that the system has SELinux utilities installed using command: `rpm -q selinux-policy-targeted`. Expected result: package is installed."
+req_02: "Apply SELinux policy configuration to targeted using command: `sudo sed -i 's/^SELINUXTYPE=.*/SELINUXTYPE=targeted/' /etc/selinux/config`. Expected result: SELINUXTYPE is set to targeted."
+req_03: "Verify SELinux policy configuration using command: `grep -E '^SELINUXTYPE=' /etc/selinux/config`. Expected result: SELINUXTYPE=targeted"

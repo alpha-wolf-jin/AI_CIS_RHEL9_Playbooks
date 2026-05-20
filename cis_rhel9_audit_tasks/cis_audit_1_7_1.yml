@@ -1,0 +1,135 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_7_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+  changed_when: false
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: pre_stat_script
+
+- name: "Snapshot - Record if script file pre-existed"
+  ansible.builtin.file:
+    path: "{{ marker_file }}"
+    state: touch
+    mode: '0644'
+  when: pre_stat_script.stat.exists
+  changed_when: false
+
+
+- name: "Execute audit and report"
+  block:
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute audit script"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if result_01.rc | default(-1) | int == 0 else 'FAIL') | trim }}"
+      details_01: "{{ ('Script executed successfully' if result_01.rc | default(-1) | int == 0 else 'Script execution failed') | trim }}"
+
+  - name: "Req 02 - Determine compliance status from audit script output"
+    ansible.builtin.set_fact:
+      status_02: >-
+        {{ ('PASS' if '** PASS **' in result_01.stdout | default('') else ('FAIL' if '** FAIL **' in result_01.stdout | default('') else 'UNKNOWN')) | trim }}
+      details_02: >-
+        {{ ('Audit PASSED: No MOTD files contain system information' if '** PASS **' in result_01.stdout | default('') else ('Audit FAILED: MOTD files contain system information' if '** FAIL **' in result_01.stdout | default('') else 'Unable to determine compliance from script output')) | trim }}
+
+  - name: "Req 03 - Store overall compliance result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | trim }}"
+      task_03_name: "Store overall compliance result"
+      task_03_cmd: "set_fact: cis_result = status_02"
+      task_03_rc: 0
+      data_03: "{{ status_02 | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ status_02 | trim }}"
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS {{ checkpoint }}"
+      - "Reference: {{ cis_ref }}"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Evaluate compliance status"
+      - "  Command: (set_fact)"
+      - "  Exit code: N/A"
+      - "  Data: {{ result_01.stdout | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Generate audit report"
+      - "  Command: debug"
+      - "  Exit code: 0"
+      - "  Data: Report generated successfully"
+      - "  Status: PASS"
+      - "  Details: Audit report generated"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+  always:
+  - name: "Restore - Check if script file pre-existed marker"
+    ansible.builtin.stat:
+      path: "{{ marker_file }}"
+    register: restore_marker_stat
+    failed_when: false
+
+  - name: "Restore - Remove audit script if it was created by this playbook"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: not restore_marker_stat.stat.exists
+    changed_when: false
+    failed_when: false
+
+  - name: "Restore - Remove marker file"
+    ansible.builtin.file:
+      path: "{{ marker_file }}"
+      state: absent
+    changed_when: false
+    failed_when: false

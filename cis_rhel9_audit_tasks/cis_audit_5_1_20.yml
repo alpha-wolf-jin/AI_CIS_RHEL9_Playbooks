@@ -1,0 +1,159 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_20.yml
+
+- name: "Req 01 - Check if SSH server is installed"
+  ansible.builtin.shell: which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 01 details and installation status"
+  ansible.builtin.set_fact:
+    sshd_installed: "{{ result_01.rc == 0 }}"
+    task_01_name: "Check if SSH server is installed"
+    task_01_cmd: "which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server"
+    task_01_rc: "{{ result_01.rc }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'FAIL' }}"
+    details_01: "{{ 'SSHD is installed' if result_01.rc == 0 else 'SSHD is not installed' }}"
+
+- name: "Req 02 - Check global PermitRootLogin setting"
+  ansible.builtin.shell: sshd -T | grep permitrootlogin
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: "sshd_installed | bool"
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 02 details when sshd is present"
+  ansible.builtin.set_fact:
+    task_02_name: "Check global PermitRootLogin setting"
+    task_02_cmd: "sshd -T | grep permitrootlogin"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: >-
+      {{ 'PASS' if (result_02.rc | default(-1) == 0 and search_string in (result_02.stdout | default(''))) else 'FAIL' }}
+    details_02: >-
+      {{ 'Global setting is ' + (result_02.stdout | default('') | trim) if (result_02.rc | default(-1) == 0 and search_string in (result_02.stdout | default(''))) else 'Global setting does not match expected value' }}
+  when: "sshd_installed | bool"
+
+- name: "Store Req 02 details when sshd not installed (skip)"
+  ansible.builtin.set_fact:
+    task_02_name: "Check global PermitRootLogin setting"
+    task_02_cmd: "sshd -T | grep permitrootlogin"
+    task_02_rc: -1
+    data_02: ""
+    status_02: "SKIP"
+    details_02: "SSHD not installed – check not applicable"
+  when: "not (sshd_installed | bool)"
+
+- name: "Req 03 - Check PermitRootLogin for specific user sshuser"
+  ansible.builtin.shell: sshd -T -C user=sshuser | grep permitrootlogin
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: "sshd_installed | bool"
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 03 details when sshd is present"
+  ansible.builtin.set_fact:
+    task_03_name: "Check PermitRootLogin for specific user sshuser"
+    task_03_cmd: "sshd -T -C user=sshuser | grep permitrootlogin"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: >-
+      {{ 'PASS' if (result_03.rc | default(-1) == 0 and search_string in (result_03.stdout | default(''))) else 'FAIL' }}
+    details_03: >-
+      {{ 'User-specific setting is ' + (result_03.stdout | default('') | trim) if (result_03.rc | default(-1) == 0 and search_string in (result_03.stdout | default(''))) else 'User-specific setting does not match expected value' }}
+  when: "sshd_installed | bool"
+
+- name: "Store Req 03 details when sshd not installed (skip)"
+  ansible.builtin.set_fact:
+    task_03_name: "Check PermitRootLogin for specific user sshuser"
+    task_03_cmd: "sshd -T -C user=sshuser | grep permitrootlogin"
+    task_03_rc: -1
+    data_03: ""
+    status_03: "SKIP"
+    details_03: "SSHD not installed – check not applicable"
+  when: "not (sshd_installed | bool)"
+
+- name: "Req 04 - Summarize overall compliance status"
+  ansible.builtin.set_fact:
+    task_04_name: "Summarize overall compliance status"
+    task_04_cmd: "set_fact"
+    task_04_rc: 0
+    data_04: "N/A"
+    status_04: >-
+      {{ 'SKIP' if not (sshd_installed | bool) else
+         'PASS' if (status_02 | default('FAIL') == 'PASS' and status_03 | default('FAIL') == 'PASS') else
+         'FAIL' }}
+    details_04: >-
+      {{ 'SSHD not installed – check not applicable' if not (sshd_installed | bool) else
+         'All PermitRootLogin checks passed' if (status_02 | default('FAIL') == 'PASS' and status_03 | default('FAIL') == 'PASS') else
+         'One or more PermitRootLogin checks failed' }}
+
+- name: "Req 05 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    task_05_name: "Store final audit result"
+    task_05_cmd: "set_fact"
+    task_05_rc: 0
+    data_05: "{{ status_04 | default('UNKNOWN') | trim }}"
+    status_05: "{{ status_04 | default('UNKNOWN') | trim }}"
+    details_05: "Final result set to {{ status_04 | default('UNKNOWN') | trim }}"
+    cis_result: "{{ status_04 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.20"
+    - "Reference: CIS Benchmark checkpoint 5.1.20"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

@@ -1,0 +1,270 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_1_2.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore freevxfs conf from prior backup"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/{{ kernel_module }}.conf.present"
+    dest: "/etc/modprobe.d/{{ kernel_module }}.conf"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete freevxfs conf if created by prior run"
+  ansible.builtin.shell: |
+    if [ -f "{{ state_guard_dir }}/{{ kernel_module }}.conf.absent" ]; then
+      rm -f /etc/modprobe.d/{{ kernel_module }}.conf
+    fi
+  args:
+    executable: /bin/bash
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Reload freevxfs if originally loaded"
+  ansible.builtin.shell: |
+    if [ -f "{{ state_guard_dir }}/{{ kernel_module }}_load.state" ] && grep -q LOADED "{{ state_guard_dir }}/{{ kernel_module }}_load.state"; then
+      modprobe {{ kernel_module }} 2>/dev/null
+    fi
+  args:
+    executable: /bin/bash
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if freevxfs modprobe conf exists"
+  ansible.builtin.stat:
+    path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+  register: _sg_conf_stat
+  tags: [snapshot]
+- name: "State Guard - Backup freevxfs.conf if present"
+  ansible.builtin.copy:
+    src: "/etc/modprobe.d/{{ kernel_module }}.conf"
+    dest: "{{ state_guard_dir }}/{{ kernel_module }}.conf.present"
+    remote_src: true
+  when: _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark freevxfs.conf as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/{{ kernel_module }}.conf.absent"
+  when: not _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Save current load state of freevxfs"
+  ansible.builtin.shell: lsmod | grep -q "^freevxfs " && echo LOADED || echo NOT_LOADED
+  args:
+    executable: /bin/bash
+  register: _sg_load_state
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Persist load state"
+  ansible.builtin.copy:
+    content: "{{ _sg_load_state.stdout }}"
+    dest: "{{ state_guard_dir }}/{{ kernel_module }}_load.state"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+           unset a_output2; l_output3="" l_dl="" # unset arrays and clear variables
+           l_mod_name="freevxfs" # set module name
+           l_mod_type="fs" # set module type
+           l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
+           f_module_fix()
+           {
+              l_dl="y"
+              a_showconfig=()
+              while IFS= read -r l_showconfig; do
+                 a_showconfig+=("$l_showconfig")
+              done < <(modprobe --showconfig | grep -P -- '\b(install|blacklist)\h+'"${l_mod_name//-/_}"'\b')
+              if  lsmod | grep "$l_mod_name" &> /dev/null; then
+                 a_output2+=(" - unloading kernel module: \"$l_mod_name\"")
+                 modprobe -r "$l_mod_name" 2>/dev/null; rmmod "$l_mod_name" 2>/dev/null
+              fi
+              if ! grep -Pq -- '\binstall\h+'"${l_mod_name//- /_}"'\h+\/bin\/(true|false)\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - setting kernel  module: \"$l_mod_name\" to \"/bin/false\"")
+                 printf '%s\n' "install $l_mod_name /bin/false" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+              if ! grep -Pq -- '\bblacklist\h+'"${l_mod_name//-/_}"'\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - denylisting kernel  module: \"$l_mod_name\"")
+                 printf '%s\n' "blacklist $l_mod_name" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+           }
+           for l_mod_base_directory in $l_mod_path; do
+              if [ -d "$l_mod_base_directory/${l_mod_name/-/\/}" ] && [ -n "$(ls -A $l_mod_base_directory/${l_mod_name/-/\/})" ]; then
+                 l_output3="$l_output3\n  - \"$l_mod_base_directory\""
+                 [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
+                 [ "$l_dl" != "y" ] && f_module_fix
+              else
+                 echo -e " - kernel module: \"$l_mod_name\" doesn't exist in \"$l_mod_base_directory\""
+              fi
+           done
+           # Ensure configuration is always applied even if module directory is absent
+           [ "$l_dl" != "y" ] && f_module_fix
+           [ -n "$l_output3" ] && echo -e "\n\n -- INFO --\n - module: \"$l_mod_name\" exists in:$l_output3"
+           [ "${#a_output2[@]}" -gt 0 ] && printf '%s\n' "${a_output2[@]}"
+           echo -e "\n - remediation of kernel module: \"$l_mod_name\" complete\n"
+        }
+        {% endraw %}
+      dest: /tmp/remediate_freevxfs.sh
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Run remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/remediate_freevxfs.sh
+    args:
+      executable: /bin/bash
+    register: remediate_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify freevxfs is not available"
+    ansible.builtin.shell: |
+      if lsmod | grep -q "^freevxfs "; then
+        echo "MODULE_LOADED"
+        FAIL=1
+      else
+        FAIL=0
+      fi
+      if [ -f /etc/modprobe.d/freevxfs.conf ]; then
+        if grep -q 'install freevxfs /bin/false' /etc/modprobe.d/freevxfs.conf && grep -q 'blacklist freevxfs' /etc/modprobe.d/freevxfs.conf; then
+          CONFIG_PASS=1
+        else
+          CONFIG_PASS=0
+        fi
+      else
+        CONFIG_PASS=0
+      fi
+      if [ "$FAIL" -eq 0 ] && [ "$CONFIG_PASS" -eq 1 ]; then
+        echo "COMPLIANT"
+        exit 0
+      else
+        echo "NON_COMPLIANT"
+        exit 1
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store details for report"
+    ansible.builtin.set_fact:
+      task_01_name: "Run remediation script for freevxfs module"
+      task_01_cmd: "/bin/bash /tmp/remediate_freevxfs.sh"
+      task_01_rc: "{{ remediate_result.rc | default(-1) }}"
+      data_01: "{{ remediate_result.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if remediate_result.rc | default(-1) == 0 else 'FAILED' }}"
+      details_01: "{{ 'Script executed successfully' if remediate_result.rc | default(-1) == 0 else 'Script execution failed' }}"
+      task_02_name: "Verify freevxfs is not available"
+      task_02_cmd: "lsmod + grep + modprobe config check"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED' }}"
+      details_02: "{{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant' }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 1.1.1.2"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 1.1.1.2"
+      - ""
+      - "Requirement 1: Run provided remediation script"
+      - "  Task: {{ task_01_name | default('N/A') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "Requirement 2: Verify compliance"
+      - "  Task: {{ task_02_name | default('N/A') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore freevxfs.conf from backup if present"
+    ansible.builtin.shell: |
+      if [ -f "{{ state_guard_dir }}/{{ kernel_module }}.conf.present" ]; then
+        cp -f "{{ state_guard_dir }}/{{ kernel_module }}.conf.present" /etc/modprobe.d/{{ kernel_module }}.conf
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete freevxfs.conf if created"
+    ansible.builtin.shell: |
+      if [ -f "{{ state_guard_dir }}/{{ kernel_module }}.conf.absent" ]; then
+        rm -f /etc/modprobe.d/{{ kernel_module }}.conf
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Reload freevxfs if originally loaded"
+    ansible.builtin.shell: |
+      if [ -f "{{ state_guard_dir }}/{{ kernel_module }}_load.state" ] && grep -q LOADED "{{ state_guard_dir }}/{{ kernel_module }}_load.state"; then
+        modprobe {{ kernel_module }} 2>/dev/null
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,54 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null`. Expected result: package is installed."
+req_02: "Check on-disk audit rules for sethostname and setdomainname syscalls (64-bit) using command: `awk '/^-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: `-a always,exit -F arch=b64 -S sethostname,setdomainname -k system-locale`"
+req_03: "Check on-disk audit rules for sethostname and setdomainname syscalls (32-bit) using command: `awk '/^-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: `-a always,exit -F arch=b32 -S sethostname,setdomainname -k system-locale`"
+req_04: |
+  Check on-disk audit rules for file watch on /etc/issue using command: `awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/issue -p wa -k system-locale`
+req_05: |
+  Check on-disk audit rules for file watch on /etc/issue.net using command: `awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/issue.net -p wa -k system-locale`
+req_06: |
+  Check on-disk audit rules for file watch on /etc/hosts using command: `awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/hosts -p wa -k system-locale`
+req_07: |
+  Check on-disk audit rules for file watch on /etc/hostname using command: `awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/hostname -p wa -k system-locale`
+req_08: |
+  Check on-disk audit rules for file watch on /etc/sysconfig/network using command: `awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/sysconfig/network -p wa -k system-locale`
+req_09: |
+  Check on-disk audit rules for file watch on /etc/sysconfig/network-scripts/ using command: `awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/sysconfig/network-scripts/ -p wa -k system-locale`
+req_10: |
+  Check on-disk audit rules for file watch on /etc/NetworkManager using command: `awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/NetworkManager -p wa -k system-locale`
+req_11: "Check loaded audit rules for sethostname and setdomainname syscalls (64-bit) using command: `auditctl -l | awk '/^ *-a *always,exit/ && / -F *arch=b(32|64)/ && / -S/ && (/sethostname/ || /setdomainname/) && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: `-a always,exit -F arch=b64 -S sethostname,setdomainname -F key=system-locale`"
+req_12: "Check loaded audit rules for sethostname and setdomainname syscalls (32-bit) using command: `auditctl -l | awk '/^ *-a *always,exit/ && / -F *arch=b(32|64)/ && / -S/ && (/sethostname/ || /setdomainname/) && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: `-a always,exit -F arch=b32 -S sethostname,setdomainname -F key=system-locale`"
+req_13: |
+  Check loaded audit rules for file watch on /etc/issue using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/issue -p wa -k system-locale`
+req_14: |
+  Check loaded audit rules for file watch on /etc/issue.net using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/issue.net -p wa -k system-locale`
+req_15: |
+  Check loaded audit rules for file watch on /etc/hosts using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/hosts -p wa -k system-locale`
+req_16: |
+  Check loaded audit rules for file watch on /etc/hostname using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/hostname -p wa -k system-locale`
+req_17: |
+  Check loaded audit rules for file watch on /etc/sysconfig/network using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/sysconfig/network -p wa -k system-locale`
+req_18: |
+  Check loaded audit rules for file watch on /etc/sysconfig/network-scripts using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/sysconfig/network-scripts -p wa -k system-locale`
+req_19: |
+  Check loaded audit rules for file watch on /etc/NetworkManager using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/NetworkManager -p wa -k system-locale`
+req_20: "Summarize overall compliance status: all on-disk and loaded audit rules match expected output for checkpoint 6.3.3.5."
+req_21: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+
+expected_02: "-a always,exit -F arch=b64 -S sethostname,setdomainname -k system-locale"
+expected_03: "-a always,exit -F arch=b32 -S sethostname,setdomainname -k system-locale"
+expected_04: "-w /etc/issue -p wa -k system-locale"
+expected_05: "-w /etc/issue.net -p wa -k system-locale"
+expected_06: "-w /etc/hosts -p wa -k system-locale"
+expected_07: "-w /etc/hostname -p wa -k system-locale"
+expected_08: "-w /etc/sysconfig/network -p wa -k system-locale"
+expected_09: "-w /etc/sysconfig/network-scripts/ -p wa -k system-locale"
+expected_10: "-w /etc/NetworkManager -p wa -k system-locale"
+expected_11: "-a always,exit -F arch=b64 -S sethostname,setdomainname -F key=system-locale"
+expected_12: "-a always,exit -F arch=b32 -S sethostname,setdomainname -F key=system-locale"
+expected_13: "-w /etc/issue -p wa -k system-locale"
+expected_14: "-w /etc/issue.net -p wa -k system-locale"
+expected_15: "-w /etc/hosts -p wa -k system-locale"
+expected_16: "-w /etc/hostname -p wa -k system-locale"
+expected_17: "-w /etc/sysconfig/network -p wa -k system-locale"
+expected_18: "-w /etc/sysconfig/network-scripts -p wa -k system-locale"
+expected_19: "-w /etc/NetworkManager -p wa -k system-locale"

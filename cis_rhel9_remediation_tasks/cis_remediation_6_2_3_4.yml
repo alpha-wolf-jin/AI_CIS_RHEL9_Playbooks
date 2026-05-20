@@ -1,0 +1,233 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_2_3_4.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore {{ config_file }} from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/rsyslog.conf.present"
+    dest: "{{ config_file }}"
+    remote_src: true
+  when: "_sg_flag.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if {{ config_file }} exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _sg_config_stat
+  tags: [snapshot]
+- name: "State Guard - Backup {{ config_file }}"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ state_guard_dir }}/rsyslog.conf.present"
+    remote_src: true
+  when: "_sg_config_stat.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === STATE GUARD — EXECUTE PHASE ===
+
+  - name: "Req 01 - Check if {{ package_name }} is installed"
+    ansible.builtin.shell: "which rsyslogd"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if rsyslog is installed"
+      task_01_cmd: "which rsyslogd"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'rsyslogd found at: ' + (result_01.stdout | default('') | trim) if (result_01.rc | default(-1)) == 0 else 'rsyslogd not found - remediation skipped' }}"
+      playbook_skipped: "{{ (result_01.rc | default(-1)) != 0 }}"
+    tags: [execute]
+
+  - name: "Req 02 - Set {{ config_param }} in {{ config_file }}"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^\$FileCreateMode
+      line: "$FileCreateMode {{ config_value }}"
+      state: present
+      create: false
+    register: result_02
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Set FileCreateMode in rsyslog config"
+      task_02_cmd: |
+        lineinfile: regexp='^$FileCreateMode' line='$FileCreateMode 0640' path={{ config_file }}
+      task_02_rc: "{{ 0 if (result_02 is defined and not result_02.failed | default(true)) else -1 }}"
+      data_02: "{{ '$FileCreateMode ' + config_value + ' configured' if (result_02 is defined and not result_02.failed | default(true)) else 'Configuration failed' }}"
+      status_02: "{{ 'PASS' if (result_02 is defined and not result_02.failed | default(true)) else ('SKIPPED' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
+      details_02: "{{ 'Config line set successfully' if (result_02 is defined and not result_02.failed | default(true)) else ('Skipped - rsyslog not installed' if (playbook_skipped | default(false) | bool) else 'Failed to set config line') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Restart {{ service_name }} service"
+    ansible.builtin.systemd:
+      name: "{{ service_name }}"
+      state: restarted
+    register: result_03
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Restart rsyslog service"
+      task_03_cmd: "systemctl restart rsyslog"
+      task_03_rc: "{{ 0 if (result_03 is defined and not result_03.failed | default(true)) else -1 }}"
+      data_03: "{{ 'Service restarted' if (result_03 is defined and not result_03.failed | default(true)) else 'Service restart failed' }}"
+      status_03: "{{ 'PASS' if (result_03 is defined and not result_03.failed | default(true)) else ('SKIPPED' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
+      details_03: "{{ 'rsyslog restarted successfully' if (result_03 is defined and not result_03.failed | default(true)) else ('Skipped - rsyslog not installed' if (playbook_skipped | default(false) | bool) else 'Failed to restart rsyslog') }}"
+    tags: [execute]
+
+  - name: "Req 04 - Verify {{ config_param }} in {{ config_file }}"
+    ansible.builtin.shell: "grep '^\\$FileCreateMode' {{ config_file }}"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify FileCreateMode configuration"
+      task_04_cmd: |
+        grep '^\\$FileCreateMode' /etc/rsyslog.conf
+      task_04_rc: "{{ result_04.rc | default(-1) if (result_04 is defined) else -1 }}"
+      data_04: "{{ result_04.stdout | default('') | trim if (result_04 is defined) else 'Not collected' }}"
+      status_04: "{{ 'PASS' if (result_04 is defined and (result_04.rc | default(-1)) == 0 and (config_value in (result_04.stdout | default('')))) else ('SKIPPED' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
+      details_04: "{{ 'Verified: ' + (result_04.stdout | default('') | trim) if (result_04 is defined and (result_04.rc | default(-1)) == 0 and (config_value in (result_04.stdout | default('')))) else ('Skipped - rsyslog not installed' if (playbook_skipped | default(false) | bool) else 'Verification failed') }}"
+    tags: [execute]
+
+  - name: "Req 05 - Store overall remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_04 | default('UNKNOWN') | trim }}"
+      task_05_name: "Store final remediation result"
+      task_05_cmd: "set_fact: cis_result = status_04"
+      task_05_rc: "0"
+      data_05: "{{ status_04 | default('UNKNOWN') | trim }}"
+      status_05: "{{ 'PASS' if (status_04 | default('UNKNOWN') | trim) in ['PASS','FAIL','SKIP','ERROR'] else 'ERROR' }}"
+      details_05: "{{ 'Overall remediation result stored as cis_result=' + (status_04 | default('UNKNOWN') | trim) }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.2.3.4"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 6.2.3.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if config backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/rsyslog.conf.present"
+    register: _sg_restore_config
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore {{ config_file }} from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/rsyslog.conf.present"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: "_sg_restore_config.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

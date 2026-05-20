@@ -1,0 +1,7 @@
+checkpoint_id: "cis_4_1_1"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+nftables_pkg: "nftables"
+req_01: "Apply prerequisite check using command: `command -v dnf`. Expected result: path to dnf executable indicating dnf is installed."
+req_02: "Apply installation of nftables using command: `dnf install -y nftables`. Expected result: package nftables installed successfully."
+req_03: "Verify nftables installation using command: `rpm -q nftables`. Expected result: package name and version string."

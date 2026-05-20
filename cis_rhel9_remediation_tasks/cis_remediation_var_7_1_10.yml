@@ -1,0 +1,8 @@
+playbook_name: "cis_7_1_10_opasswd_perms"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+target_file: "/etc/security/opasswd"
+file_owner: "root"
+file_group: "root"
+file_mode: "0600"
+req_01: "Apply remediation for: Ensure permissions on /etc/security/opasswd are configured. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure permissions on /etc/security/opasswd are configured is properly configured. Expected result: Compliant"

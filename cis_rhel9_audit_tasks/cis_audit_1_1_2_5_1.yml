@@ -1,0 +1,116 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_5_1.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Req 01 - Check if /var/tmp is a separate partition"
+  ansible.builtin.command: findmnt -kn /var/tmp
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Req 01 - Check if /var/tmp is a separate partition"
+    task_01_cmd: "findmnt -kn /var/tmp"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if (result_01.stdout | default('') | trim) != '' else 'FAIL') | trim }}"
+    details_01: "{{ ('/var/tmp is mounted as a separate partition' if (result_01.stdout | default('') | trim) != '' else 'No mount found for /var/tmp') | trim }}"
+
+- name: "Req 02 - Determine compliance based on /var/tmp mount status"
+  ansible.builtin.set_fact:
+    task_02_name: "Req 02 - Determine compliance based on /var/tmp mount status"
+    task_02_cmd: "N/A (evaluation based on previous command output)"
+    task_02_rc: 0
+    data_02: "{{ ('/var/tmp is mounted as a separate partition' if (result_01.stdout | default('') | trim) != '' else '/var/tmp is not a separate partition') | trim }}"
+    status_02: "{{ ('PASS' if (result_01.stdout | default('') | trim) != '' else 'FAIL') | trim }}"
+    details_02: "{{ ('System is compliant' if (result_01.stdout | default('') | trim) != '' else 'System is non-compliant') | trim }}"
+
+- name: "Req 03 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_03_name: "Req 03 - Summarize overall compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "{{ ('Compliant – /var/tmp is a separate partition' if status_02 == 'PASS' else 'Non-compliant – /var/tmp is not a separate partition') | trim }}"
+    status_03: "PASS"
+    details_03: "{{ ('System meets CIS checkpoint 1.1.2.5.1' if status_02 == 'PASS' else 'System does not meet CIS checkpoint 1.1.2.5.1') | trim }}"
+    final_compliance: "{{ status_02 | trim }}"
+
+- name: "Req 04 - Store final CIS result in cis_result"
+  ansible.builtin.set_fact:
+    task_04_name: "Req 04 - Store final CIS result in cis_result"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "{{ final_compliance | trim }}"
+    status_04: "PASS"
+    details_04: "CIS audit result stored in cis_result variable."
+    cis_result: "{{ final_compliance | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.2.5.1"
+    - "Reference: CIS Benchmark checkpoint 1.1.2.5.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"

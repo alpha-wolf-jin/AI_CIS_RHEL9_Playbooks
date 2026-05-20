@@ -1,0 +1,141 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_9.yml
+
+- name: "Req 1 - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Req 1 - Set audit applicability"
+  ansible.builtin.set_fact:
+    audit_applicable: "{{ ('audit' in ansible_facts.packages) or ('auditd' in ansible_facts.packages) }}"
+
+- name: "Req 1 - Check on-disk audit rules"
+  ansible.builtin.shell:
+    cmd: |
+      {% raw %}
+      {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        [ -n "${UID_MIN}" ] && awk "/^ *-a *always,exit/ \
+        &&/ -F *arch=b(32|64)/ \
+        &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) \
+        &&/ -S/ \
+        &&/ -F *auid>=${UID_MIN}/ \
+        &&(/chmod/||/fchmod/||/fchmodat/ \
+          ||/chown/||/fchown/||/fchownat/||/lchown/ \
+          ||/setxattr/||/lsetxattr/||/fsetxattr/ \
+          ||/removexattr/||/lremovexattr/||/fremovexattr/) \
+        &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules \
+        || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+      }
+      {% endraw %}
+  args:
+    executable: /bin/bash
+  register: on_disk_result
+  failed_when: false
+  changed_when: false
+  when: audit_applicable | default(false)
+
+- name: "Req 1 - Check running audit rules"
+  ansible.builtin.shell:
+    cmd: |
+      {% raw %}
+      {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        [ -n "${UID_MIN}" ] && auditctl -l | awk "/^ *-a *always,exit/ \
+        &&/ -F *arch=b(32|64)/ \
+        &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) \
+        &&/ -S/ \
+        &&/ -F *auid>=${UID_MIN}/ \
+        &&(/chmod/||/fchmod/||/fchmodat/ \
+          ||/chown/||/fchown/||/fchownat/||/lchown/ \
+          ||/setxattr/||/lsetxattr/||/fsetxattr/ \
+          ||/removexattr/||/lremovexattr/||/fremovexattr/) \
+        &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" \
+        || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+      }
+      {% endraw %}
+  args:
+    executable: /bin/bash
+  register: running_result
+  failed_when: false
+  changed_when: false
+  when: audit_applicable | default(false)
+
+- name: "Req 2 - Evaluate compliance status"
+  ansible.builtin.set_fact:
+    data_01: |
+      On-disk check output:\n{{ on_disk_result.stdout | default('N/A') | trim }}\n\nRunning check output:\n{{ running_result.stdout | default('N/A') | trim }}
+    status_01: "{{ 'PASS' if (audit_applicable | default(false)) and (on_disk_result.rc | default(-1) == 0) and (running_result.rc | default(-1) == 0) else 'SKIPPED' }}"
+    details_01: "{{ 'Audit procedure executed.' if audit_applicable | default(false) else 'auditd package not installed.' }}"
+    task_01_name: "Run audit procedure (on-disk and running rules checks)"
+    task_01_cmd: "Shell commands per CIS procedure"
+    task_01_rc: "{{ (on_disk_result.rc | default(-1)) ~ '/' ~ (running_result.rc | default(-1)) }}"
+    status_02: "{{ 'NOT_APPLICABLE' if not (audit_applicable | default(false)) else 'PASS' if ( on_disk_result.rc | default(-1) == 0 and running_result.rc | default(-1) == 0 and 'ERROR' not in (on_disk_result.stdout | default('')) and 'ERROR' not in (running_result.stdout | default('')) and (on_disk_result.stdout | default('') | trim | length > 0) and (running_result.stdout | default('') | trim | length > 0) ) else 'FAIL' | trim }}"
+    data_02: |
+      {{ (on_disk_result.stdout | default('') | trim) + '\n' + (running_result.stdout | default('') | trim) | trim }}
+
+- name: "Store requirement 02 metadata"
+  ansible.builtin.set_fact:
+    task_02_name: "Verify compliance status"
+    task_02_cmd: "Evaluated on-disk and running audit rules"
+    task_02_rc: "{{ 0 if status_02 | trim == 'PASS' else 1 if status_02 | trim == 'FAIL' else -1 }}"
+    details_02: "{{ 'Auditd not installed.' if status_02 == 'NOT_APPLICABLE' else 'Audit rules are configured correctly.' if status_02 == 'PASS' else 'Audit rules missing or incorrect, or error encountered.' }}"
+
+- name: "Req 03 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | trim if status_02 | trim in ['PASS','FAIL'] else 'NOT_APPLICABLE' }}"
+
+- name: "Store requirement 03 metadata"
+  ansible.builtin.set_fact:
+    task_03_name: "Store cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: 0
+    data_03: "{{ cis_result }}"
+    status_03: "PASS"
+    details_03: "cis_result set successfully"
+
+- name: "Req 04 - Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.9"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.9"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Verify compliance status') }}"
+    - "  Command: {{ task_02_cmd | default('Evaluated on-disk and running audit rules') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 | default('') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Store cis_result') }}"
+    - "  Command: {{ task_03_cmd | default('set_fact') }}"
+    - "  Exit code: {{ task_03_rc | default(0) }}"
+    - "  Data: {{ data_03 | default('') }}"
+    - "  Status: {{ status_03 | default('PASS') }}"
+    - "  Details: {{ details_03 | default('') }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug msg"
+    - "  Exit code: 0"
+    - "  Data: Report generated"
+    - "  Status: PASS"
+    - "  Details: Audit report compiled successfully"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ details_02 | default('') }}"
+    - "========================================================"

@@ -1,0 +1,130 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_10.yml
+
+- name: "Pre-check - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Pre-check - Set audit applicability"
+  ansible.builtin.set_fact:
+    audit_applicable: "{{ ('audit' in ansible_facts.packages) | bool }}"
+
+- name: "Pre-check - Check audit rules directory"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_dir }}"
+  register: audit_rules_dir_stat
+  when: audit_applicable | default(false)
+  failed_when: false
+
+- name: "Req 1 - Run on-disk audit procedure"
+  ansible.builtin.shell:
+    cmd: |
+      AUDIT_DIR="{{ audit_rules_dir }}"
+      {% raw %}
+      UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+      [ -n "${UID_MIN}" ] && awk "/^ *-a *always,exit/ \
+      &&/ -F *arch=b(32|64)/ \
+      &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) \
+      &&/ -F *auid>=${UID_MIN}/ \
+      &&/ -S/ \
+      &&/mount/ \
+      &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" "${AUDIT_DIR}"/*.rules \
+      || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+      {% endraw %}
+  args:
+    executable: /bin/bash
+  register: on_disk_audit
+  when:
+  - audit_applicable | default(false)
+  - audit_rules_dir_stat.stat.exists | default(false)
+  failed_when: false
+  changed_when: false
+
+- name: "Req 1 - Store requirement 01 details"
+  ansible.builtin.set_fact:
+    data_01: "{{ on_disk_audit.stdout | default('') | trim if on_disk_audit is defined else '' }}"
+    task_01_name: "Run on-disk audit procedure"
+    task_01_cmd: "awk-based check in {{ audit_rules_dir }}/*.rules"
+    task_01_rc: "{{ on_disk_audit.rc | default(-1) if on_disk_audit is defined else -1 }}"
+    status_01: "{{ ('SKIPPED' if not (audit_applicable | default(false)) else ('SKIPPED' if not (audit_rules_dir_stat.stat.exists | default(false)) else ('PASS' if on_disk_audit is defined and on_disk_audit.rc | default(-1) | int == 0 else 'FAIL'))) | trim }}"
+    details_01: >-
+      {%- if not (audit_applicable | default(false)) -%}
+        Audit package not installed
+      {%- elif not (audit_rules_dir_stat.stat.exists | default(false)) -%}
+        Audit rules directory not found
+      {%- elif on_disk_audit is defined and on_disk_audit.rc | default(-1) | int == 0 -%}
+        Audit procedure executed successfully
+      {%- else -%}
+        Audit command failed with rc {{ on_disk_audit.rc | default(-1) if on_disk_audit is defined else 'N/A' }}
+      {%- endif -%}
+
+- name: "Req 2 - Evaluate compliance status"
+  ansible.builtin.set_fact:
+    status_02: >-
+      {%- if not (audit_applicable | default(false)) -%}
+        SKIPPED
+      {%- elif on_disk_audit is defined and (expected_line_b64 in on_disk_audit.stdout | default('') and expected_line_b32 in on_disk_audit.stdout | default('')) -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    data_02: "{{ on_disk_audit.stdout | default('') | trim if on_disk_audit is defined else '' }}"
+    details_02: >-
+      {%- if not (audit_applicable | default(false)) -%}
+        Audit package not installed
+      {%- elif on_disk_audit is defined and (expected_line_b64 in on_disk_audit.stdout | default('') and expected_line_b32 in on_disk_audit.stdout | default('')) -%}
+        Compliant: expected mount rules found
+      {%- else -%}
+        Not compliant: expected rules not found
+      {%- endif -%}
+    task_02_name: "Evaluate compliance"
+    task_02_cmd: "N/A"
+    task_02_rc: "N/A"
+
+- name: "Req 3 - Store final audit result and requirement 03 details"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+    status_03: "PASS"
+    details_03: "cis_result set to {{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_name: "Store final audit result"
+    task_03_cmd: "set_fact: cis_result = {{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_rc: 0
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.10"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.10"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ 'System is compliant' if cis_result | default('UNKNOWN') == 'PASS' else 'System is not compliant' if cis_result | default('UNKNOWN') == 'FAIL' else cis_result | default('UNKNOWN') }}"
+    - "========================================================"

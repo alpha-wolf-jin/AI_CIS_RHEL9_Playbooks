@@ -1,0 +1,139 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_8_9.yml
+
+- name: "Check if GDM packages are installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set GDM installed fact"
+  ansible.builtin.set_fact:
+    gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
+    playbook_skipped: "{{ not ('gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages) }}"
+
+# ------ Requirement 1: Run the audit script (inline, read-only) ------
+- name: "Req 01 - Execute audit script (inline)"
+  ansible.builtin.shell:
+    cmd: /bin/bash
+    stdin: "{{ audit_script_content }}"
+  args:
+    executable: /bin/bash
+  register: audit_result
+  failed_when: false
+  changed_when: false
+  when: gdm_installed | default(false) | bool
+
+# ------ Requirement 2: Determine compliance status ------
+- name: "Req 02 - Set compliance status (GDM not installed)"
+  ansible.builtin.set_fact:
+    compliance_status: "SKIPPED"
+    compliance_details: "GDM not installed; recommendation not applicable"
+  when: not (gdm_installed | default(false))
+
+- name: "Req 02 - Set compliance status from audit output (GDM installed)"
+  ansible.builtin.set_fact:
+    compliance_status: >-
+      {%- if '** PASS **' in audit_result.stdout | default('') -%}
+        PASS
+      {%- elif '** FAIL **' in audit_result.stdout | default('') -%}
+        FAIL
+      {%- else -%}
+        UNKNOWN
+      {%- endif -%}
+    compliance_details: >-
+      {%- if '** PASS **' in audit_result.stdout | default('') -%}
+        Audit script passed: autorun-never is locked and cannot be overridden
+      {%- elif '** FAIL **' in audit_result.stdout | default('') -%}
+        Audit script failed: autorun-never is not locked
+      {%- else -%}
+        Unable to determine compliance from audit output
+      {%- endif -%}
+  when: gdm_installed | default(false) | bool
+
+# ------ Store details for report ------
+- name: "Set requirement 01 report details (script executed)"
+  ansible.builtin.set_fact:
+    task_01_name: "Execute audit script for GDM autorun-never"
+    task_01_cmd: "/bin/bash (inline)"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: >-
+      {%- if audit_result.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_01: >-
+      {%- if audit_result.rc | default(-1) == 0 -%}
+        Audit script executed successfully
+      {%- else -%}
+        Audit script failed with exit code {{ audit_result.rc | default(-1) }}
+      {%- endif -%}
+  when: gdm_installed | default(false) | bool
+
+- name: "Set requirement 01 report details (script skipped)"
+  ansible.builtin.set_fact:
+    task_01_name: "Execute audit script for GDM autorun-never"
+    task_01_cmd: "N/A (GDM not installed)"
+    task_01_rc: -1
+    data_01: ""
+    status_01: "SKIPPED"
+    details_01: "GDM not installed; audit script skipped"
+  when: not (gdm_installed | default(false))
+
+- name: "Set requirement 02 report fields"
+  ansible.builtin.set_fact:
+    task_02_name: "Verify compliance from audit script output"
+    task_02_cmd: "Parse audit script output for PASS/FAIL"
+    task_02_rc: -1
+    data_02: "{{ compliance_status | default('UNKNOWN') }}"
+    details_02: "{{ compliance_details | default('') }}"
+
+# ------ Requirement 3: Store final audit result in cis_result ------
+- name: "Req 03 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ compliance_status | default('UNKNOWN') }}"
+    task_03_name: "Store cis_result from compliance_status"
+    task_03_cmd: "set_fact"
+    task_03_rc: 0
+    data_03: "{{ compliance_status | default('UNKNOWN') }}"
+    status_03: "PASS"
+    details_03: "cis_result set to {{ compliance_status | default('UNKNOWN') }}"
+
+# ------ Final audit report ------
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.8.9"
+    - "Reference: CIS Benchmark checkpoint 1.8.9"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ compliance_status | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

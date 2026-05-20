@@ -1,0 +1,19 @@
+checkpoint_id: "cis_3_3_10"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+sysctl_file: "/etc/sysctl.d/60-netipv4_sysctl.conf"
+sysctl_param: "net.ipv4.tcp_syncookies"
+sysctl_value: "1"
+req_01: "Run the provided remediation script to fix Ensure tcp syn cookies is enabled"
+req_02: "VERIFY: Run audit check to confirm Ensure tcp syn cookies is enabled is properly configured. Expected result: System is compliant"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate remediation report' using debug msg with EXACTLY this format: REMEDIATION REPORT ..."
+remediation_script: "/tmp/cis_remediation_3_3_10.sh"
+remediation_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     sysctl -w net.ipv4.tcp_syncookies=1
+     sysctl -w net.ipv4.route.flush=1
+  }
+  {% endraw %}

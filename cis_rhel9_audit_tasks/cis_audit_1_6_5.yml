@@ -1,0 +1,146 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_6_5.yml
+
+- name: "Snapshot - Record pre-execution existence of audit script"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: snapshot_audit_script
+  failed_when: false
+  changed_when: false
+  tags: [snapshot, audit]
+
+- block:
+  - name: "Req 01 - Gather installed package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute, audit]
+
+  - name: "Req 01 - Set crypto-policies installation status"
+    ansible.builtin.set_fact:
+      crypto_policies_installed: "{{ 'crypto-policies' in ansible_facts.packages }}"
+    tags: [execute, audit]
+
+  - name: "Req 01 - Deploy audit script"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: crypto_policies_installed | bool
+    changed_when: false
+    failed_when: false
+    tags: [execute, audit]
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: "/bin/bash {{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    when: crypto_policies_installed | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute, audit]
+
+  - name: "Req 01 - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: crypto_policies_installed | bool
+    changed_when: false
+    failed_when: false
+    tags: [execute, audit]
+
+  - name: "Set requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute audit script"
+      task_01_cmd: "{{ '/bin/bash ' + audit_script if crypto_policies_installed | bool else 'N/A' }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) if crypto_policies_installed | bool else -1 }}"
+      data_01: "{{ audit_result.stdout | default('') | trim if crypto_policies_installed | bool else 'N/A' }}"
+      status_01: "{{ 'PASS' if crypto_policies_installed | bool and audit_result.rc | default(-1) == 0 else ('SKIPPED' if not crypto_policies_installed | bool else 'FAIL') }}"
+      details_01: "{{ 'Audit script executed successfully' if crypto_policies_installed | bool and audit_result.rc | default(-1) == 0 else ('crypto-policies not installed' if not crypto_policies_installed | bool else 'Audit script execution failed') }}"
+    tags: [execute, audit]
+
+  - name: "Set requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Summarise compliance status"
+      task_02_cmd: "Interpret audit script output"
+      task_02_rc: "0"
+      data_02: "{{ audit_result.stdout | default('') | trim if crypto_policies_installed | bool else 'N/A' }}"
+      status_02: >-
+        {{ 'PASS' if crypto_policies_installed | bool and '** PASS **' in (audit_result.stdout | default(''))
+           else ('FAIL' if crypto_policies_installed | bool and '** FAIL **' in (audit_result.stdout | default(''))
+           else ('UNKNOWN' if crypto_policies_installed | bool else 'NOT_APPLICABLE')) }}
+      details_02: >-
+        {{ audit_result.stdout | default('') | trim if crypto_policies_installed | bool
+           else 'crypto-policies package is not installed' }}
+    tags: [execute, audit]
+
+  - name: "Set cis_result fact"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 }}"
+    tags: [execute, audit]
+
+  - name: "Set requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Set cis_result fact"
+      task_03_cmd: "set_fact: cis_result={{ status_02 }}"
+      task_03_rc: 0
+      data_03: "{{ cis_result | default('') | trim }}"
+      status_03: "{{ 'PASS' if cis_result is defined and cis_result in ['PASS','FAIL','SKIPPED','UNKNOWN','NOT_APPLICABLE'] else 'UNKNOWN' }}"
+      details_03: "cis_result variable set to {{ cis_result | default('') | trim }}"
+    tags: [execute, audit]
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.6.5"
+      - "Reference: CIS Benchmark checkpoint 1.6.5"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute, audit]
+
+  always:
+  - name: "Restore - Check current existence of audit script"
+    ansible.builtin.stat:
+      path: "{{ audit_script }}"
+    register: restore_script_stat
+    changed_when: false
+    failed_when: false
+    tags: [restore, audit]
+
+  - name: "Restore - Remove temporary audit script if present"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: restore_script_stat.stat.exists | default(false)
+    changed_when: false
+    failed_when: false
+    tags: [restore, audit]

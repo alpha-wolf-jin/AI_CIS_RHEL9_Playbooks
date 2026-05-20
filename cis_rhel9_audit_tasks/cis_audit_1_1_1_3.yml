@@ -1,0 +1,194 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+  tags:
+  - snapshot
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: hfs_script_stat
+  tags:
+  - snapshot
+
+- name: "Snapshot - Write marker file indicating script existence"
+  ansible.builtin.copy:
+    dest: "{{ backup_dir }}/hfs_script_existed.marker"
+    content: "{{ '1' if hfs_script_stat.stat.exists else '0' }}"
+    mode: '0644'
+  tags:
+  - snapshot
+
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+    tags:
+    - execute
+
+  - name: "Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+    tags:
+    - execute
+
+  - name: "Req 01 - Store audit details"
+    set_fact:
+      task_01_name: "Execute CIS audit script for hfs module"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if '** PASS **' in (audit_result.stdout | default('')) else 'FAIL') | trim }}"
+      details_01: "{{ ('Audit script passed all checks' if '** PASS **' in (audit_result.stdout | default('')) else 'Audit script reported failures') | trim }}"
+    tags:
+    - execute
+
+  - name: "Req 02 - Summarise compliance status"
+    set_fact:
+      task_02_name: "Summarise compliance status from audit output"
+      task_02_cmd: "N/A"
+      task_02_rc: 0
+      data_02: "{{ audit_result.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if '** PASS **' in (audit_result.stdout | default('')) else 'FAIL') | trim }}"
+      details_02: "{{ ('Overall compliance PASS' if '** PASS **' in (audit_result.stdout | default('')) else 'Overall compliance FAIL') | trim }}"
+    tags:
+    - execute
+
+  - name: "Req 03 - Store final audit result in cis_result"
+    set_fact:
+      cis_result: "{{ status_02 | trim }}"
+      task_03_name: "Store final audit result"
+      task_03_cmd: "N/A"
+      task_03_rc: 0
+      data_03: "cis_result = {{ status_02 | trim }}"
+      status_03: "PASS"
+      details_03: "Variable cis_result set successfully"
+    tags:
+    - execute
+
+  - name: "Req 04 - Prepare report task details"
+    set_fact:
+      task_04_name: "Generate audit report"
+      task_04_cmd: "N/A"
+      task_04_rc: 0
+      data_04: "Report output to console"
+      status_04: "PASS"
+      details_04: "Audit report displayed"
+    tags:
+    - execute
+
+  - name: "Generate audit report"
+    debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.1.1.3"
+      - "Reference: CIS Benchmark checkpoint 1.1.1.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags:
+    - execute
+
+  always:
+  - name: "Restore - Read marker file to check if script existed before"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/hfs_script_existed.marker"
+    register: marker_slurp
+    failed_when: false
+    tags:
+    - restore
+
+  - name: "Restore - Remove audit script if it was created"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - marker_slurp is defined
+    - marker_slurp.content is defined
+    - (marker_slurp.content | b64decode | trim) == '0'
+    failed_when: false
+    tags:
+    - restore
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags:
+    - restore

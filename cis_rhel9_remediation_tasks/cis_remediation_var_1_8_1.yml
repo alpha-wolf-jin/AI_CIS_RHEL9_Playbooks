@@ -1,0 +1,6 @@
+checkpoint_id: "cis_1_8_1"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+package_name: "gdm"
+req_01: "Apply removal of GNOME Display Manager using command: `dnf remove gdm`. Expected result: The gdm package is removed from the system."
+req_02: "Verify GNOME Display Manager is removed using command: `rpm -q gdm`. Expected result: Package gdm is not installed (output: package gdm is not installed)."

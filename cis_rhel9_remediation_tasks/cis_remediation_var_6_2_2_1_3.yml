@@ -1,0 +1,8 @@
+playbook_name: "cis_6.2.2.1.3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+service_name: "systemd-journal-upload"
+req_01: "Apply unmask systemd-journal-upload.service using command: `systemctl unmask systemd-journal-upload.service`. Expected result: The service is unmasked and can be enabled."
+req_02: "Apply enable and start systemd-journal-upload.service using command: `systemctl --now enable systemd-journal-upload.service`. Expected result: The service is enabled to start on boot and is currently active."
+req_03: |
+  Verify systemd-journal-upload is enabled and active using command: `systemctl is-enabled systemd-journal-upload.service && systemctl is-active systemd-journal-upload.service && [ \"$(systemctl is-active systemd-journal-upload.service)\" = \"active\" ]`. Expected result: Both commands return 'enabled' and 'active' respectively.
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

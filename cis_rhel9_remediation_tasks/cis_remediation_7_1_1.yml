@@ -1,0 +1,168 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_7_1_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ target_file }}"
+  register: _snap_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ target_file }}"
+    dest: "{{ backup_dir }}/passwd.backup"
+    remote_src: true
+  when: "_snap_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+  tags: [execute]
+- block:
+  - name: "Req 01 - Remove excess permissions on /etc/passwd"
+    ansible.builtin.file:
+      path: "{{ target_file }}"
+      mode: "{{ expected_perms }}"
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Remove excess permissions on /etc/passwd"
+      task_01_cmd: "chmod u-x,go-wx /etc/passwd"
+      task_01_rc: "{{ 0 if not (result_01.failed | default(false)) else -1 }}"
+      data_01: "{{ 'Permissions set to ' + expected_perms if not (result_01.failed | default(false)) else result_01.msg | default('Unknown error') }}"
+      status_01: "{{ 'PASS' if not (result_01.failed | default(false)) else 'FAIL' }}"
+      details_01: "{{ 'Permissions changed successfully' if not (result_01.failed | default(false)) else 'Failed to set permissions: ' + (result_01.msg | default('Unknown error')) }}"
+    tags: [execute]
+
+  - name: "Req 02 - Set owner and group to root on /etc/passwd"
+    ansible.builtin.file:
+      path: "{{ target_file }}"
+      owner: "{{ expected_owner }}"
+      group: "{{ expected_group }}"
+    register: result_02
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Set owner and group to root on /etc/passwd"
+      task_02_cmd: "chown root:root /etc/passwd"
+      task_02_rc: "{{ 0 if not (result_02.failed | default(false)) else -1 }}"
+      data_02: "{{ 'Owner/group set to ' + expected_owner + ':' + expected_group if not (result_02.failed | default(false)) else result_02.msg | default('Unknown error') }}"
+      status_02: "{{ 'PASS' if not (result_02.failed | default(false)) else 'FAIL' }}"
+      details_02: "{{ 'Ownership changed successfully' if not (result_02.failed | default(false)) else 'Failed to set ownership: ' + (result_02.msg | default('Unknown error')) }}"
+    tags: [execute]
+
+  - name: "Req 03 - Verify permissions and ownership on /etc/passwd"
+    ansible.builtin.shell: "stat -c '%a %U:%G' {{ target_file }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Verify permissions and ownership on /etc/passwd"
+      task_03_cmd: "stat -c '%a %U:%G' /etc/passwd"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (result_03.stdout | default('') | trim) == (expected_perms + ' ' + expected_owner + ':' + expected_group) else 'FAIL' }}"
+      details_03: "{{ 'Verification passed: ' + (result_03.stdout | default('') | trim) if (result_03.stdout | default('') | trim) == (expected_perms + ' ' + expected_owner + ':' + expected_group) else 'Verification failed: expected ' + expected_perms + ' ' + expected_owner + ':' + expected_group + ', got ' + (result_03.stdout | default('') | trim) }}"
+    tags: [execute]
+
+  - name: "Set overall remediation status"
+    set_fact:
+      cis_result: "{{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS') else 'FAIL' }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 7.1.1"
+      - "Reference: CIS Benchmark checkpoint 7.1.1"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('FAIL') }}"
+      - "  Details: {{ 'All requirements met' if cis_result == 'PASS' else 'One or more requirements failed' }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/passwd.backup"
+    register: _restore_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/passwd.backup"
+      dest: "{{ target_file }}"
+      remote_src: true
+    when: "_restore_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

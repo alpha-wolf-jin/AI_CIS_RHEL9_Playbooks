@@ -1,0 +1,6 @@
+playbook_name: "cis_1_3_1_5"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+selinux_config: "/etc/selinux/config"
+req_01: "Apply SELinux enforcing mode immediately using command: `setenforce 1`. Expected result: SELinux is now in enforcing mode (no output on success)."
+req_02: "Edit /etc/selinux/config to set SELINUX=enforcing using command: `sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config`. Expected result: The SELINUX parameter in /etc/selinux/config is set to enforcing."
+req_03: "Verify SELinux mode is enforcing using command: `getenforce`. Expected result: Enforcing"

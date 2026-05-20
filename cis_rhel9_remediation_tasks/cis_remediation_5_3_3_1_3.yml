@@ -1,0 +1,271 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if faillock.conf exists"
+  ansible.builtin.stat:
+    path: /etc/security/faillock.conf
+  register: faillock_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup faillock.conf if exists"
+  ansible.builtin.copy:
+    src: /etc/security/faillock.conf
+    dest: "{{ backup_dir }}/faillock.conf.bak"
+    remote_src: true
+  when: "faillock_conf_stat.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "Snapshot - Check if authselect is installed"
+  ansible.builtin.stat:
+    path: /usr/bin/authselect
+  register: authselect_bin_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup PAM files if authselect is installed"
+  ansible.builtin.shell: |
+    l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+    if [ -n "$l_pam_profile" ]; then
+      for l_pam_file in system-auth password-auth; do
+        l_file="/etc/authselect/$l_pam_profile/$l_pam_file"
+        if [ -f "$l_file" ]; then
+          cp "$l_file" "{{ backup_dir }}/${l_pam_file}.bak"
+        fi
+      done
+    fi
+  args:
+    executable: /bin/bash
+  failed_when: false
+  changed_when: false
+  when: "authselect_bin_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    playbook_skipped: false
+
+- block:
+  - name: "Req 01 - Check if authselect is installed"
+    ansible.builtin.stat:
+      path: /usr/bin/authselect
+    register: authselect_check
+    failed_when: false
+
+  - name: "Req 01 - Set skip fact if prerequisites not met"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ not (authselect_check.stat.exists | default(false)) }}"
+
+  - name: "Req 01 - Remove or comment out root_unlock_time line in faillock.conf"
+    ansible.builtin.lineinfile:
+      path: /etc/security/faillock.conf
+      regexp: |
+        ^\s*root_unlock_time\s*=
+      line: '# root_unlock_time = 60'
+      backrefs: false
+    register: faillock_root_unlock
+    failed_when: false
+    when: "not playbook_skipped"
+
+  - name: "Req 01 - Ensure even_deny_root is present in faillock.conf"
+    ansible.builtin.lineinfile:
+      path: /etc/security/faillock.conf
+      line: 'even_deny_root'
+      create: true
+      mode: '0644'
+    register: faillock_even_deny
+    failed_when: false
+    when: "not playbook_skipped"
+
+  - name: "Req 01 - Execute remediation script to remove even_deny_root and root_unlock_time from PAM files"
+    ansible.builtin.shell: |
+      for l_pam_file in system-auth password-auth; do
+        l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+        if [ -f "$l_authselect_file" ]; then
+          sed -ri 's/(^\s*auth\s+(.*)\s+pam_faillock\.so.*)(\s+even_deny_root)(.*$)/\1\4/' "$l_authselect_file"
+          sed -ri 's/(^\s*auth\s+(.*)\s+pam_faillock\.so.*)(\s+root_unlock_time\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+        fi
+      done
+      authselect apply-changes
+    args:
+      executable: /bin/bash
+    register: pam_remediation_result
+    failed_when: false
+    when: "not playbook_skipped"
+
+  - name: "Req 01 - Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Run remediation script to fix faillock.conf and PAM files"
+      task_01_cmd: "lineinfile + shell script for PAM remediation"
+      task_01_rc: "{{ pam_remediation_result.rc | default(0) }}"
+      data_01: "{{ pam_remediation_result.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if (pam_remediation_result.rc | default(0)) == 0 else 'FAIL') }}"
+      details_01: "{{ 'Prerequisites not met - authselect not installed' if playbook_skipped else ('Completed successfully' if (pam_remediation_result.rc | default(0)) == 0 else 'Failed to execute remediation script') }}"
+
+  - name: "Req 02 - Verify even_deny_root is present in faillock.conf"
+    ansible.builtin.shell: |
+      if grep -qE '^\s*even_deny_root\s*$' /etc/security/faillock.conf 2>/dev/null; then
+        echo "FOUND"
+      else
+        echo "NOT_FOUND"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_even_deny
+    failed_when: false
+    when: "not playbook_skipped"
+
+  - name: "Req 02 - Verify root_unlock_time is not present or set to 60 or more in faillock.conf"
+    ansible.builtin.shell: |
+      if grep -E '^\s*root_unlock_time\s*=\s*[0-9]+' /etc/security/faillock.conf 2>/dev/null; then
+        VALUE=$(grep -E '^\s*root_unlock_time\s*=\s*[0-9]+' /etc/security/faillock.conf | sed -r 's/.*=\s*([0-9]+).*/\1/')
+        if [ "$VALUE" -ge 60 ]; then
+          echo "COMPLIANT_VALUE=$VALUE"
+        else
+          echo "NONCOMPLIANT_VALUE=$VALUE"
+        fi
+      else
+        echo "NOT_PRESENT_COMPLIANT"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_root_unlock
+    failed_when: false
+    when: "not playbook_skipped"
+
+  - name: "Req 02 - Verify even_deny_root is not present in PAM faillock lines"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        if grep -E '^\s*auth\s+.*pam_faillock\.so.*even_deny_root' "/etc/authselect/$l_pam_profile/system-auth" "/etc/authselect/$l_pam_profile/password-auth" 2>/dev/null; then
+          echo "FOUND_IN_PAM"
+        else
+          echo "NOT_FOUND_IN_PAM"
+        fi
+      else
+        echo "NO_CUSTOM_PROFILE"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_pam_even_deny
+    failed_when: false
+    when: "not playbook_skipped"
+
+  - name: "Req 02 - Verify root_unlock_time is not present in PAM faillock lines"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        if grep -E '^\s*auth\s+.*pam_faillock\.so.*root_unlock_time' "/etc/authselect/$l_pam_profile/system-auth" "/etc/authselect/$l_pam_profile/password-auth" 2>/dev/null; then
+          echo "FOUND_IN_PAM"
+        else
+          echo "NOT_FOUND_IN_PAM"
+        fi
+      else
+        echo "NO_CUSTOM_PROFILE"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_pam_root_unlock
+    failed_when: false
+    when: "not playbook_skipped"
+
+  - name: "Req 02 - Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify faillock.conf and PAM configuration"
+      task_02_cmd: "grep checks on faillock.conf and PAM files"
+      task_02_rc: "{{ 0 if (verify_even_deny.stdout | default('') | trim == 'FOUND') and (verify_root_unlock.stdout | default('') | trim in ['NOT_PRESENT_COMPLIANT', 'COMPLIANT_VALUE=60']) and (verify_pam_even_deny.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') and (verify_pam_root_unlock.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') else 1 }}"
+      data_02: "even_deny_root={{ verify_even_deny.stdout | default('') | trim }}, root_unlock_time={{ verify_root_unlock.stdout | default('') | trim }}, pam_even_deny={{ verify_pam_even_deny.stdout | default('') | trim }}, pam_root_unlock={{ verify_pam_root_unlock.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if (verify_even_deny.stdout | default('') | trim == 'FOUND') and (verify_root_unlock.stdout | default('') | trim in ['NOT_PRESENT_COMPLIANT', 'COMPLIANT_VALUE=60']) and (verify_pam_even_deny.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') and (verify_pam_root_unlock.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') else 'FAIL') }}"
+      details_02: "{{ 'Prerequisites not met - authselect not installed' if playbook_skipped else ('All checks passed' if (verify_even_deny.stdout | default('') | trim == 'FOUND') and (verify_root_unlock.stdout | default('') | trim in ['NOT_PRESENT_COMPLIANT', 'COMPLIANT_VALUE=60']) and (verify_pam_even_deny.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') and (verify_pam_root_unlock.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') else 'One or more checks failed') }}"
+
+  - name: "Set final remediation result variable (cis_result)"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 }}"
+
+  - name: "Req 03 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 5.3.3.1.3"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.1.3"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+
+  always:
+  - name: "Restore - Check if backup directory exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}"
+    register: restore_backup_dir_stat
+    tags: [restore]
+
+  - name: "Restore - Restore faillock.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/faillock.conf.bak"
+      dest: /etc/security/faillock.conf
+      remote_src: true
+    when:
+    - "restore_backup_dir_stat.stat.exists | default(false)"
+    - "restore_backup_dir_stat.stat.isdir | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore PAM files from backup"
+    ansible.builtin.shell: |
+      for l_pam_file in system-auth password-auth; do
+        if [ -f "{{ backup_dir }}/${l_pam_file}.bak" ]; then
+          l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+          if [ -n "$l_pam_profile" ]; then
+            cp "{{ backup_dir }}/${l_pam_file}.bak" "/etc/authselect/$l_pam_profile/$l_pam_file"
+          fi
+        fi
+      done
+      authselect apply-changes 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    failed_when: false
+    when:
+    - "restore_backup_dir_stat.stat.exists | default(false)"
+    - "restore_backup_dir_stat.stat.isdir | default(false)"
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,9 @@
+playbook_name: "cis_6_3_4_6"
+checkpoint_id: "cis_6_3_4_6"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "Apply prerequisite check for find and chown commands using: `command -v find && command -v chown`. Expected result: both commands are available."
+req_02: |
+  Apply ownership change to root for audit configuration files using: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -user root -exec chown root {} +`. Expected result: all .conf and .rules files in /etc/audit/ are owned by root.
+req_03: |
+  Verify ownership of audit configuration files using: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -user root`. Expected result: no output (all files are owned by root).

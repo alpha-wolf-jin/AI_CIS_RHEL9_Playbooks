@@ -1,0 +1,11 @@
+req_01: "Check if SELinux or another Mandatory Access Control method is installed/present using command: `which selinuxenabled || dpkg -l selinux* 2>/dev/null || rpm -qa selinux* 2>/dev/null`. Expected result: SELinux or equivalent MAC software is installed."
+req_02: |
+  Check on-disk audit rules for /etc/selinux directory using command: `awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: Output matches `-w /etc/selinux -p wa -k MAC-policy`.
+req_03: |
+  Check on-disk audit rules for /usr/share/selinux directory using command: `awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: Output matches `-w /usr/share/selinux -p wa -k MAC-policy`.
+req_04: |
+  Check running audit rules for /etc/selinux directory using command: `auditctl -l | awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: Output matches `-w /etc/selinux -p wa -k MAC-policy`.
+req_05: |
+  Check running audit rules for /usr/share/selinux directory using command: `auditctl -l | awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: Output matches `-w /usr/share/selinux -p wa -k MAC-policy`.
+req_06: "Summarize overall compliance status: All checks passed (on-disk and running rules match expected output for both directories). Expected result: Compliance status is PASS."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

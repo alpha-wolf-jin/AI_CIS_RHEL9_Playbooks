@@ -1,0 +1,10 @@
+playbook_name: "CIS_2_1_13_rsync_services"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+
+req_01: "Apply stop rsyncd.socket and rsyncd.service using command: `systemctl stop rsyncd.socket rsyncd.service`. Expected result: The services are stopped."
+req_02: "Apply remove rsync-daemon package using command: `dnf remove rsync-daemon`. Expected result: The package is removed."
+req_03: "Apply mask rsyncd.socket and rsyncd.service using command: `systemctl mask rsyncd.socket rsyncd.service`. Expected result: The services are masked and cannot be started."
+req_04: "Verify that rsyncd.socket and rsyncd.service are not active using command: `systemctl is-active rsyncd.socket rsyncd.service`. Expected result: Output shows 'inactive' for both."
+req_05: "Verify that rsync-daemon package is not installed using command: `rpm -q rsync-daemon`. Expected result: Output shows 'package rsync-daemon is not installed'."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_07: "Create a task named 'Generate remediation report' using debug msg with specified format."

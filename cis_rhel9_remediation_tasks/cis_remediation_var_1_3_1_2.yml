@@ -1,0 +1,10 @@
+playbook_name: "cis_1_3_1_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Ensure grubby is installed using command: `which grubby`."
+req_02: |
+  Remove selinux=0 and enforcing=0 parameters from all kernels using command: `grubby --update-kernel ALL --remove-args \"selinux=0 enforcing=0\"`.
+req_03: |
+  Check for deprecated grub2-mkconfig kernelopts containing selinux=0 or enforcing=0 using command: `grep -Prsq -- '\\h*([^#\\n\\r]+\\h+)?kernelopts=([^#\\n\\r]+\\h+)?(selinux|enforcing)=0\\b' /boot/grub2 /boot/efi`.
+req_04: |
+  If deprecated kernelopts are found, regenerate grub configuration using command: `grub2-mkconfig -o \"$(grep -Prl -- '\\h*([^#\\n\\r]+\\h+)?kernelopts=([^#\\n\\r]+\\h+)?(selinux|enforcing)=0\\b' /boot/grub2 /boot/efi)\"`.
+req_05: "Verify SELinux is not disabled in bootloader configuration using command: `grubby --info=ALL | grep -E 'selinux=0|enforcing=0'`."

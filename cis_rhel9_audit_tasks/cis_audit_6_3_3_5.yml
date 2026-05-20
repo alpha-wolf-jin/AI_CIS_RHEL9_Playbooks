@@ -1,0 +1,686 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_5.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    data_09: "Not collected yet"
+    status_09: "UNKNOWN"
+    details_09: "Not evaluated"
+    data_10: "Not collected yet"
+    status_10: "UNKNOWN"
+    details_10: "Not evaluated"
+    data_11: "Not collected yet"
+    status_11: "UNKNOWN"
+    details_11: "Not evaluated"
+    data_12: "Not collected yet"
+    status_12: "UNKNOWN"
+    details_12: "Not evaluated"
+    data_13: "Not collected yet"
+    status_13: "UNKNOWN"
+    details_13: "Not evaluated"
+    data_14: "Not collected yet"
+    status_14: "UNKNOWN"
+    details_14: "Not evaluated"
+    data_15: "Not collected yet"
+    status_15: "UNKNOWN"
+    details_15: "Not evaluated"
+    data_16: "Not collected yet"
+    status_16: "UNKNOWN"
+    details_16: "Not evaluated"
+    data_17: "Not collected yet"
+    status_17: "UNKNOWN"
+    details_17: "Not evaluated"
+    data_18: "Not collected yet"
+    status_18: "UNKNOWN"
+    details_18: "Not evaluated"
+    data_19: "Not collected yet"
+    status_19: "UNKNOWN"
+    details_19: "Not evaluated"
+    data_20: "Not collected yet"
+    status_20: "UNKNOWN"
+    details_20: "Not evaluated"
+    data_21: "Not collected yet"
+    status_21: "UNKNOWN"
+    details_21: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+  tags:
+  - always
+
+- name: "Req 01 - Check if auditd package is installed"
+  ansible.builtin.shell: dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if auditd package is installed"
+    task_01_cmd: "dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' | trim }}"
+    details_01: "{{ 'auditd is installed' if result_01.rc | default(-1) == 0 else 'auditd not installed or command failed' | trim }}"
+    auditd_installed: "{{ result_01.rc | default(-1) == 0 }}"
+    audit_applicable: "{{ result_01.rc | default(-1) == 0 }}"
+
+- name: "Req 02 - Check on-disk audit rules for sethostname and setdomainname syscalls (64-bit)"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check on-disk audit rules for sethostname and setdomainname syscalls (64-bit)"
+    task_02_cmd: "awk '/^-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules"
+    task_02_rc: "{{ result_02.rc | default(-1) if audit_applicable | bool and not result_02.skipped | default(false) else -1 }}"
+    data_02: "{{ result_02.stdout | default('') | trim if audit_applicable | bool and not result_02.skipped | default(false) else '' }}"
+    status_02: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_02.skipped | default(false) %}NOT_APPLICABLE{% elif expected_02 in (result_02.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_02: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_02.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_02 in (result_02.stdout_lines | default([])) %}On-disk 64-bit syscall rule present.{% else %}Missing or wrong rule. Output: {{ result_02.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 03 - Check on-disk audit rules for sethostname and setdomainname syscalls (32-bit)"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check on-disk audit rules for sethostname and setdomainname syscalls (32-bit)"
+    task_03_cmd: "awk '/^-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules"
+    task_03_rc: "{{ result_03.rc | default(-1) if audit_applicable | bool and not result_03.skipped | default(false) else -1 }}"
+    data_03: "{{ result_03.stdout | default('') | trim if audit_applicable | bool and not result_03.skipped | default(false) else '' }}"
+    status_03: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_03.skipped | default(false) %}NOT_APPLICABLE{% elif expected_03 in (result_03.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_03: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_03.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_03 in (result_03.stdout_lines | default([])) %}On-disk 32-bit syscall rule present.{% else %}Missing or wrong rule. Output: {{ result_03.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 04 - Check on-disk audit rules for file watch on /etc/issue"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_04
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 04 details"
+  ansible.builtin.set_fact:
+    task_04_name: "Check on-disk audit rules for file watch on /etc/issue"
+    task_04_cmd: |
+      awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...' /etc/audit/rules.d/*.rules
+    task_04_rc: "{{ result_04.rc | default(-1) if audit_applicable | bool and not result_04.skipped | default(false) else -1 }}"
+    data_04: "{{ result_04.stdout | default('') | trim if audit_applicable | bool and not result_04.skipped | default(false) else '' }}"
+    status_04: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_04.skipped | default(false) %}NOT_APPLICABLE{% elif expected_04 in (result_04.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_04: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_04.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_04 in (result_04.stdout_lines | default([])) %}On-disk rule for /etc/issue present.{% else %}Missing or wrong rule. Output: {{ result_04.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 05 - Check on-disk audit rules for file watch on /etc/issue.net"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_05
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 05 details"
+  ansible.builtin.set_fact:
+    task_05_name: "Check on-disk audit rules for file watch on /etc/issue.net"
+    task_05_cmd: |
+      awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...' /etc/audit/rules.d/*.rules
+    task_05_rc: "{{ result_05.rc | default(-1) if audit_applicable | bool and not result_05.skipped | default(false) else -1 }}"
+    data_05: "{{ result_05.stdout | default('') | trim if audit_applicable | bool and not result_05.skipped | default(false) else '' }}"
+    status_05: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_05.skipped | default(false) %}NOT_APPLICABLE{% elif expected_05 in (result_05.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_05: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_05.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_05 in (result_05.stdout_lines | default([])) %}On-disk rule for /etc/issue.net present.{% else %}Missing or wrong rule. Output: {{ result_05.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 06 - Check on-disk audit rules for file watch on /etc/hosts"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_06
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 06 details"
+  ansible.builtin.set_fact:
+    task_06_name: "Check on-disk audit rules for file watch on /etc/hosts"
+    task_06_cmd: |
+      awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...' /etc/audit/rules.d/*.rules
+    task_06_rc: "{{ result_06.rc | default(-1) if audit_applicable | bool and not result_06.skipped | default(false) else -1 }}"
+    data_06: "{{ result_06.stdout | default('') | trim if audit_applicable | bool and not result_06.skipped | default(false) else '' }}"
+    status_06: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_06.skipped | default(false) %}NOT_APPLICABLE{% elif expected_06 in (result_06.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_06: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_06.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_06 in (result_06.stdout_lines | default([])) %}On-disk rule for /etc/hosts present.{% else %}Missing or wrong rule. Output: {{ result_06.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 07 - Check on-disk audit rules for file watch on /etc/hostname"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_07
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 07 details"
+  ansible.builtin.set_fact:
+    task_07_name: "Check on-disk audit rules for file watch on /etc/hostname"
+    task_07_cmd: |
+      awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...' /etc/audit/rules.d/*.rules
+    task_07_rc: "{{ result_07.rc | default(-1) if audit_applicable | bool and not result_07.skipped | default(false) else -1 }}"
+    data_07: "{{ result_07.stdout | default('') | trim if audit_applicable | bool and not result_07.skipped | default(false) else '' }}"
+    status_07: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_07.skipped | default(false) %}NOT_APPLICABLE{% elif expected_07 in (result_07.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_07: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_07.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_07 in (result_07.stdout_lines | default([])) %}On-disk rule for /etc/hostname present.{% else %}Missing or wrong rule. Output: {{ result_07.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 08 - Check on-disk audit rules for file watch on /etc/sysconfig/network"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_08
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 08 details"
+  ansible.builtin.set_fact:
+    task_08_name: "Check on-disk audit rules for file watch on /etc/sysconfig/network"
+    task_08_cmd: |
+      awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...' /etc/audit/rules.d/*.rules
+    task_08_rc: "{{ result_08.rc | default(-1) if audit_applicable | bool and not result_08.skipped | default(false) else -1 }}"
+    data_08: "{{ result_08.stdout | default('') | trim if audit_applicable | bool and not result_08.skipped | default(false) else '' }}"
+    status_08: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_08.skipped | default(false) %}NOT_APPLICABLE{% elif expected_08 in (result_08.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_08: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_08.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_08 in (result_08.stdout_lines | default([])) %}On-disk rule for /etc/sysconfig/network present.{% else %}Missing or wrong rule. Output: {{ result_08.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 09 - Check on-disk audit rules for file watch on /etc/sysconfig/network-scripts/"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_09
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 09 details"
+  ansible.builtin.set_fact:
+    task_09_name: "Check on-disk audit rules for file watch on /etc/sysconfig/network-scripts/"
+    task_09_cmd: |
+      awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...' /etc/audit/rules.d/*.rules
+    task_09_rc: "{{ result_09.rc | default(-1) if audit_applicable | bool and not result_09.skipped | default(false) else -1 }}"
+    data_09: "{{ result_09.stdout | default('') | trim if audit_applicable | bool and not result_09.skipped | default(false) else '' }}"
+    status_09: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_09.skipped | default(false) %}NOT_APPLICABLE{% elif expected_09 in (result_09.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_09: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_09.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_09 in (result_09.stdout_lines | default([])) %}On-disk rule for /etc/sysconfig/network-scripts/ present.{% else %}Missing or wrong rule. Output: {{ result_09.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 10 - Check on-disk audit rules for file watch on /etc/NetworkManager"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_10
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 10 details"
+  ansible.builtin.set_fact:
+    task_10_name: "Check on-disk audit rules for file watch on /etc/NetworkManager"
+    task_10_cmd: |
+      awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...' /etc/audit/rules.d/*.rules
+    task_10_rc: "{{ result_10.rc | default(-1) if audit_applicable | bool and not result_10.skipped | default(false) else -1 }}"
+    data_10: "{{ result_10.stdout | default('') | trim if audit_applicable | bool and not result_10.skipped | default(false) else '' }}"
+    status_10: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_10.skipped | default(false) %}NOT_APPLICABLE{% elif expected_10 in (result_10.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_10: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_10.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_10 in (result_10.stdout_lines | default([])) %}On-disk rule for /etc/NetworkManager present.{% else %}Missing or wrong rule. Output: {{ result_10.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 11 - Check running audit rules for sethostname and setdomainname syscalls (64-bit)"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_11
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 11 details"
+  ansible.builtin.set_fact:
+    task_11_name: "Check running audit rules for sethostname and setdomainname syscalls (64-bit)"
+    task_11_cmd: "auditctl -l | awk '/^ *-a *always,exit/ ...'"
+    task_11_rc: "{{ result_11.rc | default(-1) if audit_applicable | bool and not result_11.skipped | default(false) else -1 }}"
+    data_11: "{{ result_11.stdout | default('') | trim if audit_applicable | bool and not result_11.skipped | default(false) else '' }}"
+    status_11: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_11.skipped | default(false) %}NOT_APPLICABLE{% elif expected_11 in (result_11.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_11: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_11.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_11 in (result_11.stdout_lines | default([])) %}Running 64-bit syscall rule present.{% else %}Missing or wrong rule. Output: {{ result_11.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 12 - Check running audit rules for sethostname and setdomainname syscalls (32-bit)"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-a *always,exit/ && /-F *arch=b(32|64)/ && /-S/ && (/sethostname/ || /setdomainname/) && (/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_12
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 12 details"
+  ansible.builtin.set_fact:
+    task_12_name: "Check running audit rules for sethostname and setdomainname syscalls (32-bit)"
+    task_12_cmd: "auditctl -l | awk '/^ *-a *always,exit/ ...'"
+    task_12_rc: "{{ result_12.rc | default(-1) if audit_applicable | bool and not result_12.skipped | default(false) else -1 }}"
+    data_12: "{{ result_12.stdout | default('') | trim if audit_applicable | bool and not result_12.skipped | default(false) else '' }}"
+    status_12: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_12.skipped | default(false) %}NOT_APPLICABLE{% elif expected_12 in (result_12.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_12: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_12.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_12 in (result_12.stdout_lines | default([])) %}Running 32-bit syscall rule present.{% else %}Missing or wrong rule. Output: {{ result_12.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 13 - Check running audit rules for file watch on /etc/issue"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_13
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 13 details"
+  ansible.builtin.set_fact:
+    task_13_name: "Check running audit rules for file watch on /etc/issue"
+    task_13_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...'
+    task_13_rc: "{{ result_13.rc | default(-1) if audit_applicable | bool and not result_13.skipped | default(false) else -1 }}"
+    data_13: "{{ result_13.stdout | default('') | trim if audit_applicable | bool and not result_13.skipped | default(false) else '' }}"
+    status_13: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_13.skipped | default(false) %}NOT_APPLICABLE{% elif expected_13 in (result_13.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_13: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_13.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_13 in (result_13.stdout_lines | default([])) %}Running rule for /etc/issue present.{% else %}Missing or wrong rule. Output: {{ result_13.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 14 - Check running audit rules for file watch on /etc/issue.net"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_14
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 14 details"
+  ansible.builtin.set_fact:
+    task_14_name: "Check running audit rules for file watch on /etc/issue.net"
+    task_14_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...'
+    task_14_rc: "{{ result_14.rc | default(-1) if audit_applicable | bool and not result_14.skipped | default(false) else -1 }}"
+    data_14: "{{ result_14.stdout | default('') | trim if audit_applicable | bool and not result_14.skipped | default(false) else '' }}"
+    status_14: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_14.skipped | default(false) %}NOT_APPLICABLE{% elif expected_14 in (result_14.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_14: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_14.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_14 in (result_14.stdout_lines | default([])) %}Running rule for /etc/issue.net present.{% else %}Missing or wrong rule. Output: {{ result_14.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 15 - Check running audit rules for file watch on /etc/hosts"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_15
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 15 details"
+  ansible.builtin.set_fact:
+    task_15_name: "Check running audit rules for file watch on /etc/hosts"
+    task_15_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...'
+    task_15_rc: "{{ result_15.rc | default(-1) if audit_applicable | bool and not result_15.skipped | default(false) else -1 }}"
+    data_15: "{{ result_15.stdout | default('') | trim if audit_applicable | bool and not result_15.skipped | default(false) else '' }}"
+    status_15: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_15.skipped | default(false) %}NOT_APPLICABLE{% elif expected_15 in (result_15.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_15: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_15.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_15 in (result_15.stdout_lines | default([])) %}Running rule for /etc/hosts present.{% else %}Missing or wrong rule. Output: {{ result_15.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 16 - Check running audit rules for file watch on /etc/hostname"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_16
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 16 details"
+  ansible.builtin.set_fact:
+    task_16_name: "Check running audit rules for file watch on /etc/hostname"
+    task_16_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...'
+    task_16_rc: "{{ result_16.rc | default(-1) if audit_applicable | bool and not result_16.skipped | default(false) else -1 }}"
+    data_16: "{{ result_16.stdout | default('') | trim if audit_applicable | bool and not result_16.skipped | default(false) else '' }}"
+    status_16: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_16.skipped | default(false) %}NOT_APPLICABLE{% elif expected_16 in (result_16.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_16: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_16.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_16 in (result_16.stdout_lines | default([])) %}Running rule for /etc/hostname present.{% else %}Missing or wrong rule. Output: {{ result_16.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 17 - Check running audit rules for file watch on /etc/sysconfig/network"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_17
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 17 details"
+  ansible.builtin.set_fact:
+    task_17_name: "Check running audit rules for file watch on /etc/sysconfig/network"
+    task_17_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...'
+    task_17_rc: "{{ result_17.rc | default(-1) if audit_applicable | bool and not result_17.skipped | default(false) else -1 }}"
+    data_17: "{{ result_17.stdout | default('') | trim if audit_applicable | bool and not result_17.skipped | default(false) else '' }}"
+    status_17: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_17.skipped | default(false) %}NOT_APPLICABLE{% elif expected_17 in (result_17.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_17: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_17.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_17 in (result_17.stdout_lines | default([])) %}Running rule for /etc/sysconfig/network present.{% else %}Missing or wrong rule. Output: {{ result_17.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 18 - Check running audit rules for file watch on /etc/sysconfig/network-scripts"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_18
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 18 details"
+  ansible.builtin.set_fact:
+    task_18_name: "Check running audit rules for file watch on /etc/sysconfig/network-scripts"
+    task_18_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...'
+    task_18_rc: "{{ result_18.rc | default(-1) if audit_applicable | bool and not result_18.skipped | default(false) else -1 }}"
+    data_18: "{{ result_18.stdout | default('') | trim if audit_applicable | bool and not result_18.skipped | default(false) else '' }}"
+    status_18: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_18.skipped | default(false) %}NOT_APPLICABLE{% elif expected_18 in (result_18.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_18: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_18.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_18 in (result_18.stdout_lines | default([])) %}Running rule for /etc/sysconfig/network-scripts present.{% else %}Missing or wrong rule. Output: {{ result_18.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 19 - Check running audit rules for file watch on /etc/NetworkManager"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ &&(/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ &&(/ key= *[!-~]* *$/ || /-k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_19
+  when: audit_applicable | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 19 details"
+  ansible.builtin.set_fact:
+    task_19_name: "Check running audit rules for file watch on /etc/NetworkManager"
+    task_19_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/etc\\/issue/ || ... ) && /[ \\t]+-p *wa/ && ...'
+    task_19_rc: "{{ result_19.rc | default(-1) if audit_applicable | bool and not result_19.skipped | default(false) else -1 }}"
+    data_19: "{{ result_19.stdout | default('') | trim if audit_applicable | bool and not result_19.skipped | default(false) else '' }}"
+    status_19: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif result_19.skipped | default(false) %}NOT_APPLICABLE{% elif expected_19 in (result_19.stdout_lines | default([])) %}PASS{% else %}FAIL{% endif %}"
+    details_19: "{% if not (audit_applicable | bool) %}Auditd not installed; requirement not applicable.{% elif result_19.skipped | default(false) %}Skipped: unable to execute check.{% elif expected_19 in (result_19.stdout_lines | default([])) %}Running rule for /etc/NetworkManager present.{% else %}Missing or wrong rule. Output: {{ result_19.stdout | default('N/A') | trim | truncate(100) }}{% endif %}"
+
+- name: "Req 20 - Summarize overall compliance status"
+  ansible.builtin.set_fact:
+    task_20_name: "Overall compliance evaluation"
+    task_20_cmd: "N/A (logical evaluation of audit checks)"
+    task_20_rc: 0
+    data_20: >-
+      {{
+        status_01 | trim ~ ',' ~
+        status_02 | trim ~ ',' ~
+        status_03 | trim ~ ',' ~
+        status_04 | trim ~ ',' ~
+        status_05 | trim ~ ',' ~
+        status_06 | trim ~ ',' ~
+        status_07 | trim ~ ',' ~
+        status_08 | trim ~ ',' ~
+        status_09 | trim ~ ',' ~
+        status_10 | trim ~ ',' ~
+        status_11 | trim ~ ',' ~
+        status_12 | trim ~ ',' ~
+        status_13 | trim ~ ',' ~
+        status_14 | trim ~ ',' ~
+        status_15 | trim ~ ',' ~
+        status_16 | trim ~ ',' ~
+        status_17 | trim ~ ',' ~
+        status_18 | trim ~ ',' ~
+        status_19 | trim
+      }}
+    status_20: "{% if not (audit_applicable | bool) %}NOT_APPLICABLE{% elif 'FAIL' in [status_01|trim, status_02|trim, status_03|trim, status_04|trim, status_05|trim, status_06|trim, status_07|trim, status_08|trim, status_09|trim, status_10|trim, status_11|trim, status_12|trim, status_13|trim, status_14|trim, status_15|trim, status_16|trim, status_17|trim, status_18|trim, status_19|trim] %}FAIL{% elif 'NOT_APPLICABLE' in [status_02|trim, status_03|trim, status_04|trim, status_05|trim, status_06|trim, status_07|trim, status_08|trim, status_09|trim, status_10|trim, status_11|trim, status_12|trim, status_13|trim, status_14|trim, status_15|trim, status_16|trim, status_17|trim, status_18|trim, status_19|trim] %}NOT_APPLICABLE{% else %}PASS{% endif %}"
+    details_20: "{% if not (audit_applicable | bool) %}Auditd is not installed; CIS 6.3.3.5 is not applicable.{% elif 'FAIL' in [status_01|trim, status_02|trim, status_03|trim, status_04|trim, status_05|trim, status_06|trim, status_07|trim, status_08|trim, status_09|trim, status_10|trim, status_11|trim, status_12|trim, status_13|trim, status_14|trim, status_15|trim, status_16|trim, status_17|trim, status_18|trim, status_19|trim] %}One or more audit rules are missing or incorrect. See individual requirement details.{% elif 'NOT_APPLICABLE' in [status_02|trim, status_03|trim, status_04|trim, status_05|trim, status_06|trim, status_07|trim, status_08|trim, status_09|trim, status_10|trim, status_11|trim, status_12|trim, status_13|trim, status_14|trim, status_15|trim, status_16|trim, status_17|trim, status_18|trim, status_19|trim] %}Audit rules checks could not be fully evaluated (some requirements are not applicable).{% else %}All on-disk and running network-environment audit rules match the expected configuration.{% endif %}"
+
+- name: "Req 21 - Store cis_result for CIS 6.3.3.5"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_20 | trim }}"
+    task_21_name: "Store cis_result for CIS 6.3.3.5"
+    task_21_cmd: "N/A (set_fact)"
+    task_21_rc: 0
+    data_21: "{{ status_20 | trim }}"
+    status_21: "PASS"
+    details_21: "cis_result stored as {{ status_20 | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.5"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.5"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: {{ task_09_name | default('Not recorded') }}"
+    - "  Command: {{ task_09_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_09_rc | default(-1) }}"
+    - "  Data: {{ data_09 | default('') | trim }}"
+    - "  Status: {{ status_09 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_09 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 10 - {{ req_10 }}:"
+    - "  Task: {{ task_10_name | default('Not recorded') }}"
+    - "  Command: {{ task_10_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_10_rc | default(-1) }}"
+    - "  Data: {{ data_10 | default('') | trim }}"
+    - "  Status: {{ status_10 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_10 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 11 - {{ req_11 }}:"
+    - "  Task: {{ task_11_name | default('Not recorded') }}"
+    - "  Command: {{ task_11_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_11_rc | default(-1) }}"
+    - "  Data: {{ data_11 | default('') | trim }}"
+    - "  Status: {{ status_11 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_11 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 12 - {{ req_12 }}:"
+    - "  Task: {{ task_12_name | default('Not recorded') }}"
+    - "  Command: {{ task_12_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_12_rc | default(-1) }}"
+    - "  Data: {{ data_12 | default('') | trim }}"
+    - "  Status: {{ status_12 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_12 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 13 - {{ req_13 }}:"
+    - "  Task: {{ task_13_name | default('Not recorded') }}"
+    - "  Command: {{ task_13_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_13_rc | default(-1) }}"
+    - "  Data: {{ data_13 | default('') | trim }}"
+    - "  Status: {{ status_13 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_13 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 14 - {{ req_14 }}:"
+    - "  Task: {{ task_14_name | default('Not recorded') }}"
+    - "  Command: {{ task_14_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_14_rc | default(-1) }}"
+    - "  Data: {{ data_14 | default('') | trim }}"
+    - "  Status: {{ status_14 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_14 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 15 - {{ req_15 }}:"
+    - "  Task: {{ task_15_name | default('Not recorded') }}"
+    - "  Command: {{ task_15_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_15_rc | default(-1) }}"
+    - "  Data: {{ data_15 | default('') | trim }}"
+    - "  Status: {{ status_15 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_15 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 16 - {{ req_16 }}:"
+    - "  Task: {{ task_16_name | default('Not recorded') }}"
+    - "  Command: {{ task_16_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_16_rc | default(-1) }}"
+    - "  Data: {{ data_16 | default('') | trim }}"
+    - "  Status: {{ status_16 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_16 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 17 - {{ req_17 }}:"
+    - "  Task: {{ task_17_name | default('Not recorded') }}"
+    - "  Command: {{ task_17_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_17_rc | default(-1) }}"
+    - "  Data: {{ data_17 | default('') | trim }}"
+    - "  Status: {{ status_17 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_17 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 18 - {{ req_18 }}:"
+    - "  Task: {{ task_18_name | default('Not recorded') }}"
+    - "  Command: {{ task_18_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_18_rc | default(-1) }}"
+    - "  Data: {{ data_18 | default('') | trim }}"
+    - "  Status: {{ status_18 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_18 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 19 - {{ req_19 }}:"
+    - "  Task: {{ task_19_name | default('Not recorded') }}"
+    - "  Command: {{ task_19_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_19_rc | default(-1) }}"
+    - "  Data: {{ data_19 | default('') | trim }}"
+    - "  Status: {{ status_19 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_19 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 20 - {{ req_20 }}:"
+    - "  Task: {{ task_20_name | default('Not recorded') }}"
+    - "  Command: {{ task_20_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_20_rc | default(-1) }}"
+    - "  Data: {{ data_20 | default('') | trim }}"
+    - "  Status: {{ status_20 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_20 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 21 - {{ req_21 }}:"
+    - "  Task: {{ task_21_name | default('Not recorded') }}"
+    - "  Command: {{ task_21_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_21_rc | default(-1) }}"
+    - "  Data: {{ data_21 | default('') | trim }}"
+    - "  Status: {{ status_21 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_21 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

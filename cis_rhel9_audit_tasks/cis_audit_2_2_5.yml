@@ -1,0 +1,79 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_2_5.yml
+
+- name: "Req 01 - Check if tftp package is installed"
+  ansible.builtin.shell: rpm -q tftp
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if tftp package is installed using rpm -q"
+    task_01_cmd: "rpm -q tftp"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: |
+      {{ (result_01.stdout | default('') ~ '\n' ~ result_01.stderr | default('')) | trim }}
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) != 0 else 'FAIL' }}"
+    details_01: "{{ 'tftp is not installed' if result_01.rc | default(-1) != 0 else 'tftp is installed' }}"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Overall compliance summary"
+    task_02_cmd: "N/A"
+    task_02_rc: "N/A"
+    data_02: "{{ data_01 }}"
+    status_02: "{{ status_01 }}"
+    details_02: "{{ 'tftp client is not installed' if status_01 == 'PASS' else 'tftp client is installed' }}"
+
+- name: "Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | trim }}"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Store final audit result in cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: "N/A"
+    data_03: "cis_result = {{ cis_result }}"
+    status_03: "{{ cis_result }}"
+    details_03: "Overall compliance: Ensure tftp client is not installed - {{ cis_result }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.2.5"
+    - "Reference: CIS Benchmark checkpoint 2.2.5"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - "========================================================"

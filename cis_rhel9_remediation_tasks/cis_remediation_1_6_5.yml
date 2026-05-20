@@ -1,0 +1,274 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_6_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if crypto policy config file exists"
+  ansible.builtin.stat:
+    path: "/etc/crypto-policies/config"
+  register: _config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup crypto policy config file if exists"
+  ansible.builtin.copy:
+    src: "/etc/crypto-policies/config"
+    dest: "{{ backup_dir }}/config"
+    remote_src: true
+  when: "_config_stat.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Mark crypto policy config as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/config.absent"
+  when: "not _config_stat.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if NO-SSHCBC subpolicy file exists"
+  ansible.builtin.stat:
+    path: "/etc/crypto-policies/policies/modules/NO-SSHCBC.pmod"
+  register: _subpolicy_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup NO-SSHCBC subpolicy file if exists"
+  ansible.builtin.copy:
+    src: "/etc/crypto-policies/policies/modules/NO-SSHCBC.pmod"
+    dest: "{{ backup_dir }}/NO-SSHCBC.pmod"
+    remote_src: true
+  when: "_subpolicy_stat.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Mark NO-SSHCBC subpolicy file as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/NO-SSHCBC.pmod.absent"
+  when: "not _subpolicy_stat.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Req 1 - Check crypto-policies package"
+    ansible.builtin.shell: "rpm -q crypto-policies"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set playbook skipped if package not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ result_01.rc != 0 }}"
+    tags: [execute]
+
+  - name: "Req 2 - Create subpolicy file to disable CBC ciphers for SSH"
+    ansible.builtin.copy:
+      content: |
+        # This is a subpolicy to disable all CBC mode ciphers
+        # for the SSH protocol (libssh and OpenSSH)
+        cipher@SSH = -*-CBC
+      dest: "/etc/crypto-policies/policies/modules/NO-SSHCBC.pmod"
+      owner: root
+      group: root
+      mode: '0644'
+    register: result_02
+    failed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 3 - Check current crypto policy"
+    ansible.builtin.shell: "update-crypto-policies --show"
+    args:
+      executable: /bin/bash
+    register: _current_policy
+    changed_when: false
+    failed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 3 - Apply system-wide cryptographic policy with NO-SSHCBC subpolicy"
+    ansible.builtin.shell: "update-crypto-policies --set DEFAULT:NO-SSHCBC"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when:
+    - "not playbook_skipped"
+    - "_current_policy.stdout is defined"
+    - "'DEFAULT:NO-SSHCBC' not in _current_policy.stdout | default('')"
+    tags: [execute]
+
+  - name: "Req 4 - Reboot the system to make cryptographic settings effective"
+    ansible.builtin.reboot:
+      reboot_timeout: 180
+    register: result_04
+    failed_when: false
+    when:
+    - "not playbook_skipped"
+    - "result_03 is defined"
+    - "not result_03.skipped | default(false)"
+    - "result_03.rc == 0"
+    tags: [execute]
+
+  - name: "Req 5 - Verify that CBC ciphers are disabled for SSH"
+    ansible.builtin.shell: "update-crypto-policies --show"
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    when:
+    - "not playbook_skipped"
+    - "result_04 is defined"
+    - "result_04.rebooted | default(false)"
+    tags: [execute]
+
+  - name: "Ensure result variables include required attributes"
+    ansible.builtin.set_fact:
+      result_02: "{{ result_02 | default({}) | combine({'skipped': result_02.skipped | default(false), 'rc': result_02.rc | default(-1), 'stdout': result_02.stdout | default(''), 'stderr': result_02.stderr | default('')}) }}"
+      result_03: "{{ result_03 | default({}) | combine({'skipped': result_03.skipped | default(false), 'rc': result_03.rc | default(-1), 'stdout': result_03.stdout | default(''), 'stderr': result_03.stderr | default('')}) }}"
+      result_04: "{{ result_04 | default({}) | combine({'skipped': result_04.skipped | default(false), 'rc': result_04.rc | default(-1), 'stdout': result_04.stdout | default(''), 'stderr': result_04.stderr | default(''), 'rebooted': result_04.rebooted | default(false)}) }}"
+      result_05: "{{ result_05 | default({}) | combine({'skipped': result_05.skipped | default(false), 'rc': result_05.rc | default(-1), 'stdout': result_05.stdout | default(''), 'stderr': result_05.stderr | default('')}) }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.6.5"
+      - "Reference: CIS Benchmark checkpoint 1.6.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Check crypto-policies package installed"
+      - "  Command: rpm -q crypto-policies"
+      - "  Exit code: {{ result_01.rc | default(-1) }}"
+      - "  Data: {{ result_01.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if (result_01.rc | default(-1)) == 0 else 'SKIPPED' }}"
+      - "  Details: {{ 'Package installed' if (result_01.rc | default(-1)) == 0 else 'Package not installed, remediation skipped' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Create subpolicy file"
+      - "  Command: printf '%s\\n' \"# This is a subpolicy to disable all CBC mode ciphers\" \"# for the SSH protocol (libssh and OpenSSH)\" \"cipher@SSH = -*-CBC\" >> /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod"
+      - "  Exit code: {{ result_02.rc | default(-1) }}"
+      - "  Data: {{ 'File created successfully' if (not result_02.skipped and not result_02.failed) else ('Skipped' if result_02.skipped else 'Failed') }}"
+      - "  Status: {{ 'SKIPPED' if result_02.skipped else ('APPLIED' if not result_02.failed else 'FAILED') }}"
+      - "  Details: {{ 'Subpolicy file written' if (not result_02.skipped and not result_02.failed) else ('Remediation not applicable' if result_02.skipped else 'Failed to create subpolicy') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Apply system-wide cryptographic policy"
+      - "  Command: update-crypto-policies --set DEFAULT:NO-SSHCBC"
+      - "  Exit code: {{ result_03.rc | default(-1) }}"
+      - "  Data: {{ result_03.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if ((result_03.skipped | default(false)) and 'NO-SSHCBC' in _current_policy.stdout | default('')) else ('APPLIED' if result_03.rc == 0 else 'FAILED') }}"
+      - "  Details: {{ 'Policy already contains NO-SSHCBC' if ((result_03.skipped | default(false)) and 'NO-SSHCBC' in _current_policy.stdout | default('')) else ('Policy applied successfully' if result_03.rc == 0 else 'Policy application failed') }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Reboot system"
+      - "  Command: reboot"
+      - "  Exit code: {{ result_04.rc | default(-1) }}"
+      - "  Data: {{ result_04.msg | default('') | trim }}"
+      - "  Status: {{ 'SKIPPED' if result_04.skipped | default(false) else ('APPLIED' if result_04.rebooted | default(false) else 'FAILED') }}"
+      - "  Details: {{ 'System rebooted successfully' if (not (result_04.skipped | default(false)) and result_04.rebooted | default(false)) else ('Skipped' if (result_04.skipped | default(false)) else 'Reboot failed') }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: Verify NO-SSHCBC in active policy"
+      - "  Command: update-crypto-policies --show"
+      - "  Exit code: {{ result_05.rc | default(-1) }}"
+      - "  Data: {{ result_05.stdout | default('') | trim }}"
+      - "  Status: {{ 'SKIPPED' if result_05.skipped | default(false) else ('APPLIED' if result_05.rc == 0 and 'NO-SSHCBC' in result_05.stdout | default('') else 'FAILED') }}"
+      - "  Details: {{ 'Active policy includes NO-SSHCBC' if (not (result_05.skipped | default(false)) and result_05.rc == 0 and 'NO-SSHCBC' in result_05.stdout | default('')) else ('Verification skipped' if result_05.skipped | default(false) else 'Policy does not contain NO-SSHCBC') }}"
+      - ""
+      - "========================================================"
+      - "OVERALL RESULT:"
+      - "  Result: {{ 'SKIPPED' if playbook_skipped else ('APPLIED' if ((result_03.skipped | default(false)) and 'NO-SSHCBC' in _current_policy.stdout | default('')) or (result_03.rc | default(-1) == 0) else 'FAILED') }}"
+      - "  Details: {{ 'Package not installed' if playbook_skipped else ('CBC ciphers disabled for SSH' if ((result_03.skipped | default(false)) and 'NO-SSHCBC' in _current_policy.stdout | default('')) or (result_03.rc | default(-1) == 0) else 'Remediation not fully applied') }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if crypto config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/config"
+    register: _restore_config_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore crypto config from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/config"
+      dest: "/etc/crypto-policies/config"
+      remote_src: true
+    when: "_restore_config_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if crypto config absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/config.absent"
+    register: _restore_config_absent_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove crypto config if absent"
+    ansible.builtin.file:
+      path: "/etc/crypto-policies/config"
+      state: absent
+    when: "_restore_config_absent_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if subpolicy backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/NO-SSHCBC.pmod"
+    register: _restore_subpolicy_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore subpolicy file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/NO-SSHCBC.pmod"
+      dest: "/etc/crypto-policies/policies/modules/NO-SSHCBC.pmod"
+      remote_src: true
+    when: "_restore_subpolicy_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if subpolicy absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/NO-SSHCBC.pmod.absent"
+    register: _restore_subpolicy_absent_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove subpolicy file if absent"
+    ansible.builtin.file:
+      path: "/etc/crypto-policies/policies/modules/NO-SSHCBC.pmod"
+      state: absent
+    when: "_restore_subpolicy_absent_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Re-apply cryptographic policy from restored config"
+    ansible.builtin.shell: update-crypto-policies
+    args:
+      executable: /bin/bash
+    when:
+    - "_restore_config_stat.stat.exists or _restore_config_absent_stat.stat.exists or _restore_subpolicy_stat.stat.exists or _restore_subpolicy_absent_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reboot to apply restored policy"
+    ansible.builtin.reboot:
+      reboot_timeout: 180
+    when:
+    - "_restore_config_stat.stat.exists or _restore_config_absent_stat.stat.exists or _restore_subpolicy_stat.stat.exists or _restore_subpolicy_absent_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

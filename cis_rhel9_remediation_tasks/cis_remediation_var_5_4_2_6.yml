@@ -1,0 +1,7 @@
+playbook_name: "cis_5_4_2_6_root_umask"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for root shell configuration files using command: `test -f /root/.bash_profile && test -f /root/.bashrc`. Expected result: both files exist."
+req_02: "Apply umask setting in /root/.bash_profile using command: `sed -i '/^[[:space:]]*umask/d' /root/.bash_profile && echo 'umask 0027' >> /root/.bash_profile`. Expected result: umask line removed and new line with 'umask 0027' added."
+req_03: "Apply umask setting in /root/.bashrc using command: `sed -i '/^[[:space:]]*umask/d' /root/.bashrc && echo 'umask 0027' >> /root/.bashrc`. Expected result: umask line removed and new line with 'umask 0027' added."
+req_04: "Verify umask configuration for root user using command: `bash -c 'source /root/.bash_profile; source /root/.bashrc; umask'`. Expected result: 0027"
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

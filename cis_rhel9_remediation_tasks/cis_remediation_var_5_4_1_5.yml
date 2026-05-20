@@ -1,0 +1,12 @@
+playbook_name: "cis_5_4_1_5"
+checkpoint_id: "cis_5_4_1_5"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+inactive_days: "45"
+req_01: "Apply prerequisite check for shadow-utils using command: `which useradd && which chage && which awk`. Expected result: commands exist and are executable."
+req_02: "Apply default password inactivity period to 45 days or less using command: `useradd -D -f 45`. Expected result: default INACTIVE value set to 45 in /etc/default/useradd."
+req_03: |
+  Apply inactive password lock for all users with a password set to an inactive age greater than 45 or less than 0 using command: `awk -F: '($2~/^\\$.+\\$/) {if($7 > 45 || $7 < 0)system (\"chage --inactive 45 \" $1)}' /etc/shadow`. Expected result: all applicable users have INACTIVE set to 45.
+req_04: |
+  Verify inactive password lock configuration using command: `awk -F: '($2~/^\\$.+\\$/) {print $1\":\"$7}' /etc/shadow`. Expected result: all users with a password have INACTIVE value of 45 or less and not negative.
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

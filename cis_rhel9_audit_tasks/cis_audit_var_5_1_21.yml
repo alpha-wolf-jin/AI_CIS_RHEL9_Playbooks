@@ -1,0 +1,6 @@
+req_01: "Check if OpenSSH server is installed using command: `which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server`. Expected result: sshd binary or package is present."
+req_02: "Check if sshd is running using command: `systemctl is-active sshd 2>/dev/null || service sshd status 2>/dev/null`. Expected result: active (running)."
+req_03: "Check PermitUserEnvironment is disabled using command: `sshd -T | grep permituserenvironment`. Expected result: permituserenvironment no"
+req_04: "Summarize compliance: PASS if all checks pass, SKIP if OpenSSH server is not installed or not running, FAIL if PermitUserEnvironment is not set to no."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_06: "Generate audit report with exact format showing all requirements and OVERALL COMPLIANCE."

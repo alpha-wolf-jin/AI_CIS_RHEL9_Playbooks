@@ -1,0 +1,113 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_4_3_4.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- name: "Check if nftables or firewalld packages are installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set applicability fact"
+  ansible.builtin.set_fact:
+    nftables_installed: "{{ 'nftables' in ansible_facts.packages }}"
+    firewalld_installed: "{{ 'firewalld' in ansible_facts.packages }}"
+    playbook_skipped: "{{ not ('nftables' in ansible_facts.packages or 'firewalld' in ansible_facts.packages) }}"
+
+- name: "Req 01 - Execute audit script for nftables loopback traffic"
+  ansible.builtin.shell: |
+    /bin/bash <<'EOF'
+    {{ audit_script_content }}
+    EOF
+  args:
+    executable: /bin/bash
+  register: audit_result
+  when: "not playbook_skipped"
+  failed_when: false
+  changed_when: false
+
+- name: "Default audit_result when playbook is skipped"
+  ansible.builtin.set_fact:
+    audit_result: {}
+  when: playbook_skipped
+
+- name: "Store requirement details"
+  ansible.builtin.set_fact:
+    task_01_name: "Execute audit script for nftables loopback traffic"
+    task_01_cmd: "bash heredoc with provided audit script"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: |
+      {{ (audit_result.stdout_lines | default([])) | join('\n') | trim }}
+    status_01: "{{ 'NOT_APPLICABLE' if playbook_skipped else ('PASS' if (audit_result.rc | default(-1) | int == 0) and not playbook_skipped else 'FAIL') }}"
+    details_01: "{{ 'Not applicable - neither nftables nor firewalld installed' if playbook_skipped else ('Script executed successfully' if (audit_result.rc | default(-1) | int == 0) and not playbook_skipped else 'Script execution failed') }}"
+    task_02_name: "Evaluate compliance from audit script output"
+    task_02_cmd: "N/A (evaluation)"
+    task_02_rc: "0"
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+    status_02: "{{ 'NOT_APPLICABLE' if playbook_skipped else ('PASS' if ('*** PASS ***' in audit_result.stdout | default('')) and not playbook_skipped else 'FAIL') }}"
+    details_02: "{{ 'Not applicable - neither nftables nor firewalld installed' if playbook_skipped else ('Compliance check passed' if ('*** PASS ***' in audit_result.stdout | default('')) and not playbook_skipped else 'Compliance check failed') }}"
+
+- name: "Req 03 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_name: "Store cis_result"
+    task_03_cmd: "set_fact cis_result from status_02"
+    task_03_rc: "0"
+    data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+    status_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+    details_03: "Overall compliance status recorded as {{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 4.3.4"
+    - "Reference: CIS Benchmark checkpoint 4.3.4"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL RESULT:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"

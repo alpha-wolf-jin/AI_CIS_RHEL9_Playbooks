@@ -1,0 +1,11 @@
+playbook_name: "remediate-cis-2.4.1.1"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if cron is installed using command: `which cron || which crond || dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null`. Expected result: cron or crond binary path or package name is returned."
+req_02: |
+  Unmask cron service using command: `systemctl unmask \"$(systemctl list-unit-files | awk '$1~/^crond?\\.service/{print $1}')\"`. Expected result: cron service is unmasked (no output or success message).
+req_03: |
+  Enable and start cron service using command: `systemctl --now enable \"$(systemctl list-unit-files | awk '$1~/^crond?\\.service/{print $1}')\"`. Expected result: cron service is enabled and active.
+req_04: |
+  Verify cron daemon is enabled and active using command: `systemctl is-enabled \"$(systemctl list-unit-files | awk '$1~/^crond?\\.service/{print $1}')\" && systemctl is-active \"$(systemctl list-unit-files | awk '$1~/^crond?\\.service/{print $1}')\"`. Expected result: 'enabled' and 'active' are returned.
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_06: "Create a task named 'Generate remediation report' using debug msg with EXACTLY this format."

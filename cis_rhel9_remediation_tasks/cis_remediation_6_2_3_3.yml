@@ -1,0 +1,267 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_2_3_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if journald drop-in directory exists"
+  ansible.builtin.stat:
+    path: "{{ journald_dropin_dir }}"
+  register: _snap_dropin_dir_stat
+  tags: [snapshot]
+- name: "Snapshot - Record drop-in directory existence marker"
+  ansible.builtin.copy:
+    content: "{{ 'present' if _snap_dropin_dir_stat.stat.exists else 'absent' }}"
+    dest: "{{ backup_dir }}/dropin_dir_existed"
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Check if journald config file exists"
+  ansible.builtin.stat:
+    path: "{{ journald_dropin_file }}"
+  register: _snap_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Record config file existence marker"
+  ansible.builtin.copy:
+    content: "{{ 'present' if _snap_config_stat.stat.exists else 'absent' }}"
+    dest: "{{ backup_dir }}/config_file_existed"
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if present"
+  ansible.builtin.copy:
+    src: "{{ journald_dropin_file }}"
+    dest: "{{ backup_dir }}/60-journald.conf.orig"
+    remote_src: true
+    force: false
+  when: _snap_config_stat.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "{{ remediate_script }}"
+  register: _snap_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Record remediation script existence marker"
+  ansible.builtin.copy:
+    content: "{{ 'present' if _snap_script_stat.stat.exists else 'absent' }}"
+    dest: "{{ backup_dir }}/script_existed"
+    force: false
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if rsyslog package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set rsyslog installed fact"
+    ansible.builtin.set_fact:
+      rsyslog_installed: "{{ 'rsyslog' in (ansible_facts.packages | default({})) }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check if ForwardToSyslog is already set to yes"
+    ansible.builtin.shell: grep -Psiq '^\s*ForwardToSyslog\s*=\s*yes' "{{ journald_dropin_file }}" 2>/dev/null && echo "OK" || echo "NOT_SET"
+    args:
+      executable: /bin/bash
+    register: _already_set_check
+    failed_when: false
+    changed_when: false
+    when: rsyslog_installed | bool
+    tags: [execute]
+
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      dest: "{{ remediate_script }}"
+      mode: '0700'
+      content: "{{ remediate_script_content }}"
+    when:
+    - rsyslog_installed | bool
+    - _already_set_check.stdout != "OK"
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash "{{ remediate_script }}"
+    args:
+      executable: /bin/bash
+    register: _script_result
+    failed_when: false
+    when:
+    - rsyslog_installed | bool
+    - _already_set_check.stdout != "OK"
+    tags: [execute]
+
+  - name: "Req 01 - Remove remediation script"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    failed_when: false
+    changed_when: false
+    when:
+    - rsyslog_installed | bool
+    - _already_set_check.stdout != "OK"
+    tags: [execute]
+
+  - name: "Req 01 - Reload or restart systemd-journald service"
+    ansible.builtin.systemd:
+      name: systemd-journald.service
+      state: restarted
+      daemon_reload: yes
+    failed_when: false
+    when: rsyslog_installed | bool
+    tags: [execute]
+
+  - name: "Req 02 - Verify ForwardToSyslog is set to yes in journald config"
+    ansible.builtin.shell: |
+      if grep -Psiq -- '^\s*ForwardToSyslog\s*=\s*yes' "{{ journald_dropin_file }}" 2>/dev/null; then
+        echo "PASS: ForwardToSyslog=yes is configured"
+      else
+        echo "FAIL: ForwardToSyslog=yes is not configured"
+      fi
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    changed_when: false
+    when: rsyslog_installed | bool
+    tags: [execute]
+
+  - name: "Req 02 - Store verification details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify ForwardToSyslog is set to yes in journald config"
+      task_02_cmd: |
+        grep -Psiq -- '^\s*ForwardToSyslog\s*=\s*yes' {{ journald_dropin_file }}
+      task_02_rc: "{{ _verify_result.rc | default(-1) }}"
+      data_02: "{{ _verify_result.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (_verify_result.rc | default(-1)) == 0 else 'FAIL') | trim }}"
+      details_02: "{{ ('Completed successfully' if (_verify_result.rc | default(-1)) == 0 else 'Verification failed') | trim }}"
+    when: rsyslog_installed | bool
+    tags: [execute]
+
+  - name: "Req 02 - Store skipped verification details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify ForwardToSyslog is set to yes in journald config"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_02: "SKIPPED"
+      status_02: "SKIPPED"
+      details_02: "rsyslog package is not installed"
+    when: not (rsyslog_installed | bool)
+    tags: [execute]
+
+  - name: "Set cis_result from verification status"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 6.2.3.3"
+      - "Reference: CIS Benchmark checkpoint 6.2.3.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Run remediation script and restart journald"
+      - "  Command: /bin/bash {{ remediate_script }} ; systemctl restart systemd-journald"
+      - "  Exit code: {{ _script_result.rc | default(-1) if _script_result is defined else -1 }}"
+      - "  Data: {{ _script_result.stdout | default('Script executed') if _script_result is defined else 'Not executed' }}"
+      - "  Status: {{ 'PASS' if (rsyslog_installed | bool) and (_already_set_check.stdout | default('') == 'OK' or _script_result.rc | default(-1) == 0) else 'SKIPPED' if not (rsyslog_installed | bool) else 'FAIL' }}"
+      - "  Details: {{ 'Already configured' if _already_set_check.stdout | default('') == 'OK' else 'Configuration applied' if (_script_result is defined and _script_result.rc | default(-1) == 0) else 'rsyslog not installed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Read drop-in directory existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/dropin_dir_existed"
+    register: _restore_dir_existed
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read config file existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/config_file_existed"
+    register: _restore_config_existed
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-journald.conf.orig"
+    register: _restore_config_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore config file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/60-journald.conf.orig"
+      dest: "{{ journald_dropin_file }}"
+      remote_src: true
+    when: _restore_config_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete config file if originally absent"
+    ansible.builtin.file:
+      path: "{{ journald_dropin_file }}"
+      state: absent
+    when:
+    - _restore_config_existed.content is defined
+    - (_restore_config_existed.content | b64decode | trim) == 'absent'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete drop-in directory if originally absent"
+    ansible.builtin.file:
+      path: "{{ journald_dropin_dir }}"
+      state: absent
+    when:
+    - _restore_dir_existed.content is defined
+    - (_restore_dir_existed.content | b64decode | trim) == 'absent'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/script_existed"
+    register: _restore_script_existed
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete remediation script if it was created during execution"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    when:
+    - _restore_script_existed.content is defined
+    - (_restore_script_existed.content | b64decode | trim) == 'absent'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restart systemd-journald after config restore"
+    ansible.builtin.systemd:
+      name: systemd-journald.service
+      state: restarted
+      daemon_reload: yes
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

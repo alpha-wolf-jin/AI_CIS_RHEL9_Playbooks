@@ -1,0 +1,10 @@
+playbook_name: "cis_5_4_1_6"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check that the 'passwd' command is available using command: `which passwd`. Expected result: path to passwd binary is returned."
+req_02: |
+  Identify users with a password change date in the future using command: `sudo chage -l <username> | grep 'Last password change' | awk -F: '{print $2}' | while read date; do if [[ $(date -d \"$date\" +%s) -gt $(date +%s) ]]; then echo \"<username>\"; fi; done`. Expected result: list of usernames with future password change dates.
+req_03: "For each user identified, lock the account using command: `sudo passwd -l <username>`. Expected result: 'Password locked.' message."
+req_04: "For each user identified, expire the password using command: `sudo passwd -e <username>`. Expected result: 'Password expired.' message."
+req_05: "For each user identified, reset the password to a secure value using command: `echo '<new_secure_password>' | sudo passwd --stdin <username>`. Expected result: 'passwd: password updated successfully' message."
+req_06: |
+  Verify that no users have a password change date in the future using command: `sudo chage -l <username> | grep 'Last password change' | awk -F: '{print $2}' | while read date; do if [[ $(date -d \"$date\" +%s) -gt $(date +%s) ]]; then echo \"FAIL: <username>\"; fi; done`. Expected result: no output (all dates are in the past).

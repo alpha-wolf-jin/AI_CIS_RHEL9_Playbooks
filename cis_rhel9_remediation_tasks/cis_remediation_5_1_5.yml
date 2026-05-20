@@ -1,0 +1,429 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if crypto-policies modules directory exists"
+  ansible.builtin.stat:
+    path: /etc/crypto-policies/policies/modules
+  register: _snap_modules_dir
+  tags: [snapshot]
+- name: "Snapshot - Backup entire modules directory"
+  ansible.builtin.copy:
+    src: /etc/crypto-policies/policies/modules/
+    dest: "{{ backup_dir }}/modules_backup/"
+    remote_src: true
+  when: _snap_modules_dir.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Get current crypto policy string"
+  ansible.builtin.shell: "update-crypto-policies --show || true"
+  args:
+    executable: /bin/bash
+  register: _snap_policy
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save current crypto policy to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_policy.stdout | default('') | trim }}"
+    dest: "{{ backup_dir }}/crypto_policy.orig"
+  when: "_snap_policy.stdout | default('') | trim != ''"
+  tags: [snapshot]
+- name: "Snapshot - Check if NO-SHA1.pmod exists"
+  ansible.builtin.stat:
+    path: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+  register: _snap_nosha1
+  tags: [snapshot]
+- name: "Snapshot - Save NO-SHA1.pmod existence marker"
+  ansible.builtin.copy:
+    content: "{{ 'true' if _snap_nosha1.stat.exists else 'false' }}"
+    dest: "{{ backup_dir }}/nosha1_existed"
+    force: false
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE (tag: execute) ===
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    tags: [execute]
+    failed_when: false
+
+  - name: "Set sshd installed fact"
+    ansible.builtin.set_fact:
+      sshd_installed: "{{ 'openssh-server' in ansible_facts.packages }}"
+    tags: [execute]
+    failed_when: false
+
+# --- Requirement 1 ---
+  - name: "Req 01 - Check crypto-policies package is installed"
+    ansible.builtin.shell: "rpm -q crypto-policies"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when: "sshd_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check crypto-policies package installed"
+      task_01_cmd: "rpm -q crypto-policies"
+      task_01_rc: "{{ result_01.rc | default(-1) if result_01 is not skipped else '-1' }}"
+      data_01: "{{ result_01.stdout | default('') | trim if result_01 is not skipped else 'N/A' }}"
+      status_01: "{{ 'SKIPPED' if result_01 is skipped else ('PASS' if result_01.rc == 0 else 'FAIL') }}"
+      details_01: "{{ 'Skipped - sshd not installed' if result_01 is skipped else ('Package installed' if result_01.rc == 0 else 'Package not installed') }}"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set crypto policy availability fact"
+    ansible.builtin.set_fact:
+      crypto_policy_available: "{{ result_01.rc == 0 if result_01 is not skipped else false }}"
+    tags: [execute]
+    failed_when: false
+
+  - name: "Set overall remediation applicability"
+    ansible.builtin.set_fact:
+      remediation_applicable: "{{ (sshd_installed | default(false)) and (crypto_policy_available | default(false)) }}"
+    tags: [execute]
+    failed_when: false
+
+# --- Requirement 2 ---
+  - name: "Req 02 - Create/update NO-SHA1.pmod to disable SHA1 support"
+    ansible.builtin.copy:
+      content: |
+        # This is a subpolicy dropping the SHA1 hash and signature support
+        hash = -SHA1
+        sign = -*-SHA1
+        sha1_in_certs = 0
+      dest: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+      mode: '0644'
+    register: result_02
+    failed_when: false
+    when: "remediation_applicable | bool"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Create/update NO-SHA1.pmod"
+      task_02_cmd: "copy module (inline content)"
+      task_02_rc: "{{ result_02.rc | default(0) if result_02 is not skipped else '-1' }}"
+      data_02: "{{ result_02.dest | default('') if result_02 is not skipped else 'N/A' }}"
+      status_02: "{{ 'SKIPPED' if result_02 is skipped else ('PASS' if result_02 is not changed and result_02 is not failed else 'APPLIED') }}"
+      details_02: "{{ 'Skipped - prerequisites not met' if result_02 is skipped else ('File already correct' if result_02 is not changed else 'File created/updated') }}"
+    failed_when: false
+    tags: [execute]
+
+# --- Ensure modules directory exists ---
+  - name: "Ensure crypto-policies modules directory exists"
+    ansible.builtin.file:
+      path: /etc/crypto-policies/policies/modules
+      state: directory
+      mode: '0755'
+    when: "remediation_applicable | bool"
+    tags: [execute]
+    failed_when: false
+
+# --- Check built-in subpolicies ---
+  - name: "Check if built-in NO-WEAKMAC subpolicy exists"
+    ansible.builtin.stat:
+      path: /usr/share/crypto-policies/policies/modules/NO-WEAKMAC.pmod
+    register: _builtin_noweakmac
+    when: "remediation_applicable | bool"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Check if built-in NO-SSHWEAKCIPHERS subpolicy exists"
+    ansible.builtin.stat:
+      path: /usr/share/crypto-policies/policies/modules/NO-SSHWEAKCIPHERS.pmod
+    register: _builtin_nosshweakciphers
+    when: "remediation_applicable | bool"
+    failed_when: false
+    tags: [execute]
+
+# --- Conditional removal of custom .pmod files ---
+  - name: "Remove custom NO-WEAKMAC.pmod to use system default"
+    ansible.builtin.file:
+      path: /etc/crypto-policies/policies/modules/NO-WEAKMAC.pmod
+      state: absent
+    when:
+    - "remediation_applicable | bool"
+    - "_builtin_noweakmac.stat.exists | default(false)"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Remove custom NO-SSHWEAKCIPHERS.pmod to use system default"
+    ansible.builtin.file:
+      path: /etc/crypto-policies/policies/modules/NO-SSHWEAKCIPHERS.pmod
+      state: absent
+    when:
+    - "remediation_applicable | bool"
+    - "_builtin_nosshweakciphers.stat.exists | default(false)"
+    failed_when: false
+    tags: [execute]
+
+# --- Dynamic subpolicy discovery ---
+  - name: "Gather available crypto subpolicies"
+    ansible.builtin.shell: |
+      for p in NO-SHA1 NO-WEAKMAC NO-SSHCBC NO-SSHCHACHA20 NO-SSHETM NO-SSHWEAKCIPHERS; do
+        if [ -f /usr/share/crypto-policies/policies/modules/${p}.pmod ] || [ -f /etc/crypto-policies/policies/modules/${p}.pmod ]; then
+          echo $p
+        fi
+      done
+    args:
+      executable: /bin/bash
+    register: _available_subpolicies
+    when: "remediation_applicable | bool"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Construct crypto policy string"
+    ansible.builtin.set_fact:
+      crypto_policy_string: >-
+        {{ 'DEFAULT' + (':' + _available_subpolicies.stdout_lines | join(':') if _available_subpolicies.stdout_lines | length > 0 else '') }}
+    when: "remediation_applicable | bool"
+    tags: [execute]
+    failed_when: false
+
+# --- Requirement 3: Update crypto policy ---
+  - name: "Req 03 - Update system-wide crypto policy to disable weak algorithms"
+    ansible.builtin.shell: |
+      policy="{{ crypto_policy_string }}"
+      if update-crypto-policies --set "$policy"; then
+        echo "Applied policy: $policy"
+      else
+        echo "ERROR: Failed to apply policy $policy" >&2
+        exit 1
+      fi
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: "remediation_applicable | bool"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Update system-wide crypto policy"
+      task_03_cmd: "update-crypto-policies --set {{ crypto_policy_string }}"
+      task_03_rc: "{{ result_03.rc | default(-1) if result_03 is not skipped else '-1' }}"
+      data_03: >-
+        {{ (result_03.stdout | default('') | trim) + ' ' + (result_03.stderr | default('') | trim) if result_03 is not skipped else 'N/A' }}
+      status_03: "{{ 'SKIPPED' if result_03 is skipped else ('PASS' if result_03.rc == 0 else 'FAIL') }}"
+      details_03: >-
+        {{ 'Skipped - prerequisites not met' if result_03 is skipped else
+           ('Policy updated successfully' if result_03.rc == 0 else
+            'Failed to apply policy') }}
+    failed_when: false
+    tags: [execute]
+
+# --- Requirement 4 ---
+  - name: "Req 04 - Reload sshd to apply cryptographic settings"
+    ansible.builtin.shell: "systemctl reload-or-restart sshd"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: "remediation_applicable | bool"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Reload sshd service"
+      task_04_cmd: "systemctl reload-or-restart sshd"
+      task_04_rc: "{{ result_04.rc | default(-1) if result_04 is not skipped else '-1' }}"
+      data_04: "{{ result_04.stdout | default('') | trim if result_04 is not skipped else 'N/A' }}"
+      status_04: "{{ 'SKIPPED' if result_04 is skipped else ('PASS' if result_04.rc == 0 else 'FAIL') }}"
+      details_04: "{{ 'Skipped - prerequisites not met' if result_04 is skipped else ('Service reloaded/restarted' if result_04.rc == 0 else 'Failed to reload service') }}"
+    failed_when: false
+    tags: [execute]
+
+# --- Requirement 5: Enhanced verification (no weak algorithms) ---
+  - name: "Req 05 - Verify KexAlgorithms configuration (no weak algorithms)"
+    ansible.builtin.shell: |
+      set -o pipefail
+      kex_line=$(sshd -T 2>/dev/null | grep -i kexalgorithms)
+      if [ -z "$kex_line" ]; then
+        echo "No KexAlgorithms configured"
+        exit 1
+      fi
+      echo "$kex_line" | grep -qE 'diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1' && {
+        echo "WEAK KEX ALGORITHM(S) FOUND"
+        exit 1
+      }
+      echo "KexAlgorithms configured with no weak algorithms"
+      exit 0
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    when: "remediation_applicable | bool"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Verify KexAlgorithms configuration (no weak algorithms)"
+      task_05_cmd: "sshd -T | grep -i kexalgorithms (weak algorithm check)"
+      task_05_rc: "{{ result_05.rc | default(-1) if result_05 is not skipped else '-1' }}"
+      data_05: "{{ result_05.stdout | default('') | trim if result_05 is not skipped else 'N/A' }}"
+      status_05: "{{ 'SKIPPED' if result_05 is skipped else ('PASS' if result_05.rc == 0 and result_05.stdout | default('') | trim != '' else 'FAIL') }}"
+      details_05: "{{ 'Skipped - prerequisites not met' if result_05 is skipped else ('KexAlgorithms verified (no weak algorithms)' if result_05.rc == 0 else 'Verification failed: weak algorithms or missing KexAlgorithms') }}"
+    failed_when: false
+    tags: [execute]
+
+# --- Aggregate overall remediation status (cis_result) ---
+  - name: "Set overall remediation status and cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'FAIL' if 'FAIL' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else ('SKIPPED' if 'SKIPPED' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else 'PASS') }}"
+      overall_details: "{{ 'One or more requirements failed.' if 'FAIL' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else ('One or more requirements skipped.' if 'SKIPPED' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else 'All requirements passed successfully.') }}"
+    failed_when: false
+    tags: [execute]
+
+# --- Requirement 6: Store cis_result details for report ---
+  - name: "Req 06 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      task_06_name: "Store final remediation result in cis_result"
+      task_06_cmd: "set_fact (aggregation)"
+      task_06_rc: "0"
+      data_06: "cis_result = {{ cis_result | default('UNKNOWN') }}"
+      status_06: "{{ cis_result | default('ERROR') }}"
+      details_06: "{{ overall_details | default('') }}"
+    failed_when: false
+    tags: [execute]
+
+# --- Generate remediation report ---
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 5.1.5"
+      - "Reference: CIS Benchmark checkpoint 5.1.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ overall_details | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === RESTORE PHASE (tag: restore) ===
+  - name: "Restore - Check if modules backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/modules_backup"
+    register: _restore_modules_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite modules directory with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/modules_backup/"
+      dest: /etc/crypto-policies/policies/modules/
+      remote_src: true
+    when: "_restore_modules_backup.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original crypto policy"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/crypto_policy.orig"
+    register: _restore_policy_data
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply original crypto policy"
+    ansible.builtin.shell: "update-crypto-policies --set {{ _restore_policy_data.content | b64decode | trim }}"
+    args:
+      executable: /bin/bash
+    register: _restore_policy_result
+    when:
+    - "_restore_policy_data.content is defined"
+    - "_restore_policy_data.content | b64decode | trim | length > 0"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload sshd after policy restore (only if policy restore succeeded)"
+    ansible.builtin.shell: "systemctl reload-or-restart sshd"
+    args:
+      executable: /bin/bash
+    when: "_restore_policy_result.rc | default(1) == 0"
+    failed_when: false
+    tags: [restore]
+
+# NEW: Cleanup for NO-SHA1.pmod if it did not exist before execution
+  - name: "Restore - Read NO-SHA1.pmod existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/nosha1_existed"
+    register: _restore_nosha1_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove NO-SHA1.pmod if it was absent before execution"
+    ansible.builtin.file:
+      path: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+      state: absent
+    when:
+    - "_restore_nosha1_marker.content is defined"
+    - "(_restore_nosha1_marker.content | b64decode | trim) == 'false'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Clean up backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

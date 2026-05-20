@@ -1,0 +1,334 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_12.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  tags: [snapshot]
+- name: "Snapshot - Save rpcbind installation state"
+  ansible.builtin.copy:
+    content: "{{ 'installed' if package_name in ansible_facts.packages else 'absent' }}"
+    dest: "{{ backup_dir }}/rpcbind_installed.txt"
+  tags: [snapshot]
+- name: "Snapshot - Save service enabled states"
+  ansible.builtin.shell: |
+    systemctl is-enabled {{ service_socket }} > {{ backup_dir }}/{{ service_socket }}.enabled.txt 2>/dev/null || echo "disabled" > {{ backup_dir }}/{{ service_socket }}.enabled.txt
+    systemctl is-enabled {{ service_unit }} > {{ backup_dir }}/{{ service_unit }}.enabled.txt 2>/dev/null || echo "disabled" > {{ backup_dir }}/{{ service_unit }}.enabled.txt
+  args:
+    executable: /bin/bash
+  tags: [snapshot]
+- name: "Snapshot - Save service active states"
+  ansible.builtin.shell: |
+    systemctl is-active {{ service_socket }} > {{ backup_dir }}/{{ service_socket }}.active.txt 2>/dev/null || echo "inactive" > {{ backup_dir }}/{{ service_socket }}.active.txt
+    systemctl is-active {{ service_unit }} > {{ backup_dir }}/{{ service_unit }}.active.txt 2>/dev/null || echo "inactive" > {{ backup_dir }}/{{ service_unit }}.active.txt
+  args:
+    executable: /bin/bash
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      skip_all: "{{ package_name not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Stop rpcbind services"
+    ansible.builtin.systemd:
+      name: "{{ item }}"
+      state: stopped
+    loop:
+    - "{{ service_socket }}"
+    - "{{ service_unit }}"
+    register: result_01
+    failed_when: false
+    when: not skip_all | bool
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Stop rpcbind.socket and rpcbind.service"
+      task_01_cmd: "systemctl stop rpcbind.socket rpcbind.service"
+      task_01_rc: "{{ (-1 if (skip_all | bool) or not (result_01 is defined) else (0 if (result_01.results | selectattr('failed') | list | length) == 0 else 1)) }}"
+      data_01: "{{ 'Skipped' if (skip_all | bool) else (result_01.results | map(attribute='state') | join(', ') if result_01 is defined else '') | trim }}"
+      status_01: "{{ 'SKIP' if (skip_all | bool) else ('PASS' if (result_01 is defined) and ((result_01.results | selectattr('failed') | list | length) == 0) else 'FAIL') | trim }}"
+      details_01: "{{ 'Skipped: rpcbind not installed' if (skip_all | bool) else ('Services stopped successfully' if (result_01 is defined) and ((result_01.results | selectattr('failed') | list | length) == 0) else 'Failed to stop services') | trim }}"
+    tags: [execute]
+
+  - name: "Req 02 - Remove rpcbind package"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: absent
+    register: result_02
+    failed_when: false
+    when: not skip_all | bool
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remove rpcbind package"
+      task_02_cmd: "dnf remove rpcbind"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ 'Skipped' if (skip_all | bool) else (result_02.msg | default('No output') | trim) }}"
+      status_02: "{{ 'SKIP' if (skip_all | bool) else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_02: "{{ 'Skipped: rpcbind not installed' if (skip_all | bool) else ('Package removed' if result_02.rc | default(-1) == 0 else 'Removal failed (likely required as dependency)') | trim }}"
+    tags: [execute]
+
+  - name: "Req 03 - Mask rpcbind services if package removal failed"
+    ansible.builtin.systemd:
+      name: "{{ item }}"
+      masked: true
+    loop:
+    - "{{ service_socket }}"
+    - "{{ service_unit }}"
+    register: result_03
+    failed_when: false
+    when:
+    - not skip_all | bool
+    - result_02.rc | default(-1) != 0
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Mask rpcbind.socket and rpcbind.service"
+      task_03_cmd: "systemctl mask rpcbind.socket rpcbind.service"
+      task_03_rc: "{{ (-1 if (skip_all | bool) or not (result_03 is defined) else (0 if (result_03.results | selectattr('failed') | list | length) == 0 else 1)) }}"
+      data_03: "{{ 'Skipped' if (skip_all | bool) else ((result_03.results | map(attribute='state') | join(', ') if result_03 is defined else 'Not needed') | trim) }}"
+      status_03: "{{ 'SKIP' if (skip_all | bool) else ('PASS' if not (result_03 is defined) or ((result_03.results | selectattr('failed') | list | length) == 0) else 'FAIL') | trim }}"
+      details_03: "{{ 'Skipped: rpcbind not installed' if (skip_all | bool) else ('Services masked' if not (result_03 is defined) or ((result_03.results | selectattr('failed') | list | length) == 0) else 'Failed to mask services') | trim }}"
+    tags: [execute]
+
+  - name: "Req 04 - Verify rpcbind services are inactive"
+    ansible.builtin.shell: |
+      systemctl is-active {{ service_socket }} 2>/dev/null || echo "inactive"
+      systemctl is-active {{ service_unit }} 2>/dev/null || echo "inactive"
+      systemctl is-enabled {{ service_socket }} 2>/dev/null || echo "masked"
+      systemctl is-enabled {{ service_unit }} 2>/dev/null || echo "masked"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: not skip_all | bool
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify rpcbind services status"
+      task_04_cmd: "systemctl is-active rpcbind.socket rpcbind.service && systemctl is-enabled rpcbind.socket rpcbind.service"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ 'Skipped' if (skip_all | bool) else (result_04.stdout | default('') | trim) }}"
+      status_04: >-
+        {{- 'SKIP' if (skip_all | bool) else ('PASS' if (result_04.stdout | default('') | regex_search('(?s)inactive.*inactive.*masked.*masked')) else 'FAIL') | trim -}}
+      details_04: >-
+        {{- 'Skipped: rpcbind not installed' if (skip_all | bool) else ('Services correctly inactive and masked/disabled' if (result_04.stdout | default('') | regex_search('(?s)inactive.*inactive.*masked.*masked')) else 'Verification failed') | trim -}}
+    tags: [execute]
+
+  - name: "Req 05 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+      status_05: "{{ status_04 | default('ERROR') | trim }}"
+      data_05: "N/A"
+      task_05_name: "Set cis_result"
+      task_05_cmd: "set_fact"
+      task_05_rc: 0
+      details_05: "Overall result derived from verification status"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.12"
+      - "Reference: CIS Benchmark checkpoint 2.1.12"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rpcbind_installed.txt"
+    register: _restore_backup
+    tags: [restore]
+
+  - name: "Restore - Read rpcbind installation state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/rpcbind_installed.txt"
+    register: _restore_install_state
+    when: _restore_backup.stat.exists
+    tags: [restore]
+
+  - name: "Restore - Reinstall rpcbind if previously installed"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: present
+    when:
+    - _restore_backup.stat.exists | default(false)
+    - (_restore_install_state.content | b64decode | trim) == 'installed'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read socket enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/{{ service_socket }}.enabled.txt"
+    register: _restore_socket_enabled
+    when: _restore_backup.stat.exists
+    tags: [restore]
+
+  - name: "Restore - Read service enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/{{ service_unit }}.enabled.txt"
+    register: _restore_service_enabled
+    when: _restore_backup.stat.exists
+    tags: [restore]
+
+  - name: "Restore - Read socket active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/{{ service_socket }}.active.txt"
+    register: _restore_socket_active
+    when: _restore_backup.stat.exists
+    tags: [restore]
+
+  - name: "Restore - Read service active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/{{ service_unit }}.active.txt"
+    register: _restore_service_active
+    when: _restore_backup.stat.exists
+    tags: [restore]
+
+  - name: "Restore - Unmask services if they were masked"
+    ansible.builtin.systemd:
+      name: "{{ item }}"
+      masked: false
+    loop:
+    - "{{ service_socket }}"
+    - "{{ service_unit }}"
+    when: _restore_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Enable socket if previously enabled"
+    ansible.builtin.systemd:
+      name: "{{ service_socket }}"
+      enabled: "{{ 'yes' if (_restore_socket_enabled.content | b64decode | trim) == 'enabled' else 'no' }}"
+    when:
+    - _restore_backup.stat.exists | default(false)
+    - _restore_socket_enabled is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Enable service if previously enabled"
+    ansible.builtin.systemd:
+      name: "{{ service_unit }}"
+      enabled: "{{ 'yes' if (_restore_service_enabled.content | b64decode | trim) == 'enabled' else 'no' }}"
+    when:
+    - _restore_backup.stat.exists | default(false)
+    - _restore_service_enabled is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Start socket if previously active"
+    ansible.builtin.systemd:
+      name: "{{ service_socket }}"
+      state: "{{ 'started' if (_restore_socket_active.content | b64decode | trim) == 'active' else 'stopped' }}"
+    when:
+    - _restore_backup.stat.exists | default(false)
+    - _restore_socket_active is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Start service if previously active"
+    ansible.builtin.systemd:
+      name: "{{ service_unit }}"
+      state: "{{ 'started' if (_restore_service_active.content | b64decode | trim) == 'active' else 'stopped' }}"
+    when:
+    - _restore_backup.stat.exists | default(false)
+    - _restore_service_active is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

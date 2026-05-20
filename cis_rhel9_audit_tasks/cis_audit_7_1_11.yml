@@ -1,0 +1,98 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_1_11.yml
+
+- block:
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+
+  - name: "Req 1 - Execute audit script for world writable files and directories"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+
+  always:
+  - name: "Remove temporary audit script (cleanup)"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Execute audit script for world writable files and directories"
+    task_01_cmd: "/bin/bash /tmp/audit_world_writable.sh"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if audit_result.rc | default(-1) | int == 0 else 'FAIL') | trim }}"
+    details_01: "{{ 'Audit script executed successfully' if audit_result.rc | default(-1) | int == 0 else 'Audit script execution failed' }}"
+
+- name: "Req 2 - Verify compliance status from script output"
+  set_fact:
+    task_02_name: "Verify compliance status"
+    task_02_cmd: "Parse audit script output for PASS/FAIL markers"
+    task_02_rc: "{{ 0 if ('** PASS **' in audit_result.stdout | default('')) else (1 if ('** FAIL **' in audit_result.stdout | default('')) else -1) }}"
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if ('** PASS **' in audit_result.stdout | default('')) else ('FAIL' if ('** FAIL **' in audit_result.stdout | default('')) else 'UNKNOWN') }}"
+    details_02: "{{ 'Compliance check passed: No world writable files/directories without sticky bit' if ('** PASS **' in audit_result.stdout | default('')) else ('Compliance check failed: World writable files or directories without sticky bit found' if ('** FAIL **' in audit_result.stdout | default('')) else 'Unable to determine compliance from audit script output') }}"
+
+- name: "Req 3 - Store overall compliance result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_name: "Store overall compliance result in cis_result"
+    task_03_cmd: "set_fact module"
+    task_03_rc: 0
+    data_03: "cis_result = {{ status_02 | default('UNKNOWN') | trim }}"
+    status_03: "PASS"
+    details_03: "Overall compliance result stored successfully"
+
+- name: "Req 4 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 7.1.11"
+    - "Reference: CIS Benchmark checkpoint 7.1.11"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug module"
+    - "  Exit code: 0"
+    - "  Data: Report generated successfully"
+    - "  Status: PASS"
+    - "  Details: Audit report generated"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ 'All checks passed' if cis_result | default('UNKNOWN') | trim == 'PASS' else ('One or more checks failed' if cis_result | default('UNKNOWN') | trim == 'FAIL' else 'Unable to determine compliance') }}"
+    - "========================================================"

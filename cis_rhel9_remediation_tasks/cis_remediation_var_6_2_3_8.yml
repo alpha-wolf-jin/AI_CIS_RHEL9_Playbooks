@@ -1,0 +1,17 @@
+playbook_name: "cis_6_2_3_8_rsyslog_logrotate"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for rsyslog and logrotate using command: `which rsyslogd && which logrotate`. Expected result: paths to both binaries are returned."
+req_02: "Apply log rotation configuration for rsyslog by editing /etc/logrotate.d/rsyslog using command: `cat > /etc/logrotate.d/rsyslog << 'EOF' ... EOF`. Expected result: file /etc/logrotate.d/rsyslog is created with the specified configuration."
+req_03: "Apply verification that logrotate configuration is valid using command: `logrotate -d /etc/logrotate.d/rsyslog 2>&1 | grep -i error || echo 'No errors found'`. Expected result: output indicates no errors in the configuration."
+logrotate_config_file: "/etc/logrotate.d/rsyslog"
+logrotate_content: |
+  /var/log/rsyslog/*.log {
+      weekly
+      rotate 4
+      compress
+      missingok
+      notifempty
+      postrotate
+              /usr/bin/systemctl reload rsyslog.service >/dev/null || true
+      endscript
+  }

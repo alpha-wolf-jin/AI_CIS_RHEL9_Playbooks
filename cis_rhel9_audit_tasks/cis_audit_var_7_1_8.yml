@@ -1,0 +1,4 @@
+req_01: "Check if /etc/gshadow- file exists using command: `test -f /etc/gshadow-`. Expected result: file exists."
+req_02: "Check permissions on /etc/gshadow- using command: `stat -Lc 'Access: (%#a/%A)  Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/gshadow-`. Expected result: Access: (0/----------)  Uid: ( 0/ root) Gid: ( 0/ root)"
+req_03: "Check overall compliance: PASS if both checks pass; SKIP if /etc/gshadow- does not exist; FAIL if file exists but permissions, Uid, or Gid do not match expected values."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

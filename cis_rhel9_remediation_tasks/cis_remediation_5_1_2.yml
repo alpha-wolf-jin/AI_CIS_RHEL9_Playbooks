@@ -1,0 +1,314 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_2.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore permissions from previous checkpoint"
+  ansible.builtin.shell: |
+    if [ -f "{{ state_guard_dir }}/key_perms.restore" ]; then
+      while IFS= read -r line; do
+        IFS=':' read -r path mode owner group <<< "$line"
+        [ -f "$path" ] && chmod "$mode" "$path" && chown "$owner":"$group" "$path"
+      done < "{{ state_guard_dir }}/key_perms.restore"
+    fi
+    rm -f "{{ state_guard_dir }}/key_perms.restore"
+  args:
+    executable: /bin/bash
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: "0700"
+  tags: [snapshot]
+- name: "State Guard - Check if {{ script_dest }} exists"
+  ansible.builtin.stat:
+    path: "{{ script_dest }}"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "State Guard - Mark script_dest as absent (created by execute)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/remediate.sh.absent"
+  when: not _sg_script_stat.stat.exists | default(true)
+  tags: [snapshot]
+- name: "State Guard - Snapshot current permissions of SSH private host key files"
+  ansible.builtin.shell: |
+    find /etc/ssh -xdev -type f -print0 2>/dev/null | while IFS= read -r -d '' file; do
+      if ssh-keygen -lf &>/dev/null "$file" && file "$file" | grep -Piq -- '\bopenssh\h+([^#\n\r]+\h+)?private\h+key\b'; then
+        stat -c "%n:%a:%U:%G" "$file"
+      fi
+    done > "{{ state_guard_dir }}/key_perms.restore"
+  args:
+    executable: /bin/bash
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === STATE GUARD — EXECUTE PHASE ===
+  - name: "Check if SSH server package is installed"
+    ansible.builtin.shell: |
+      if command -v rpm > /dev/null 2>&1; then
+        rpm -q openssh-server 2>/dev/null && echo "installed" || echo "not_installed"
+      elif command -v dpkg-query > /dev/null 2>&1; then
+        dpkg-query -W openssh-server 2>/dev/null && echo "installed" || echo "not_installed"
+      else
+        echo "not_installed"
+      fi
+    args:
+      executable: /bin/bash
+    register: sshd_pkg_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set ssh_installed fact"
+    set_fact:
+      ssh_installed: "{{ 'installed' in sshd_pkg_check.stdout }}"
+    tags: [execute]
+
+  - name: "Copy remediation script to target"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+           l_output="" l_output2=""
+           l_ssh_group_name="$(awk -F: '($1 ~ /^(ssh_keys|_?ssh)$/) {print $1}' /etc/group)"
+           f_file_access_fix()
+           {
+              while IFS=: read -r l_file_mode l_file_owner l_file_group; do
+                 echo "File: \"$l_file\" mode: \"$l_file_mode\" owner \"$l_file_owner\" group \"$l_file_group\""
+                 l_out2=""
+                 [ "$l_file_group" = "$l_ssh_group_name" ] && l_pmask="0137" || l_pmask="0177"
+                 l_maxperm="$( printf '%o' $(( 0777 & ~$l_pmask )) )"
+                 if [ $(( $l_file_mode & $l_pmask )) -gt 0 ]; then
+                    l_out2="$l_out2\n  - Mode: \"$l_file_mode\" should be mode: \"$l_maxperm\" or more restrictive\n   - updating to mode: \:$l_maxperm\""
+                    if [ "$l_file_group" = "$l_ssh_group_name" ]; then
+                       chmod u-x,g-wx,o-rwx "$l_file"
+                    else
+                       chmod u-x,go-rwx "$l_file"
+                    fi
+                 fi
+                 if [ "$l_file_owner" != "root" ]; then
+                    l_out2="$l_out2\n  - Owned by: \"$l_file_owner\" should be owned by \"root\"\n   - Changing ownership to \"root\""
+                    chown root "$l_file"
+                 fi
+                 if [[ ! "$l_file_group" =~ ($l_ssh_group_name|root) ]]; then
+                    [ -n "$l_ssh_group_name" ] && l_new_group="$l_ssh_group_name" || l_new_group="root"
+                    l_out2="$l_out2\n  - Owned by group \"$l_file_group\" should be group owned by: \"$l_ssh_group_name\" or \"root\"\n   - Changing group ownership to \"$l_new_group\""
+                    chgrp "$l_new_group" "$l_file"
+                 fi
+                 if [ -n "$l_out2" ]; then
+                    l_output2="$l_output2\n - File: \"$l_file\"$l_out2"
+                 else
+                    l_output="$l_output\n - File: \"$l_file\"\n  - Correct: mode: \"$l_file_mode\", owner: \"$l_file_owner\", and group owner: \"$l_file_group\" configured"
+                 fi
+              done < <(stat -Lc '%#a:%U:%G' "$l_file")
+           }
+           while IFS= read -r -d $'\0' l_file; do
+              if ssh-keygen -lf &>/dev/null "$l_file"; then
+                 file "$l_file" | grep -Piq -- '\bopenssh\h+([^#\n\r]+\h+)?private\h+key\b' && f_file_access_fix
+              fi
+           done < <(find -L /etc/ssh -xdev -type f -print0 2>/dev/null)
+           if [ -z "$l_output2" ]; then
+              echo -e "\n- No access changes required\n"
+           else
+              echo -e "\n- Remediation results:\n$l_output2\n"
+           fi
+        }
+        {% endraw %}
+      dest: "{{ script_dest }}"
+      mode: "0700"
+    when: ssh_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 1 - Apply permissions remediation on SSH private host key files"
+    ansible.builtin.shell: "/bin/bash {{ script_dest }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when: ssh_installed | default(false)
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Execute remediation script"
+      task_01_cmd: "/bin/bash {{ script_dest }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {{ 'SKIPPED' if not (ssh_installed | default(false))
+           else 'APPLIED' if result_01.rc | default(-1) == 0
+           else 'FAILED' }}
+      details_01: >-
+        {{ 'SSH server not installed' if not (ssh_installed | default(false))
+           else 'Remediation script executed successfully' if result_01.rc | default(-1) == 0
+           else 'Remediation script failed' }}
+    tags: [execute]
+
+  - name: "Req 2 - Verify permissions on SSH private host key files"
+    ansible.builtin.shell: "/bin/bash {{ script_dest }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: ssh_installed | default(false)
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify SSH private host key file permissions"
+      task_02_cmd: "/bin/bash {{ script_dest }}"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {{ 'SKIPPED' if not (ssh_installed | default(false))
+           else 'PASS' if 'No access changes required' in (result_02.stdout | default(''))
+           else 'FAIL' }}
+      details_02: >-
+        {{ 'SSH server not installed' if not (ssh_installed | default(false))
+           else 'Compliant - No access changes required' if 'No access changes required' in (result_02.stdout | default(''))
+           else 'Non-compliant - access changes needed' }}
+    tags: [execute]
+
+  - name: "Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: "cis_result set to {{ cis_result }}"
+      status_03: "PASS"
+      details_03: "cis_result variable stored"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Report generated with required format"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.1.2"
+      - "        Reference: CIS Benchmark checkpoint 5.1.2"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for key permissions backup"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/key_perms.restore"
+    register: _sg_restore_perms
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore original permissions"
+    ansible.builtin.shell: |
+      if [ -f "{{ state_guard_dir }}/key_perms.restore" ]; then
+        while IFS= read -r line; do
+          IFS=':' read -r path mode owner group <<< "$line"
+          [ -f "$path" ] && chmod "$mode" "$path" && chown "$owner":"$group" "$path"
+        done < "{{ state_guard_dir }}/key_perms.restore"
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_restore_perms.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if absent marker for script_dest exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/remediate.sh.absent"
+    register: _sg_restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete {{ script_dest }} (created by execute)"
+    ansible.builtin.file:
+      path: "{{ script_dest }}"
+      state: absent
+    when: _sg_restore_script_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

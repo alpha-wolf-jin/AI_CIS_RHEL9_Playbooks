@@ -1,0 +1,9 @@
+playbook_name: "cis_5_1_5"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check: ensure system-wide-crypto-policy is installed using command: `rpm -q crypto-policies`. Expected result: package is installed."
+req_02: |
+  Apply creation or modification of a .pmod file to disable SHA1 hash and signature support using command: `printf '%s\\n' \"# This is a subpolicy dropping the SHA1 hash and signature support\" \"hash = -SHA1\" \"sign = -*-SHA1\" \"sha1_in_certs = 0\" >> /etc/crypto-policies/policies/modules/NO-SHA1.pmod`. Expected result: file /etc/crypto-policies/policies/modules/NO-SHA1.pmod is created or updated.
+req_03: "Apply update of system-wide cryptographic policy using command: `update-crypto-policies --set DEFAULT:NO-SHA1:NO-WEAKMAC:NO-SSHCBC:NO-SSHCHACHA20:NO-SSHETM:NO-SSHWEAKCIPHERS`. Expected result: crypto policy is updated to disable weak algorithms."
+req_04: "Apply reload of OpenSSH server to make cryptographic settings effective using command: `systemctl reload-or-restart sshd`. Expected result: sshd service reloads or restarts successfully."
+req_05: "Apply verification that KexAlgorithms are configured correctly using command: `sshd -T | grep -i kexalgorithms`. Expected result: output shows only FIPS 140 approved key exchange algorithms (e.g., ecdh-sha2-nistp256, diffie-hellman-group14-sha256, etc.) and no weak algorithms."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

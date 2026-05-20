@@ -1,0 +1,10 @@
+playbook_name: "cis_1_5_2_ptrace_scope"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/sysctl.d/60-kernel_sysctl.conf"
+param: "kernel.yama.ptrace_scope"
+value: "1"
+runtime_value_file: "ptrace_scope_runtime.orig"
+req_01: |
+  Apply the kernel parameter setting to a sysctl configuration file using command: `printf 'kernel.yama.ptrace_scope = 1\n' >> /etc/sysctl.d/60-kernel_sysctl.conf`. Expected result: The file /etc/sysctl.d/60-kernel_sysctl.conf contains the line 'kernel.yama.ptrace_scope = 1'.
+req_02: "Apply the active kernel parameter setting using command: `sysctl -w kernel.yama.ptrace_scope=1`. Expected result: The kernel parameter kernel.yama.ptrace_scope is set to 1 immediately."
+req_03: "Verify the setting using command: `sysctl kernel.yama.ptrace_scope`. Expected result: The output is 'kernel.yama.ptrace_scope = 1'."

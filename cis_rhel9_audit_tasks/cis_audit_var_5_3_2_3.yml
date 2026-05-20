@@ -1,0 +1,7 @@
+req_01: "Check if pam_pwquality module is installed using command: `rpm -q pam_pwquality || dpkg -l | grep pam_pwquality`. Expected result: package is installed."
+req_02: |
+  Check if pam_pwquality.so is enabled in password-auth using command: `grep -P -- '\\bpam_pwquality\\.so\\b' /etc/pam.d/password-auth`. Expected result: line similar to `password   requisite   pam_pwquality.so local_users_only`.
+req_03: |
+  Check if pam_pwquality.so is enabled in system-auth using command: `grep -P -- '\\bpam_pwquality\\.so\\b' /etc/pam.d/system-auth`. Expected result: line similar to `password   requisite   pam_pwquality.so local_users_only`.
+req_04: "Summarize overall compliance: PASS if both checks pass, SKIP if pam_pwquality package is not installed, FAIL if package is installed but one or both configuration lines are missing or incorrect."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

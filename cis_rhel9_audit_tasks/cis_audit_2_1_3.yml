@@ -1,0 +1,119 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_3.yml
+
+- name: "Req 01 - Check dhcp-server package installation"
+  shell: "rpm -q dhcp-server"
+  args:
+    executable: /bin/bash
+  register: pkg_check
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check dhcp-server package installation"
+    task_01_cmd: "rpm -q dhcp-server"
+    task_01_rc: "{{ pkg_check.rc }}"
+    data_01: "{{ pkg_check.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if pkg_check.rc == 1 else 'FAIL' | trim }}"
+    details_01: "{{ 'Package is not installed' if pkg_check.rc == 1 else 'Package is installed' }}"
+    pkg_installed: "{{ pkg_check.rc == 0 }}"
+
+# Requirement 2
+- name: "Req 02 - Check dhcp services enabled status"
+  shell: "systemctl is-enabled dhcpd.service dhcpd6.service 2>/dev/null | grep 'enabled'"
+  args:
+    executable: /bin/bash
+  register: enable_check
+  when: "pkg_installed | default(false)"
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check dhcp services enabled status"
+    task_02_cmd: "systemctl is-enabled dhcpd.service dhcpd6.service 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ enable_check.rc | default(-1) }}"
+    data_02: "{{ enable_check.stdout | default('') | trim }}"
+    status_02: "{{ 'SKIP' if not (pkg_installed | default(false)) else ('PASS' if enable_check.rc == 1 else 'FAIL') }}"
+    details_02: "{{ 'Package not installed, check skipped' if not (pkg_installed | default(false)) else ('No services enabled' if enable_check.rc == 1 else 'One or more services enabled') }}"
+
+# Requirement 3
+- name: "Req 03 - Check dhcp services active status"
+  shell: "systemctl is-active dhcpd.service dhcpd6.service 2>/dev/null | grep '^active'"
+  args:
+    executable: /bin/bash
+  register: active_check
+  when: "pkg_installed | default(false)"
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check dhcp services active status"
+    task_03_cmd: "systemctl is-active dhcpd.service dhcpd6.service 2>/dev/null | grep '^active'"
+    task_03_rc: "{{ active_check.rc | default(-1) }}"
+    data_03: "{{ active_check.stdout | default('') | trim }}"
+    status_03: "{{ 'SKIP' if not (pkg_installed | default(false)) else ('PASS' if active_check.rc == 1 else 'FAIL') }}"
+    details_03: "{{ 'Package not installed, check skipped' if not (pkg_installed | default(false)) else ('No services active' if active_check.rc == 1 else 'One or more services active') }}"
+
+# Requirement 4 - Overall compliance
+- name: "Req 04 - Summarize overall compliance"
+  set_fact:
+    task_04_name: "Overall Compliance Evaluation"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "Overall compliance evaluation"
+    status_04: "{{ 'PASS' if (not (pkg_installed | default(false))) or (status_02 == 'PASS' and status_03 == 'PASS') else 'FAIL' }}"
+    details_04: "{{ 'Package not installed - compliant' if not (pkg_installed | default(false)) else ('All service checks passed - compliant' if status_02 == 'PASS' and status_03 == 'PASS' else 'One or more services enabled or active - non-compliant') }}"
+
+# Requirement 5 - Set cis_result variable
+- name: "Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
+
+# Generate audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.3"
+    - "Reference: CIS Benchmark checkpoint 2.1.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

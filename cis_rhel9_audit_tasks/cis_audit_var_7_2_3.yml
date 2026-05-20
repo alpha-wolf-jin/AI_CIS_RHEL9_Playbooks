@@ -1,0 +1,20 @@
+req_01: "Run the provided audit script to verify Ensure all groups in /etc/passwd exist in /etc/group."
+req_02: "VERIFY: Summarise compliance status for Ensure all groups in /etc/passwd exist in /etc/group. Expected result: PASS if compliant, FAIL otherwise"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Generate audit report"
+audit_script_path: "/tmp/cis_7_2_3_audit.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     a_passwd_group_gid=("$(awk -F: '{print $4}' /etc/passwd | sort -u)")
+     a_group_gid=("$(awk -F: '{print $3}' /etc/group | sort -u)")
+     a_passwd_group_diff=("$(printf '%s\n' "${a_group_gid[@]}" "${a_passwd_group_gid[@]}" | sort | uniq -u)")
+     while IFS= read -r l_gid; do
+        awk -F: '($4 == '"$l_gid"') {print "  - User: \"" $1 "\" has GID: \"" $4 "\" which does not exist in /etc/group" }' /etc/passwd
+     done < <(printf '%s\n' "${a_passwd_group_gid[@]}" "${a_passwd_group_diff[@]}" | sort | uniq -D | uniq)
+     unset a_passwd_group_gid; unset a_group_gid; unset a_passwd_group_diff
+  }
+  {% endraw %}
+backup_dir: "/var/log/ai-playbooks-backup/cis_7_2_3"
+marker_file: "{{ backup_dir }}/script_existed_before.txt"

@@ -1,0 +1,216 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_1_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if jffs2 conf file exists"
+  ansible.builtin.stat:
+    path: "{{ conf_file }}"
+  register: _cfg_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup jffs2 conf if exists"
+  ansible.builtin.copy:
+    src: "{{ conf_file }}"
+    dest: "{{ backup_dir }}/jffs2.conf.present"
+    remote_src: true
+  when: _cfg_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark jffs2 conf as absent if not exists"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/jffs2.conf.absent"
+  when: not _cfg_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Capture jffs2 module load state"
+  ansible.builtin.shell: |
+    if lsmod | grep -q '^jffs2 '; then echo "loaded"; else echo "not_loaded"; fi
+  args:
+    executable: /bin/bash
+  register: _loaded_state
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save load state to file"
+  ansible.builtin.copy:
+    content: "{{ _loaded_state.stdout }}"
+    dest: "{{ backup_dir }}/jffs2_loaded.state"
+  when: _loaded_state.stdout is defined
+  tags: [snapshot]
+
+- block:
+# Requirement 1 - Run remediation script
+  - name: "Req 01 - Deploy remediation script for jffs2"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+           unset a_output2; l_output3="" l_dl="" # unset arrays and clear variables
+           l_mod_name="jffs2" # set module name
+           l_mod_type="fs" # set module type
+           l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
+           f_module_fix()
+           {
+              l_dl="y" # Set to ignore duplicate checks
+              a_showconfig=() # Create array with modprobe output
+              while IFS= read -r l_showconfig; do
+                 a_showconfig+=("$l_showconfig")
+              done < <(modprobe --showconfig | grep -P -- '\b(install|blacklist)\h+'"${l_mod_name//-/_}"'\b')
+              if  lsmod | grep "$l_mod_name" &> /dev/null; then # Check if the module is currently loaded
+                 a_output2+=(" - unloading kernel module: \"$l_mod_name\"")
+                 modprobe -r "$l_mod_name" 2>/dev/null; rmmod "$l_mod_name" 2>/dev/null
+              fi
+              if ! grep -Pq -- '\binstall\h+'"${l_mod_name//- /_}"'\h+\/bin\/(true|false)\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - setting kernel  module: \"$l_mod_name\" to \"/bin/false\"")
+                 printf '%s\n' "install $l_mod_name /bin/false" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+              if ! grep -Pq -- '\bblacklist\h+'"${l_mod_name//-/_}"'\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - denylisting kernel  module: \"$l_mod_name\"")
+                 printf '%s\n' "blacklist $l_mod_name" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+           }
+           for l_mod_base_directory in $l_mod_path; do # Check if the module exists on the system
+              if [ -d "$l_mod_base_directory/${l_mod_name/-/\/}" ] && [ -n "$(ls -A $l_mod_base_directory/${l_mod_name/-/\/})" ]; then
+                 l_output3="$l_output3\n  - \"$l_mod_base_directory\""
+                 [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
+                 [ "$l_dl" != "y" ] && f_module_fix
+              else
+                 echo -e " - kernel module: \"$l_mod_name\" doesn't exist in \"$l_mod_base_directory\""
+              fi
+           done
+           [ -n "$l_output3" ] && echo -e "\n\n -- INFO --\n - module: \"$l_mod_name\" exists in:$l_output3"
+           [ "${#a_output2[@]}" -gt 0 ] && printf '%s\n' "${a_output2[@]}"
+           echo -e "\n - remediation of kernel module: \"$l_mod_name\" complete\n"
+        }
+        {% endraw %}
+      dest: "/tmp/remediate_jffs2.sh"
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/remediate_jffs2.sh
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+# Requirement 2 - Verify compliance
+  - name: "Req 02 - Verify jffs2 kernel module is not available"
+    ansible.builtin.shell: |
+      if ! find /lib/modules -type d -name jffs2 -path "*/kernel/fs/*" 2>/dev/null | grep -q jffs2; then
+        echo "COMPLIANT: jffs2 module not found on filesystem"
+        exit 0
+      fi
+      if modprobe --showconfig | grep -q 'install jffs2 /bin/false' && \
+         modprobe --showconfig | grep -q 'blacklist jffs2' && \
+         ! lsmod | grep -q '^jffs2 '; then
+        echo "COMPLIANT: jffs2 is properly configured and not loaded"
+        exit 0
+      fi
+      echo "NON-COMPLIANT: jffs2 configuration or load state is incorrect"
+      exit 1
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+# Compute report variables
+  - name: "Compute report variables"
+    set_fact:
+      status_01: "{{ 'APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED' }}"
+      details_01: "{{ 'Script executed successfully' if result_01.rc | default(-1) == 0 else 'Script execution failed' }}"
+      status_02: "{{ 'APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED' }}"
+      details_02: "{{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant' }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.1.5"
+      - "Reference: CIS Benchmark checkpoint 1.1.1.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Run remediation script for jffs2"
+      - "  Command: /bin/bash /tmp/remediate_jffs2.sh"
+      - "  Exit code: {{ result_01.rc | default(-1) }}"
+      - "  Data: {{ result_01.stdout | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify jffs2 kernel module is not available"
+      - "  Command: audit shell check"
+      - "  Exit code: {{ verify_result.rc | default(-1) }}"
+      - "  Data: {{ verify_result.stdout | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if jffs2.conf.present backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/jffs2.conf.present"
+    register: _r_present
+    tags: [restore]
+
+  - name: "Restore - Restore jffs2.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/jffs2.conf.present"
+      dest: "{{ conf_file }}"
+      remote_src: true
+    when: _r_present.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if jffs2.conf.absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/jffs2.conf.absent"
+    register: _r_absent
+    tags: [restore]
+
+  - name: "Restore - Delete jffs2.conf if it was created"
+    ansible.builtin.file:
+      path: "{{ conf_file }}"
+      state: absent
+    when: _r_absent.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if jffs2 load state file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/jffs2_loaded.state"
+    register: _r_state_file
+    tags: [restore]
+
+  - name: "Restore - Reload jffs2 module if it was previously loaded"
+    ansible.builtin.shell: |
+      if grep -q 'loaded' "{{ backup_dir }}/jffs2_loaded.state" 2>/dev/null; then
+        modprobe jffs2 2>/dev/null || true
+      fi
+    args:
+      executable: /bin/bash
+    when: _r_state_file.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

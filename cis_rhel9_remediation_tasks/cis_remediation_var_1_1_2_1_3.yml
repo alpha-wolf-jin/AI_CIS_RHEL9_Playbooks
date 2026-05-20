@@ -1,0 +1,3 @@
+checkpoint_id: "cis_1_1_2_1_3"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"

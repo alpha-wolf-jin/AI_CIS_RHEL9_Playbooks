@@ -1,0 +1,208 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_3_4_4.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check if PAM is installed"
+  shell: |
+    dpkg -l | grep -E 'libpam-runtime|pam' || rpm -q pam
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if PAM is installed"
+    task_01_cmd: "dpkg -l | grep -E 'libpam-runtime|pam' || rpm -q pam"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+    details_01: "{{ 'PAM package found' if result_01.rc | default(-1) == 0 else 'PAM package not found' }}"
+    pam_installed: "{{ result_01.rc | default(-1) == 0 }}"
+
+- name: "Req 02 - Check use_authtok in /etc/pam.d/password-auth"
+  shell: "{{ grep_password_auth_cmd }}"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: pam_installed
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check use_authtok in /etc/pam.d/password-auth"
+    task_02_cmd: "{{ grep_password_auth_cmd }}"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim if pam_installed else 'N/A' }}"
+    status_02: >-
+      {%- if not pam_installed -%}
+        SKIP
+      {%- elif result_02.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not pam_installed -%}
+        PAM not installed
+      {%- elif result_02.rc | default(-1) == 0 -%}
+        use_authtok found in /etc/pam.d/password-auth
+      {%- else -%}
+        use_authtok not found in /etc/pam.d/password-auth
+      {%- endif -%}
+
+- name: "Req 03 - Check use_authtok in /etc/pam.d/system-auth"
+  shell: "{{ grep_system_auth_cmd }}"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: pam_installed
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check use_authtok in /etc/pam.d/system-auth"
+    task_03_cmd: "{{ grep_system_auth_cmd }}"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim if pam_installed else 'N/A' }}"
+    status_03: >-
+      {%- if not pam_installed -%}
+        SKIP
+      {%- elif result_03.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if not pam_installed -%}
+        PAM not installed
+      {%- elif result_03.rc | default(-1) == 0 -%}
+        use_authtok found in /etc/pam.d/system-auth
+      {%- else -%}
+        use_authtok not found in /etc/pam.d/system-auth
+      {%- endif -%}
+
+- name: "Req 04 - Summarize overall compliance"
+  set_fact:
+    status_04: >-
+      {%- if not pam_installed -%}
+        SKIP
+      {%- elif status_02 | default('ERROR') | trim == 'PASS' and status_03 | default('ERROR') | trim == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if not pam_installed -%}
+        PAM not installed
+      {%- elif status_02 | default('ERROR') | trim == 'PASS' and status_03 | default('ERROR') | trim == 'PASS' -%}
+        System is compliant
+      {%- else -%}
+        System is non-compliant
+      {%- endif -%}
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: "N/A"
+    data_04: "N/A"
+
+- name: "Req 05 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    status_05: "PASS"
+    details_05: "cis_result stored successfully; overall compliance is {{ status_04 | default('ERROR') | trim }}"
+    task_05_name: "Store final audit result"
+    task_05_cmd: "N/A"
+    task_05_rc: "N/A"
+    data_05: "N/A"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.3.4.4"
+    - "Reference: CIS Benchmark checkpoint 5.3.3.4.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default('N/A') }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default('N/A') }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

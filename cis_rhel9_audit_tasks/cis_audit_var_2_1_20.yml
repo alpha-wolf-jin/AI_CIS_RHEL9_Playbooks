@@ -1,0 +1,5 @@
+req_01: "Check if a Graphical Desktop Manager or X-Windows server is required and approved by local site policy. Expected result: not required or not approved."
+req_02: "Check if xorg-x11-server-common package is installed using command: `rpm -q xorg-x11-server-common`. Expected result: package xorg-x11-server-common is not installed."
+req_03: "Summarize overall compliance: if the package is not installed and the service is not required/approved, the system is compliant; otherwise, it is non-compliant."
+package_name: "xorg-x11-server-common"
+policy_msg: "Not required and not approved"

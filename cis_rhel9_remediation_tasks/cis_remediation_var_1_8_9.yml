@@ -1,0 +1,4 @@
+playbook_name: "cis_1_8_9"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Run the provided remediation script to fix Ensure GDM autorun-never is not overridden."
+req_02: "VERIFY: Run audit check to confirm Ensure GDM autorun-never is not overridden is properly configured. Expected result: System is compliant"

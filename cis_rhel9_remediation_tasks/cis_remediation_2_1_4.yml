@@ -1,0 +1,494 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Record named.service active state"
+  ansible.builtin.shell: systemctl is-active named.service
+  args:
+    executable: /bin/bash
+  register: _snap_active
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if named active state backup exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/named_active.state"
+  register: _snap_active_state_exists
+  tags: [snapshot]
+- name: "Snapshot - Save named active state"
+  ansible.builtin.copy:
+    content: "{{ _snap_active.stdout | trim }}"
+    dest: "{{ backup_dir }}/named_active.state"
+  when: "not (_snap_active_state_exists.stat.exists | default(false))"
+  tags: [snapshot]
+- name: "Snapshot - Record named.service enabled state"
+  ansible.builtin.shell: systemctl is-enabled named.service
+  args:
+    executable: /bin/bash
+  register: _snap_enabled
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if named enabled state backup exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/named_enabled.state"
+  register: _snap_enabled_state_exists
+  tags: [snapshot]
+- name: "Snapshot - Save named enabled state"
+  ansible.builtin.copy:
+    content: "{{ _snap_enabled.stdout | trim }}"
+    dest: "{{ backup_dir }}/named_enabled.state"
+  when: "not (_snap_enabled_state_exists.stat.exists | default(false))"
+  tags: [snapshot]
+- name: "Snapshot - Record bind package presence"
+  ansible.builtin.shell: rpm -q bind && echo present || echo absent
+  args:
+    executable: /bin/bash
+  register: _snap_bind_presence
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if bind presence backup exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/bind_presence.state"
+  register: _snap_bind_presence_exists
+  tags: [snapshot]
+- name: "Snapshot - Save bind presence"
+  ansible.builtin.copy:
+    content: "{{ _snap_bind_presence.stdout | trim }}"
+    dest: "{{ backup_dir }}/bind_presence.state"
+  when: "not (_snap_bind_presence_exists.stat.exists | default(false))"
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      data_06: "Not collected yet"
+      status_06: "ERROR"
+      details_06: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      skip_all: false
+      bind_has_no_deps: false
+    tags: [execute]
+
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set skip_all when bind package not installed"
+    set_fact:
+      skip_all: "{{ not ('bind' in (ansible_facts.packages | default({}))) }}"
+    tags: [execute]
+
+  - name: "Set SKIP status when bind package not installed"
+    set_fact:
+      status_01: "SKIP"
+      status_02: "SKIP"
+      status_03: "SKIP"
+      status_04: "SKIP"
+      status_05: "SKIP"
+      status_06: "SKIP"
+      data_01: "Bind package not installed"
+      data_02: "Not applicable"
+      data_03: "Not applicable"
+      data_04: "Not applicable"
+      data_05: "Not applicable"
+      data_06: "Not applicable"
+      details_01: "Bind package not installed, remediation skipped"
+      details_02: "Not applicable"
+      details_03: "Not applicable"
+      details_04: "Not applicable"
+      details_05: "Not applicable"
+      details_06: "Not applicable"
+      task_01_name: "Check bind package"
+      task_01_cmd: "dnf list bind"
+      task_01_rc: 0
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+    when: "skip_all | bool"
+    tags: [execute]
+
+  - name: "Check if bind package has dependencies"
+    ansible.builtin.shell: dnf repoquery --whatrequires bind --installed
+    args:
+      executable: /bin/bash
+    register: bind_deps_result
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Set bind_has_no_deps fact"
+    set_fact:
+      bind_has_no_deps: "{{ (bind_deps_result.stdout | default('') | trim | length == 0) | bool }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+# Requirement 1
+  - name: "Req 1 - Stop named service"
+    ansible.builtin.shell: systemctl stop named.service
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Stop named service"
+      task_01_cmd: "systemctl stop named.service"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ ('Service stopped successfully' if result_01.rc | default(-1) == 0 else 'Failed to stop service') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+# Requirement 2
+  - name: "Req 2 - Store removal skipped due to dependencies"
+    set_fact:
+      task_02_name: "Remove bind package"
+      task_02_cmd: "dnf remove -y bind"
+      task_02_rc: "-1"
+      data_02: "Bind has dependencies, not removed"
+      status_02: "SKIP"
+      details_02: "Bind is a required dependency; removal skipped"
+    when: "not skip_all | bool and not (bind_has_no_deps | bool)"
+    tags: [execute]
+
+  - name: "Req 2 - Remove bind package"
+    ansible.builtin.shell: dnf remove -y bind
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: "not skip_all | bool and (bind_has_no_deps | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remove bind package"
+      task_02_cmd: "dnf remove -y bind"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_02: "{{ ('Package removed successfully' if result_02.rc | default(-1) == 0 else 'Failed to remove package') | trim }}"
+    when: "not skip_all | bool and (bind_has_no_deps | bool)"
+    tags: [execute]
+
+# Requirement 3
+  - name: "Req 3 - Mask named service"
+    ansible.builtin.shell: systemctl mask named.service
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Mask named service"
+      task_03_cmd: "systemctl mask named.service"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_03: "{{ ('Service masked successfully' if result_03.rc | default(-1) == 0 else 'Failed to mask service') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+# Requirement 4
+  - name: "Req 4 - Verify named service is inactive"
+    ansible.builtin.shell: systemctl is-active named.service
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify named service not running"
+      task_04_cmd: "systemctl is-active named.service"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ ('PASS' if (result_04.stdout | default('') | trim) == 'inactive' else 'FAIL') | trim }}"
+      details_04: "{{ ('Service is inactive' if (result_04.stdout | default('') | trim) == 'inactive' else 'Service is active or unknown') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+# Requirement 5
+  - name: "Req 5 - Verify named service is masked"
+    ansible.builtin.shell: systemctl is-enabled named.service
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Verify named service masked"
+      task_05_cmd: "systemctl is-enabled named.service"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: "{{ ('PASS' if (result_05.stdout | default('') | trim) == 'masked' else 'FAIL') | trim }}"
+      details_05: "{{ ('Service is masked' if (result_05.stdout | default('') | trim) == 'masked' else 'Service is not masked') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+# Requirement 6 – store final result and set requirement 06 variables
+  - name: "Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_05 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Set requirement 06 variables"
+    set_fact:
+      status_06: "{{ cis_result | trim }}"
+      details_06: "Overall remediation status derived from requirement 05"
+      task_06_name: "Set cis_result fact"
+      task_06_cmd: "set_fact"
+      task_06_rc: 0
+      data_06: "{{ cis_result }}"
+    tags: [execute]
+
+# Requirement 7 – report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.4"
+      - "Reference: CIS Benchmark checkpoint 2.1.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === RESTORE PHASE (tag: restore) ===
+  - name: "Restore - Check if named active state file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/named_active.state"
+    register: _restore_active_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read named active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/named_active.state"
+    register: _restore_active_data
+    when: "_restore_active_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Decode active state"
+    set_fact:
+      _restore_active_str: "{{ _restore_active_data.content | b64decode | trim }}"
+    when: "_restore_active_data.content is defined"
+    tags: [restore]
+
+  - name: "Restore - Start named.service if originally active"
+    ansible.builtin.shell: systemctl start named.service
+    args:
+      executable: /bin/bash
+    when:
+    - "_restore_active_str is defined"
+    - "_restore_active_str == 'active'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if named enabled state file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/named_enabled.state"
+    register: _restore_enabled_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read named enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/named_enabled.state"
+    register: _restore_enabled_data
+    when: "_restore_enabled_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Decode enabled state"
+    set_fact:
+      _restore_enabled_str: "{{ _restore_enabled_data.content | b64decode | trim }}"
+    when: "_restore_enabled_data.content is defined"
+    tags: [restore]
+
+  - name: "Restore - Apply named.service enabled state"
+    ansible.builtin.shell: |
+      case "{{ _restore_enabled_str }}" in
+        enabled)
+          systemctl unmask named.service
+          systemctl enable named.service
+          ;;
+        disabled)
+          systemctl unmask named.service
+          systemctl disable named.service
+          ;;
+        masked)
+          systemctl mask named.service
+          ;;
+        *) true ;;
+      esac
+    args:
+      executable: /bin/bash
+    when: "_restore_enabled_str is defined"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if bind presence state file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/bind_presence.state"
+    register: _restore_bind_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read bind presence state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/bind_presence.state"
+    register: _restore_bind_data
+    when: "_restore_bind_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Decode bind presence"
+    set_fact:
+      _restore_bind_presence_str: "{{ _restore_bind_data.content | b64decode | trim }}"
+    when: "_restore_bind_data.content is defined"
+    tags: [restore]
+
+  - name: "Restore - Reinstall bind package if originally present and removed"
+    ansible.builtin.shell: |
+      if rpm -q bind &>/dev/null; then
+        echo "bind already installed"
+      else
+        dnf install -y bind
+      fi
+    args:
+      executable: /bin/bash
+    when:
+    - "_restore_bind_presence_str is defined"
+    - "_restore_bind_presence_str == 'present'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if backup directory exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: "_restore_backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

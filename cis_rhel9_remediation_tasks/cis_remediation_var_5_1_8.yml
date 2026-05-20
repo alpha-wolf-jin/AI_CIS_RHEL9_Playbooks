@@ -1,0 +1,14 @@
+playbook_name: "cis_5_1_8_sshd_banner"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Ensure openssh-server is installed using command: `dpkg -l | grep -q openssh-server || apt-get install -y openssh-server`. Expected result: openssh-server is installed."
+req_02: |
+  Set the Banner parameter in /etc/ssh/sshd_config to /etc/issue.net using command: `sed -i 's/^#*Banner.*/Banner \\/etc\\/issue.net/' /etc/ssh/sshd_config`. Expected result: The Banner line is set to 'Banner /etc/issue.net'.
+req_03: |
+  Ensure the Banner parameter is placed before any Include and Match entries using command: `awk '/^Include|^Match/{if(!found){print \"Banner /etc/issue.net\"; found=1}}1' /etc/ssh/sshd_config > /tmp/sshd_config && mv /tmp/sshd_config /etc/ssh/sshd_config`. Expected result: Banner appears before any Include or Match lines.
+req_04: |
+  Create or overwrite /etc/issue.net with the site policy banner using command: `printf '%s\\n' \"Authorized users only. All activity may be monitored and reported.\" > /etc/issue.net`. Expected result: /etc/issue.net contains the specified banner text.
+req_05: |
+  Remove any instances of \\m, \\r, \\s, \\v or OS platform references from /etc/issue.net using command: `sed -i 's/\\\\m//g; s/\\\\r//g; s/\\\\s//g; s/\\\\v//g; s/[Uu]buntu/[Dd]ebian//g' /etc/issue.net`. Expected result: No escape sequences or OS references remain.
+req_06: "Restart the SSH service to apply changes using command: `systemctl restart sshd`. Expected result: SSH service restarts successfully."
+req_07: "Verify the Banner configuration using command: `sshd -T | grep -i banner`. Expected result: Output shows 'banner /etc/issue.net'."
+req_08: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

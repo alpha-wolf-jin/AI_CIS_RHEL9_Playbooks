@@ -1,0 +1,139 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_2_2_1_2.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Req 01 - Check if {{ package_name }} is installed"
+  shell: "dpkg -l | grep -i {{ package_name }} || rpm -q {{ package_name }}"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check package installation"
+    task_01_cmd: "dpkg -l | grep -i {{ package_name }} || rpm -q {{ package_name }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'SKIPPED' }}"
+    details_01: "{{ ('Package ' + package_name + ' is installed') if result_01.rc | default(-1) == 0 else ('Package ' + package_name + ' not found – authentication checks not applicable') }}"
+
+- name: "Req 02 - Check authentication configuration in {{ config_file }}"
+  shell: "grep -P '{{ grep_pattern }}' {{ config_file }}"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc | default(1) == 0"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check authentication configuration"
+    task_02_cmd: "grep -P '{{ grep_pattern }}' {{ config_file }}"
+    task_02_rc: "{{ result_02.rc | default(-1) if result_01.rc | default(1) == 0 else -1 }}"
+    data_02: "{{ result_02.stdout | default('') | trim if result_01.rc | default(1) == 0 else '' }}"
+    status_02: >-
+      {{ 'SKIPPED' if result_01.rc | default(1) != 0
+         else ('PASS' if result_02.rc | default(1) == 0 and (result_02.stdout | default('') | trim) != ''
+               else 'FAIL') }}
+    details_02: >-
+      {{ 'Package not installed – check skipped' if result_01.rc | default(1) != 0
+         else ('Authentication configuration lines found' if result_02.rc | default(1) == 0 and (result_02.stdout | default('') | trim) != ''
+               else 'Authentication configuration missing or incomplete') }}
+
+- name: "Req 03 - Summarize overall compliance"
+  set_fact:
+    status_03: >-
+      {{ 'SKIPPED' if status_01 == 'SKIPPED' or status_02 == 'SKIPPED'
+         else ('PASS' if status_01 == 'PASS' and status_02 == 'PASS'
+               else 'FAIL') }}
+    details_03: >-
+      {{ 'All checks passed – authentication is properly configured' if status_01 == 'PASS' and status_02 == 'PASS'
+         else ('Authentication service not installed or misconfigured' if status_01 != 'PASS' or status_02 != 'PASS'
+               else '') }}
+    data_03: "See individual requirement data"
+    task_03_name: "Compliance summary"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+
+- name: "Req 04 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_03 }}"
+    task_04_name: "Set cis_result variable"
+    task_04_cmd: "set_fact: cis_result = {{ status_03 }}"
+    task_04_rc: 0
+    data_04: "cis_result = {{ status_03 }}"
+    status_04: "{{ status_03 }}"
+    details_04: "Overall compliance stored in cis_result"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.2.2.1.2"
+    - "Reference: CIS Benchmark checkpoint 6.2.2.1.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') }}"
+    - "========================================================"

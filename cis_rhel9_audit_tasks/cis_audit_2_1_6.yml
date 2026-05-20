@@ -1,0 +1,182 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_6.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+# Requirement 1
+- name: "Req 01 - Check if samba package is installed"
+  shell: rpm -q samba 2>&1
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if samba package is installed using rpm"
+    task_01_cmd: "rpm -q samba 2>&1"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc != 0 else 'FAIL' | trim }}"
+    details_01: "{{ 'Samba package is not installed; control passes' if result_01.rc != 0 else 'Samba package is installed' | trim }}"
+
+- name: "Set samba installed flag"
+  set_fact:
+    samba_installed: "{{ result_01.rc == 0 }}"
+
+# Requirement 2
+- name: "Req 02 - Check if smb.service is enabled"
+  shell: systemctl is-enabled smb.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: samba_installed
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check if smb.service is enabled using systemctl"
+    task_02_cmd: "systemctl is-enabled smb.service 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ result_02.rc if result_02 is not skipped else -1 }}"
+    data_02: "{{ (result_02.stdout | default('') | trim) if result_02 is not skipped else '' }}"
+    status_02: >-
+      {%- if not samba_installed -%} SKIP
+      {%- elif result_02.stdout | default('') | trim == '' -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not samba_installed -%} Samba package is not installed; requirement does not apply
+      {%- elif result_02.stdout | default('') | trim == '' -%} smb.service is not enabled
+      {%- else -%} smb.service is enabled
+      {%- endif -%}
+
+# Requirement 3
+- name: "Req 03 - Check if smb.service is active"
+  shell: systemctl is-active smb.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: samba_installed
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check if smb.service is active using systemctl"
+    task_03_cmd: "systemctl is-active smb.service 2>/dev/null | grep '^active'"
+    task_03_rc: "{{ result_03.rc if result_03 is not skipped else -1 }}"
+    data_03: "{{ (result_03.stdout | default('') | trim) if result_03 is not skipped else '' }}"
+    status_03: >-
+      {%- if not samba_installed -%} SKIP
+      {%- elif result_03.stdout | default('') | trim == '' -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if not samba_installed -%} Samba package is not installed; requirement does not apply
+      {%- elif result_03.stdout | default('') | trim == '' -%} smb.service is not active
+      {%- else -%} smb.service is active
+      {%- endif -%}
+
+# Requirement 4 - overall compliance determination
+- name: "Req 04 - Summarize overall compliance"
+  set_fact:
+    task_04_name: "Set overall compliance status"
+    task_04_cmd: "set_fact"
+    task_04_rc: 0
+    data_04: >-
+      {{ 'PASS' if not samba_installed else ('PASS' if status_02 == 'PASS' and status_03 == 'PASS' else 'FAIL') | trim }}
+    status_04: >-
+      {%- if not samba_installed -%} PASS
+      {%- elif status_02 == 'PASS' and status_03 == 'PASS' -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if not samba_installed -%} Samba package is not installed; control passes
+      {%- elif status_02 == 'PASS' and status_03 == 'PASS' -%} Samba is installed but smb.service is not enabled and not active; compliant. Ensure dependent package and service masking are approved by local site policy.
+      {%- else -%} Samba is installed and smb.service is enabled or active; non-compliant
+      {%- endif -%}
+
+# Requirement 5 - store cis_result
+- name: "Req 05 - Store final audit result in cis_result"
+  set_fact:
+    task_05_name: "Store final result as cis_result"
+    task_05_cmd: "set_fact"
+    task_05_rc: 0
+    data_05: "{{ status_04 }}"
+    status_05: "{{ status_04 }}"
+    details_05: "{{ details_04 }}"
+    cis_result: "{{ status_04 }}"
+
+# Generate audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.6"
+    - "Reference: CIS Benchmark checkpoint 2.1.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

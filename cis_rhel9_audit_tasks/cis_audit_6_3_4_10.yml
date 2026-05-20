@@ -1,0 +1,137 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_4_10.yml
+
+- name: "Initialize report variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    cis_result: "UNKNOWN"
+
+- name: "Gather package facts"
+  package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Determine if audit package is installed"
+  set_fact:
+    audit_installed: "{{ 'audit' in ansible_facts.packages }}"
+
+- name: "Req 01 - Check audit tools exist"
+  shell: "ls {{ audit_tools_paths | join(' ') }} 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: "audit_installed | bool"
+
+- name: "Set Req 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check audit tools exist"
+    task_01_cmd: "ls {{ audit_tools_paths | join(' ') }} 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'NOT_APPLICABLE' if not audit_installed else ('PASS' if (result_01.rc | default(-1) | int == 0 and (result_01.stdout_lines | default([]) | length == 6)) else 'FAIL') }}"
+    details_01: "{{ 'Audit package not installed' if not audit_installed else ('All audit tools present' if (result_01.rc | default(-1) | int == 0 and (result_01.stdout_lines | default([]) | length == 6)) else 'Missing one or more audit tools') }}"
+
+- name: "Req 02 - Check group owner of audit tools"
+  shell:
+    cmd: |
+      stat -Lc '%n %G' {{ audit_tools_paths | join(' ') }} | awk '$2 != "root" {print}'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "audit_installed | bool"
+
+- name: "Set Req 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check group owner of audit tools"
+    task_02_cmd: |
+      stat -Lc '%n %G' {{ audit_tools_paths | join(' ') }} | awk '$2 != \"root\" {print}'
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: >-
+      {{ 'NOT_APPLICABLE' if not audit_installed else ('PASS' if (result_02.rc | default(-1) | int == 0 and (result_02.stdout | default('') | trim | length == 0)) else 'FAIL') }}
+    details_02: "{{ 'Audit package not installed' if not audit_installed else ('All audit tools owned by group root' if (result_02.rc | default(-1) | int == 0 and (result_02.stdout | default('') | trim | length == 0)) else 'Non-root group owner detected') }}"
+
+- name: "Req 03 - Summarize overall compliance"
+  set_fact:
+    task_03_name: "Req 03 - Summarize overall compliance"
+    task_03_cmd: "N/A (aggregation)"
+    task_03_rc: -1
+    data_03: "{{ 'All checks passed' if (status_01 == 'PASS' and status_02 == 'PASS') else ('Not applicable' if (status_01 == 'NOT_APPLICABLE' or status_02 == 'NOT_APPLICABLE') else 'One or more checks failed') }}"
+    status_03: >-
+      {{ 'NOT_APPLICABLE' if not audit_installed else ('PASS' if (status_01 == 'PASS' and status_02 == 'PASS') else 'FAIL') }}
+    details_03: "{{ 'Audit package not installed - not applicable' if not audit_installed else ('All audit tools are present and owned by group root' if (status_01 == 'PASS' and status_02 == 'PASS') else 'Compliance issues detected') }}"
+
+- name: "Req 04 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_03 }}"
+    task_04_name: "Req 04 - Store final audit result"
+    task_04_cmd: "N/A (set_fact)"
+    task_04_rc: -1
+    data_04: "{{ status_03 }}"
+    status_04: "{{ status_03 }}"
+    details_04: "{{ details_03 }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.4.10"
+    - "Reference: CIS Benchmark checkpoint 6.3.4.10"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('Not collected yet') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('Not collected yet') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('Not collected yet') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('Not collected yet') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

@@ -1,0 +1,150 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_3_3.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    home_mount_exists: false
+
+# Requirement 1 – Check for separate /home partition
+- name: "Req 01 - Check if /home is a separate partition"
+  ansible.builtin.command: "findmnt -kn {{ mount_point }}"
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check if /home is a separate partition"
+    task_01_cmd: "findmnt -kn {{ mount_point }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim) != '' else 'FAIL') | trim }}"
+    details_01: "{{ ('Output shows a mount point for /home' if result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim) != '' else 'No mount point found for /home') | trim }}"
+    home_mount_exists: "{{ (result_01.stdout | default('') | trim | length > 0) | bool }}"
+
+# Requirement 2 – Check nosuid (only if /home mount exists)
+- name: "Req 02 - Check if nosuid option is set on /home"
+  ansible.builtin.shell: "findmnt -kn {{ mount_point }} | grep -v nosuid"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "home_mount_exists | bool"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check if nosuid option is set on /home"
+    task_02_cmd: "findmnt -kn {{ mount_point }} | grep -v nosuid"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ (result_02.stdout | default('') | trim) if home_mount_exists else 'N/A' }}"
+    status_02: >-
+      {{ ('SKIPPED' if not home_mount_exists
+          else ('PASS' if (result_02.stdout | default('') | trim) == ''
+          else 'FAIL')) | trim }}
+    details_02: >-
+      {{ ('/home is not a separate partition; nosuid check not applicable' if not home_mount_exists
+          else ('No output as expected (nosuid is set)' if (result_02.stdout | default('') | trim) == ''
+          else 'Output returned; nosuid might not be set')) | trim }}
+
+# Requirement 3 – Overall compliance evaluation
+- name: "Req 03 - Evaluate overall compliance and store details"
+  set_fact:
+    task_03_name: "Req 03 - Evaluate overall compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: >-
+      {{ ('Not Applicable (no separate /home partition)' if not home_mount_exists
+          else ('Compliant (nosuid is set)' if (result_02.stdout | default('') | trim) == ''
+          else 'Non-compliant (nosuid not set)')) | trim }}
+    status_03: >-
+      {{ ('SKIPPED' if not home_mount_exists
+          else ('PASS' if (result_02.stdout | default('') | trim) == ''
+          else 'FAIL')) | trim }}
+    details_03: >-
+      {{ ('CIS requirement only applies if /home is a separate partition' if not home_mount_exists
+          else ('Both checks passed: /home is separate partition and nosuid is set' if (result_02.stdout | default('') | trim) == ''
+          else 'One or both checks failed')) | trim }}
+
+# Requirement 4 – Store final result in cis_result
+- name: "Req 04 - Store final audit result in cis_result and requirement details"
+  set_fact:
+    task_04_name: "Req 04 - Store final audit result in cis_result"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_04: "{{ status_03 | trim }}"
+    status_04: "PASS"
+    details_04: "Storage operation succeeded. Final audit result stored in cis_result."
+    cis_result: "{{ status_03 | trim }}"
+
+# Final audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "========================================================"
+    - "        AUDIT REPORT — CIS 1.1.2.3.3"
+    - "========================================================"
+    - ""
+    - "Reference: CIS Benchmark checkpoint 1.1.2.3.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

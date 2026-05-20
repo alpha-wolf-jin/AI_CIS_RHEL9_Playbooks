@@ -1,0 +1,3 @@
+req_01: "Check if /var is a separate partition using command: `findmnt -kn /var`. Expected result: output should show a mount point for /var."
+req_02: "Check if the nosuid option is set on /var partition using command: `findmnt -kn /var | grep -v nosuid`. Expected result: no output should be returned."
+req_03: "Summarize overall compliance: if both checks pass, the system is compliant; otherwise, it is non-compliant."

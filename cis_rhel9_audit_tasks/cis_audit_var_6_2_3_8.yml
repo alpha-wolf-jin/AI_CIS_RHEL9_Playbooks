@@ -1,0 +1,28 @@
+req_01: "Run the provided audit script to verify Ensure rsyslog logrotate is configured. Review /etc/logrotate.conf and /etc/logrotate.d/* and verify logs are rotated according to site policy."
+req_02: "VERIFY: Summarise compliance status for Ensure rsyslog logrotate is configured. Expected result: PASS if compliant, FAIL otherwise."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+audit_script: "/tmp/cis_6.2.3.8_audit.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+      l_output="" l_rotate_conf="" #check for logrotate.conf file
+      if [ -f /etc/logrotate.conf ]; then
+          l_rotate_conf="/etc/logrotate.conf"
+      elif compgen -G "/etc/logrotate.d/*.conf" 2>/dev/null; then
+          for file in /etc/logrotate.d/*.conf; do
+              l_rotate_conf="$file"
+          done
+      elif systemctl is-active --quiet systemd-journal-upload.service; then
+          echo -e "- journald is in use on system\n - recommendation is NA"
+      else
+          echo -e "- logrotate is not configured"
+          l_output="$l_output\n- rsyslog is in use and logrotate is not configured"
+      fi
+      if [ -z "$l_output" ]; then # Provide output from checks
+        echo -e "\n- Audit Result:\n  ** REVIEW **\n - $l_rotate_conf and verify logs are rotated according to site policy."
+     else
+        echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output"
+     fi
+  }
+  {% endraw %}

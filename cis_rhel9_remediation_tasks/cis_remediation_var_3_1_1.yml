@@ -1,0 +1,10 @@
+playbook_name: "cis_remediation_3_1_1"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+ipv6_config_file: "/etc/sysctl.d/99-ipv6.conf"
+ipv6_disable_target: 0   # 0 = enabled, 1 = disabled; adjust per site policy
+sysctl_param: "net.ipv6.conf.all.disable_ipv6"
+req_01: "Check that the system has the necessary tools to manage IPv6 settings (e.g., sysctl, nmcli, or ip) using command: `which sysctl nmcli ip`. Expected result: Paths to at least one of these tools are returned."
+req_02: "Identify current IPv6 status using command: `sysctl net.ipv6.conf.all.disable_ipv6`. Expected result: Returns 0 (enabled) or 1 (disabled)."
+req_03: "Apply IPv6 enable or disable setting in accordance with local site policy using command: `sudo sysctl -w net.ipv6.conf.all.disable_ipv6=<0|1>`. Expected result: The setting is applied immediately."
+req_04: "Persist the IPv6 setting across reboots by adding or updating the line in /etc/sysctl.conf or a file in /etc/sysctl.d/ using command: `echo 'net.ipv6.conf.all.disable_ipv6=<0|1>' | sudo tee -a /etc/sysctl.d/99-ipv6.conf`. Expected result: The configuration file contains the setting."
+req_05: "Verify the IPv6 status is correctly set using command: `sysctl net.ipv6.conf.all.disable_ipv6`. Expected result: The output matches the desired value (0 for enabled, 1 for disabled)."

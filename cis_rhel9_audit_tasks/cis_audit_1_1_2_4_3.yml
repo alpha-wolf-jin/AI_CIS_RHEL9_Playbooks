@@ -1,0 +1,106 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_4_3.yml
+
+- name: "Req 01 - Check if /var is a separate partition"
+  ansible.builtin.command: findmnt -kn /var
+  register: r1
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if /var is a separate partition"
+    task_01_cmd: "findmnt -kn /var"
+    task_01_rc: "{{ r1.rc | default(-1) }}"
+    data_01: "{{ r1.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if r1.stdout | default('') | trim != '' else 'NOT_APPLICABLE' }}"
+    details_01: "{{ 'Separate partition for /var exists.' if r1.stdout | default('') | trim != '' else 'No separate partition for /var found or findmnt not available.' }}"
+
+# ── Requirement 2 ──────────────────────────────────────────────
+- name: "Req 02 - Check if nosuid option is set on /var partition"
+  ansible.builtin.shell: "findmnt -kn /var | grep -v nosuid"
+  args:
+    executable: /bin/bash
+  register: r2
+  failed_when: false
+  changed_when: false
+  when: "r1.stdout | default('') | trim != ''"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check if nosuid option is set on /var partition"
+    task_02_cmd: "findmnt -kn /var | grep -v nosuid"
+    task_02_rc: "{{ r2.rc | default(-1) }}"
+    data_02: "{{ r2.stdout | default('') | trim }}"
+    status_02: >-
+      {{ 
+        'NOT_APPLICABLE' if r2.skipped | default(false)
+        else ('PASS' if r2.stdout | default('') | trim == '' else 'FAIL')
+      }}
+    details_02: >-
+      {{ 
+        'Not applicable - no separate /var partition.' if r2.skipped | default(false)
+        else ('nosuid option is set on /var partition.' if r2.stdout | default('') | trim == '' 
+              else 'nosuid option is NOT set on /var partition.')
+      }}
+
+# ── Requirement 3 – overall compliance ────────────────────────
+- name: "Req 03 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_03_name: "Summarize overall compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "N/A"
+    status_03: >-
+      {{ 
+        'NOT_APPLICABLE' if status_01 == 'NOT_APPLICABLE'
+        else ('PASS' if status_02 == 'PASS' else 'FAIL')
+      }}
+    details_03: >-
+      {{ 
+        'No separate /var partition - benchmark not applicable.' if status_01 == 'NOT_APPLICABLE'
+        else ('Compliant: /var is a separate partition with nosuid set.' if status_02 == 'PASS' 
+              else 'Non-compliant: /var exists but nosuid option is missing.')
+      }}
+
+# ── Store final audit result in cis_result ────────────────────
+- name: "Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 }}"
+
+# ── Audit report ──────────────────────────────────────────────
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.2.4.3"
+    - "Reference: CIS Benchmark checkpoint 1.1.2.4.3"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"

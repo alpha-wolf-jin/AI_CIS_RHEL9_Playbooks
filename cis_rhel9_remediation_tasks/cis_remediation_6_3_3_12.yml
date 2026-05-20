@@ -1,0 +1,178 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_12.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snapshot_rules_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-login.rules.bak"
+    remote_src: true
+  when: _snapshot_rules_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if auditd not installed"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'audit' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Ensure login/logout audit rules exist in rules file"
+    ansible.builtin.lineinfile:
+      path: "{{ audit_rules_file }}"
+      line: "{{ item }}"
+      create: true
+      mode: '0640'
+    loop:
+    - "-w /var/log/lastlog -p wa -k logins"
+    - "-w /var/run/faillock -p wa -k logins"
+    when: auditd_installed | bool
+    failed_when: false
+    register: _rules_result
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules with augenrules"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: auditd_installed | bool
+    failed_when: false
+    register: _augenrules_result
+    tags: [execute]
+
+  - name: "Req 01 - Check if reboot is required for audit rules"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -s | grep "enabled"
+    args:
+      executable: /bin/bash
+    when: auditd_installed | bool
+    failed_when: false
+    register: _reboot_check
+    tags: [execute]
+
+  - name: "Req 01 - Reboot if audit rules require it"
+    ansible.builtin.reboot:
+      reboot_timeout: 180
+    when:
+    - auditd_installed | bool
+    - "'2' in _reboot_check.stdout | default('')"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify login/logout audit rules are loaded"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -l | grep -E 'lastlog|faillock' || echo 'VERIFY_FAILED'
+    args:
+      executable: /bin/bash
+    when: auditd_installed | bool
+    failed_when: false
+    register: _verify_result
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Ensure login/logout audit rules and load with augenrules"
+      task_01_cmd: "lineinfile + augenrules --load"
+      task_01_rc: "{{ _augenrules_result.rc | default(-1) }}"
+      data_01: "{{ _rules_result.results | default([]) | map(attribute='diff') | select('defined') | list | to_json }}"
+      status_01: "{{ 'SKIPPED' if not (auditd_installed | bool) else ('APPLIED' if _augenrules_result.rc | default(-1) == 0 else 'FAILED') }}"
+      details_01: "{{ 'auditd not installed - skipped' if not (auditd_installed | bool) else ('Rules applied and loaded successfully' if _augenrules_result.rc | default(-1) == 0 else 'Failed to load audit rules') }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify login/logout audit rules are active"
+      task_02_cmd: "auditctl -l | grep -E 'lastlog|faillock'"
+      task_02_rc: "{{ _verify_result.rc | default(-1) }}"
+      data_02: "{{ _verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if not (auditd_installed | bool) else ('APPLIED' if 'VERIFY_FAILED' not in (_verify_result.stdout | default('')) else 'FAILED') }}"
+      details_02: "{{ 'auditd not installed - skipped' if not (auditd_installed | bool) else ('Login/logout audit rules are active' if 'VERIFY_FAILED' not in (_verify_result.stdout | default('')) else 'Login/logout audit rules not found') }}"
+    tags: [execute]
+
+  - name: "Set final cis_result"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {%- if status_02 == 'APPLIED' -%}
+          PASS
+        {%- elif status_02 == 'FAILED' -%}
+          FAIL
+        {%- elif status_02 == 'SKIPPED' -%}
+          SKIP
+        {%- else -%}
+          ERROR
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.3.3.12"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.12"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-login.rules.bak"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original audit rules file"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-login.rules.bak"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

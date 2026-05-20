@@ -1,0 +1,24 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check on-disk audit rules for /var/log/lastlog using command: `awk '/^ *-w/ &&(/\\/var\\/log\\/lastlog/ ||/\\/var\\/run\\/faillock/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: output matches '-w /var/log/lastlog -p wa -k logins' and '-w /var/run/faillock -p wa -k logins'.
+req_03: |
+  Check running audit rules for /var/log/lastlog using command: `auditctl -l | awk '/^ *-w/ &&(/\\/var\\/log\\/lastlog/ ||/\\/var\\/run\\/faillock/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: output matches '-w /var/log/lastlog -p wa -k logins' and '-w /var/run/faillock -p wa -k logins'.
+req_04: "Summarize overall compliance status: both on-disk and running audit rules must include the specified rules for /var/log/lastlog and /var/run/faillock with correct permissions and key. Expected result: all checks pass."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: !unsafe >-
+  Create a task named 'Generate audit report' using debug msg with EXACTLY this format:
+  AUDIT REPORT — CIS 6.3.3.12
+  Reference: CIS Benchmark checkpoint 6.3.3.12
+  Then for each requirement: REQUIREMENT NN - {{ req_NN }}:
+    With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIPPED/UNKNOWN), Details.
+  End with OVERALL COMPLIANCE: section containing Result: {{{ cis_result }}}
+expected_on_disk_rules: |-
+  -w /var/log/lastlog -p wa -k logins
+  -w /var/run/faillock -p wa -k logins
+expected_running_rules: |-
+  -w /var/log/lastlog -p wa -k logins
+  -w /var/run/faillock -p wa -k logins
+audit_on_disk_cmd: >-
+  awk '/^ *-w/ &&(/\/var\/log\/lastlog/ ||/\/var\/run\/faillock/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+audit_running_cmd: >-
+  auditctl -l | awk '/^ *-w/ &&(/\/var\/log\/lastlog/ ||/\/var\/run\/faillock/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'

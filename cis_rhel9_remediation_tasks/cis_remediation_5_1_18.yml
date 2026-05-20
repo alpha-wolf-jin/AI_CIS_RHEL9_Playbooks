@@ -1,0 +1,236 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_18.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ sshd_config }}"
+  register: _snap_config_stat
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ sshd_config }}"
+    dest: "{{ backup_dir }}/sshd_config.backup"
+    remote_src: true
+  when: _snap_config_stat.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if sshd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set skip fact if sshd not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'openssh-server' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Run prerequisite command (which sshd && sshd -t)"
+    ansible.builtin.shell: |
+      which sshd && sshd -t
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 01 - Store prerequisite check details"
+    ansible.builtin.set_fact:
+      task_01_name: "Prerequisite check: which sshd && sshd -t"
+      task_01_cmd: "which sshd && sshd -t"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {%- if playbook_skipped | default(false) | bool -%}
+          SKIP
+        {%- elif result_01.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_01: >-
+        {%- if playbook_skipped | default(false) | bool -%}
+          SKIP: openssh-server not installed
+        {%- elif result_01.rc | default(-1) == 0 -%}
+          PASS: sshd binary found and configuration syntax is valid
+        {%- else -%}
+          FAIL: Command failed with rc={{ result_01.rc | default(-1) }}
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 02 - Apply MaxSessions setting"
+    ansible.builtin.lineinfile:
+      path: "{{ sshd_config }}"
+      regexp: |
+        ^#?MaxSessions\s+.*
+      line: "MaxSessions {{ max_sessions_value }}"
+      backup: false
+    register: result_02
+    failed_when: false
+    when:
+    - "not (playbook_skipped | default(false) | bool)"
+    - "result_01.rc | default(1) == 0"
+    tags: [execute]
+
+  - name: "Req 02 - Store MaxSessions apply details"
+    ansible.builtin.set_fact:
+      task_02_name: "Set MaxSessions to {{ max_sessions_value }} in sshd_config"
+      task_02_cmd: |
+        lineinfile: regexp='^#?MaxSessions\\s+.*' line='MaxSessions {{ max_sessions_value }}'
+      task_02_rc: "{{ 0 if not (result_02.failed | default(false)) else 1 }}"
+      data_02: "{{ 'MaxSessions ' + max_sessions_value if not (result_02.failed | default(false)) else (result_02.msg | default('Unknown error')) }}"
+      status_02: >-
+        {%- if playbook_skipped | default(false) | bool -%}
+          SKIP
+        {%- elif result_01.rc | default(-1) != 0 -%}
+          SKIP
+        {%- elif not (result_02.failed | default(false)) -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if playbook_skipped | default(false) | bool -%}
+          SKIP: openssh-server not installed
+        {%- elif result_01.rc | default(-1) != 0 -%}
+          SKIP: Prerequisite check failed
+        {%- elif not (result_02.failed | default(false)) -%}
+          PASS: MaxSessions set to {{ max_sessions_value }}
+        {%- else -%}
+          FAIL: {{ result_02.msg | default('Unknown error') }}
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 03 - Verify MaxSessions configuration"
+    ansible.builtin.shell: "sshd -T 2>/dev/null | grep -i maxsessions || echo 'VERIFY_FAILED'"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    when:
+    - "not (playbook_skipped | default(false) | bool)"
+    - "result_01.rc | default(1) == 0"
+    tags: [execute]
+
+  - name: "Req 03 - Store verification details"
+    ansible.builtin.set_fact:
+      task_03_name: "Verify MaxSessions configuration via sshd -T"
+      task_03_cmd: "sshd -T | grep -i maxsessions"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: >-
+        {%- if playbook_skipped | default(false) | bool -%}
+          SKIP
+        {%- elif result_01.rc | default(-1) != 0 -%}
+          SKIP
+        {%- elif ('maxsessions ' + max_sessions_value) in (result_03.stdout | default('') | lower) -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_03: >-
+        {%- if playbook_skipped | default(false) | bool -%}
+          SKIP: openssh-server not installed
+        {%- elif result_01.rc | default(-1) != 0 -%}
+          SKIP: Prerequisite check failed
+        {%- elif ('maxsessions ' + max_sessions_value) in (result_03.stdout | default('') | lower) -%}
+          PASS: Verified maxsessions {{ max_sessions_value }}
+        {%- else -%}
+          FAIL: Verification did not match expected value
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 04 - Store final remediation result (cis_result)"
+    ansible.builtin.set_fact:
+      task_04_name: "Set cis_result from status_03"
+      task_04_cmd: "set_fact: cis_result={{ status_03 | default('ERROR') }}"
+      task_04_rc: 0
+      data_04: "{{ status_03 | default('ERROR') | trim }}"
+      status_04: "{{ status_03 | default('ERROR') | trim }}"
+      details_04: "cis_result set to {{ status_03 | default('ERROR') | trim }}"
+      cis_result: "{{ status_03 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.1.18"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.1.18"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sshd_config.backup"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/sshd_config.backup"
+      dest: "{{ sshd_config }}"
+      remote_src: true
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,12 @@
+playbook_name: "cis_6_3_4_4"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for auditd and find utilities using command: `which auditd find xargs awk sed chgrp systemctl`. Expected result: all utilities are available."
+req_02: |
+  Apply group ownership change for audit log files using command: `find $(dirname $(awk -F\"=\" '/^\\s*log_file\\s*=\\s*/ {print $2}' /etc/audit/auditd.conf | xargs)) -type f \\( ! -group adm -a ! -group root \\) -exec chgrp adm {} +`. Expected result: all audit log files not already owned by adm or root are changed to group adm.
+req_03: "Apply group ownership change for the audit log directory using command: `chgrp adm /var/log/audit/`. Expected result: /var/log/audit/ directory group owner is set to adm."
+req_04: |
+  Apply log_group parameter setting in audit configuration using command: `sed -ri 's/^\\s*#?\\s*log_group\\s*=\\s*\\S+(\\s*#.*)?.*$/log_group = adm\\1/' /etc/audit/auditd.conf`. Expected result: log_group parameter in /etc/audit/auditd.conf is set to adm.
+req_05: "Apply audit daemon restart using command: `systemctl restart auditd`. Expected result: audit daemon reloads configuration."
+req_06: |
+  Verify audit log files group owner using command: `find $(dirname $(awk -F\"=\" '/^\\s*log_file\\s*=\\s*/ {print $2}' /etc/audit/auditd.conf | xargs)) -type f \\( ! -group adm -a ! -group root \\) | wc -l`. Expected result: output is 0.
+req_07: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

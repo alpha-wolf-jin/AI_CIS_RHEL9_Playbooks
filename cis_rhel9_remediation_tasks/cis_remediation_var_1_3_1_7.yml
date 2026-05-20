@@ -1,0 +1,5 @@
+playbook_name: "remediate_cis_1_3_1_7"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for dnf package manager using command: `which dnf`. Expected result: path to dnf binary."
+req_02: "Apply removal of mcstrans package using command: `dnf remove -y mcstrans`. Expected result: package mcstrans is removed."
+req_03: "Verify mcstrans is not installed using command: `rpm -q mcstrans`. Expected result: package mcstrans is not installed."

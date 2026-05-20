@@ -1,0 +1,73 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_8_6.yml
+
+- name: "Run audit script to check GDM automount"
+  ansible.builtin.shell: |
+    /bin/bash << 'SCRIPT_EOF'
+    {{ audit_script_content }}
+    SCRIPT_EOF
+  args:
+    executable: /bin/bash
+  register: audit_result
+  changed_when: false
+  failed_when: false
+
+- name: "Parse audit output and set compliance status"
+  ansible.builtin.set_fact:
+    audit_output: "{{ audit_result.stdout | default('') | trim }}"
+    cis_result: >-
+      {%- set out = audit_result.stdout | default('') -%}
+      {%- if 'not applicable' in out -%}
+      SKIPPED
+      {%- elif '** PASS **' in out -%}
+      PASS
+      {%- elif '** FAIL **' in out -%}
+      FAIL
+      {%- else -%}
+      UNKNOWN
+      {%- endif -%}
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.8.6"
+    - "Reference: CIS Benchmark checkpoint 1.8.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Execute audit script"
+    - "  Command: /bin/bash heredoc with audit script"
+    - "  Exit code: {{ audit_result.rc | default(-1) }}"
+    - "  Data: {{ audit_output }}"
+    - "  Status: {{ cis_result }}"
+    - "  Details: {{ 'Audit script executed successfully' if audit_result.rc | default(-1) == 0 else 'Audit script execution failed' }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Parse audit result and determine compliance"
+    - "  Command: set_fact analyzing audit output"
+    - "  Exit code: 0"
+    - "  Data: {{ audit_output }}"
+    - "  Status: {{ cis_result }}"
+    - "  Details: >- {%- if cis_result == 'PASS' -%} PASS: System is compliant with CIS 1.8.6 {%- elif cis_result == 'FAIL' -%} FAIL: System is not compliant with CIS 1.8.6 {%- elif cis_result == 'SKIPPED' -%} SKIPPED: GDM not installed, recommendation not applicable {%- else -%} UNKNOWN: Unable to determine compliance from audit output {%- endif -%}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Store final audit result in cis_result"
+    - "  Command: set_fact cis_result = '{{ cis_result }}'"
+    - "  Exit code: 0"
+    - "  Data: cis_result={{ cis_result }}"
+    - "  Status: PASS"
+    - "  Details: cis_result variable set to {{ cis_result }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug msg"
+    - "  Exit code: 0"
+    - "  Data: Report generated"
+    - "  Status: PASS"
+    - "  Details: Audit report generated successfully"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: >- {%- if cis_result == 'PASS' -%} PASS: System is compliant with CIS 1.8.6 {%- elif cis_result == 'FAIL' -%} FAIL: System is not compliant with CIS 1.8.6 {%- elif cis_result == 'SKIPPED' -%} SKIPPED: GDM not installed, recommendation not applicable {%- else -%} UNKNOWN: Unable to determine compliance {%- endif -%}"
+    - "========================================================"

@@ -1,0 +1,10 @@
+playbook_name: "cis_6_3_4_2"
+checkpoint_id: "cis_6_3_4_2"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+audit_conf: "/etc/audit/auditd.conf"
+req_01: "Apply prerequisite check for auditd configuration file using command: `[ -f /etc/audit/auditd.conf ]`. Expected result: File exists and command returns true."
+req_02: |
+  Apply removal of permissive modes (more permissive than 0640) from audit log files using command: `find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' /etc/audit/auditd.conf | xargs))\" -type f -perm /0137 -exec chmod u-x,g-wx,o-rwx {} +`. Expected result: All audit log files have mode 0640 or less permissive.
+req_03: |
+  Verify audit log file modes are configured correctly using command: `find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' /etc/audit/auditd.conf | xargs))\" -type f -perm /0137`. Expected result: No output (no files with overly permissive modes).

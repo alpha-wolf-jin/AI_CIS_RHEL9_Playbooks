@@ -1,0 +1,5 @@
+playbook_name: "cis_6_3_3_12"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_rules_file: "/etc/audit/rules.d/50-login.rules"
+req_01: "Apply remediation for: Ensure login and logout events are collected. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure login and logout events are collected is properly configured. Expected result: Compliant"

@@ -1,0 +1,9 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check that audit configuration files are owned by root user using command: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -user root`. Expected result: No output (empty).
+req_03: |
+  Check that audit configuration files are owned by root group using command: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -group root`. Expected result: No output (empty).
+req_04: |
+  Check that audit configuration files have mode 640 or more restrictive using command: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) -perm /137`. Expected result: No output (empty).
+req_05: "Summarize overall compliance status: All checks passed; audit configuration files are owned by root:root and have mode 640 or more restrictive."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

@@ -1,0 +1,276 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_1_2.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore faillock.conf from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/faillock.conf.present"
+    dest: "{{ faillock_conf }}"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore system-auth from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/system-auth.present"
+    dest: "/etc/authselect/{{ _authselect_profile.stdout | default('') | trim }}/system-auth"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore password-auth from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/password-auth.present"
+    dest: "/etc/authselect/{{ _authselect_profile.stdout | default('') | trim }}/password-auth"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Apply authselect changes after restore"
+  ansible.builtin.shell: authselect apply-changes
+  args:
+    executable: /bin/bash
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Get authselect profile"
+  ansible.builtin.shell: head -1 /etc/authselect/authselect.conf | grep 'custom/'
+  args:
+    executable: /bin/bash
+  register: _authselect_profile
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check if faillock.conf exists"
+  ansible.builtin.stat:
+    path: "{{ faillock_conf }}"
+  register: _sg_faillock_stat
+  tags: [snapshot]
+- name: "State Guard - Backup faillock.conf"
+  ansible.builtin.copy:
+    src: "{{ faillock_conf }}"
+    dest: "{{ state_guard_dir }}/faillock.conf.present"
+    remote_src: true
+  when: _sg_faillock_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Backup system-auth"
+  ansible.builtin.copy:
+    src: "/etc/authselect/{{ _authselect_profile.stdout | trim }}/system-auth"
+    dest: "{{ state_guard_dir }}/system-auth.present"
+    remote_src: true
+  when: _authselect_profile.stdout | default('') | trim != ''
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Backup password-auth"
+  ansible.builtin.copy:
+    src: "/etc/authselect/{{ _authselect_profile.stdout | trim }}/password-auth"
+    dest: "{{ state_guard_dir }}/password-auth.present"
+    remote_src: true
+  when: _authselect_profile.stdout | default('') | trim != ''
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check if temp remediation script exists"
+  ansible.builtin.stat:
+    path: "{{ temp_script_path }}"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "State Guard - Mark temp script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/script.absent"
+  when: not _sg_script_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === STATE GUARD — EXECUTE PHASE ===
+
+  - name: "Req 01 - Check if authselect package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set authselect installed fact"
+    ansible.builtin.set_fact:
+      authselect_installed: "{{ 'authselect' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Set unlock_time in faillock.conf"
+    ansible.builtin.lineinfile:
+      path: "{{ faillock_conf }}"
+      regexp: |
+        ^\s*#?\s*unlock_time\s*=
+      line: "unlock_time = {{ unlock_time_value }}"
+      state: present
+      create: false
+      backup: false
+    register: faillock_config_result
+    failed_when: false
+    when: authselect_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 01 - Deploy PAM remediation script"
+    ansible.builtin.copy:
+      content: |
+        #!/usr/bin/env bash
+        {
+           for l_pam_file in system-auth password-auth; do
+             l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+             sed -ri 's/(^\s*auth\s+(requisite|required|sufficient)\s+pam_faillock\.so.*)(\s+unlock_time\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+           done
+           authselect apply-changes
+        }
+      dest: "{{ temp_script_path }}"
+      mode: '0700'
+    when: authselect_installed | default(false)
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute PAM remediation script"
+    ansible.builtin.shell: /bin/bash "{{ temp_script_path }}"
+    args:
+      executable: /bin/bash
+    register: pam_remediation_result
+    failed_when: false
+    when: authselect_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Verify unlock_time in faillock.conf"
+    ansible.builtin.shell: |
+      grep -E '^\s*unlock_time\s*=\s*{{ unlock_time_value }}\s*$' {{ faillock_conf }} 2>/dev/null || echo "NOT_FOUND"
+    args:
+      executable: /bin/bash
+    register: verify_faillock
+    failed_when: false
+    changed_when: false
+    when: authselect_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Verify unlock_time absent from PAM files"
+    ansible.builtin.shell: |
+      l_profile="$(head -1 /etc/authselect/authselect.conf | grep 'custom/')"
+      if [ -n "$l_profile" ]; then
+        grep -E 'pam_faillock\.so.*unlock_time' /etc/authselect/"$l_profile"/system-auth /etc/authselect/"$l_profile"/password-auth 2>/dev/null && echo "FOUND" || echo "NOT_FOUND"
+      else
+        echo "NO_AUTHSELECT_PROFILE"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_pam
+    failed_when: false
+    changed_when: false
+    when: authselect_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Store verification data"
+    ansible.builtin.set_fact:
+      data_02_faillock: "{{ verify_faillock.stdout | default('') | trim }}"
+      data_02_pam: "{{ verify_pam.stdout | default('') | trim }}"
+    when: authselect_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Evaluate compliance"
+    ansible.builtin.set_fact:
+      status_02: "{{ 'PASS' if (authselect_installed | default(false)) and (verify_faillock.stdout | default('NOT_FOUND') | trim == 'unlock_time = ' + unlock_time_value) and (verify_pam.stdout | default('FOUND') | trim == 'NOT_FOUND') else 'FAIL' }}"
+      details_02: "{{ 'System is compliant' if (authselect_installed | default(false)) and (verify_faillock.stdout | default('NOT_FOUND') | trim == 'unlock_time = ' + unlock_time_value) and (verify_pam.stdout | default('FOUND') | trim == 'NOT_FOUND') else 'System is NOT compliant' }}"
+    when: authselect_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Set skipped status when authselect not installed"
+    ansible.builtin.set_fact:
+      status_02: "SKIPPED"
+      details_02: "authselect package not installed"
+    when: not (authselect_installed | default(false))
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result into cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.3.1.2"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.1.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Set unlock_time in faillock.conf and remove from PAM"
+      - "  Command: lineinfile + remediation script"
+      - "  Exit code: {{ faillock_config_result.rc | default(-1) }} / {{ pam_remediation_result.rc | default(-1) }}"
+      - "  Data: faillock.conf updated, PAM files cleaned"
+      - "  Status: {{ 'PASS' if (authselect_installed | default(false)) else 'SKIP' }}"
+      - "  Details: {{ 'unlock_time set to ' + unlock_time_value + ' in faillock.conf, removed from PAM files' if (authselect_installed | default(false)) else 'authselect not installed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify unlock_time configuration"
+      - "  Command: grep faillock.conf and PAM files"
+      - "  Exit code: {{ verify_faillock.rc | default(-1) }} / {{ verify_pam.rc | default(-1) }}"
+      - "  Data: faillock.conf={{ data_02_faillock | default('N/A') }}, PAM={{ data_02_pam | default('N/A') }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store remediation result in cis_result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: cis_result = {{ cis_result | default('UNKNOWN') }}"
+      - "  Status: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: Remediation status stored successfully"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/script.absent"
+    register: _sg_restore_script_marker
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete temp remediation script"
+    ansible.builtin.file:
+      path: "{{ temp_script_path }}"
+      state: absent
+    when: _sg_restore_script_marker.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,221 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_5_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if {{ config_file }} exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _backup_fstab_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup {{ config_file }}"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/fstab.backup"
+    remote_src: true
+  when: _backup_fstab_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if mount options backup already exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/vartmp_mount_opts.orig"
+  register: _backup_opts_stat
+  tags: [snapshot]
+- name: "Snapshot - Retrieve current mount options for {{ mount_point }}"
+  ansible.builtin.shell: "findmnt -n -o OPTIONS {{ mount_point }} 2>/dev/null || echo NOTMOUNTED"
+  args:
+    executable: /bin/bash
+  register: _snap_mount_opts
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist mount options to backup file if not exists"
+  ansible.builtin.copy:
+    content: "{{ _snap_mount_opts.stdout | trim }}"
+    dest: "{{ backup_dir }}/vartmp_mount_opts.orig"
+  when: not _backup_opts_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+        # === EXECUTE (tag: execute) ===
+
+# 0. Check if /var/tmp is a separate partition
+  - name: "Check if {{ mount_point }} is a separate partition"
+    ansible.builtin.shell: "mount | grep -E '\\s{{ mount_point }}\\s'"
+    args:
+      executable: /bin/bash
+    register: mount_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set fact if {{ mount_point }} is a separate partition"
+    set_fact:
+      vartmp_separate: "{{ mount_result.rc == 0 }}"
+    tags: [execute]
+
+# 1. Apply noexec to fstab
+  - name: "Req 1 - Check if {{ mount_point }} entry exists in {{ config_file }}"
+    ansible.builtin.shell: "grep -E '\\s{{ mount_point }}\\s' {{ config_file }}"
+    args:
+      executable: /bin/bash
+    register: fstab_entry_result
+    failed_when: false
+    changed_when: false
+    when: vartmp_separate
+    tags: [execute]
+
+  - name: "Req 1 - Add {{ mount_option }} to {{ mount_point }} in {{ config_file }}"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^(\S+\s+{{ mount_point | regex_escape() }}\s+\S+\s+)(?!.*\b{{ mount_option }}\b)(\S+)(\s+.*)$
+      line: |
+        \1\2,{{ mount_option }}\3
+      backrefs: true
+    register: noexec_add_result
+    failed_when: false
+    when:
+    - vartmp_separate
+    - fstab_entry_result.rc == 0
+    tags: [execute]
+
+# 2. Remount
+  - name: "Req 2 - Remount {{ mount_point }} with updated options"
+    ansible.builtin.shell: "mount -o remount {{ mount_point }}"
+    args:
+      executable: /bin/bash
+    register: remount_result
+    failed_when: false
+    when: vartmp_separate
+    tags: [execute]
+
+# 3. Verify
+  - name: "Req 3 - Verify {{ mount_option }} option is active on {{ mount_point }}"
+    ansible.builtin.shell: "mount | grep -E '\\s{{ mount_point }}\\s' | grep {{ mount_option }}"
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    when: vartmp_separate
+    tags: [execute]
+
+# Evaluate statuses (separated to avoid circular references)
+  - name: "Evaluate statuses for requirements"
+    set_fact:
+      status_01: >-
+        {{ 'APPLIED' if vartmp_separate and fstab_entry_result.rc | default(1) == 0 and (noexec_add_result is not skipped and noexec_add_result is not failed) else
+           'SKIPPED' if vartmp_separate and fstab_entry_result.rc | default(1) != 0 else
+           'SKIPPED' if not vartmp_separate else 'FAILED' }}
+      status_02: >-
+        {{ 'APPLIED' if vartmp_separate and remount_result.rc | default(0) == 0 else 'SKIPPED' }}
+      status_03: >-
+        {{ 'APPLIED' if vartmp_separate and verify_result.rc | default(1) == 0 else 'SKIPPED' }}
+      data_01: "{{ 'noexec ensure attempted on /var/tmp fstab entry' }}"
+      data_02: "{{ remount_result.stdout | default('') }}"
+      data_03: "{{ verify_result.stdout | default('') }}"
+    tags: [execute]
+
+  - name: "Evaluate details for requirements"
+    set_fact:
+      details_01: >-
+        {{ 'noexec option added (or already present).' if status_01 == 'APPLIED' else
+           '/var/tmp entry not found in /etc/fstab, unable to add.' if vartmp_separate and fstab_entry_result.rc != 0 else
+           '/var/tmp is not a separate partition, skipping.' if not vartmp_separate else 'Failed to add noexec option.' }}
+      details_02: >-
+        {{ 'Remount successful.' if status_02 == 'APPLIED' else 'Skipped because /var/tmp is not a separate partition or remount failed.' }}
+      details_03: >-
+        {{ 'noexec verified on /var/tmp mount.' if status_03 == 'APPLIED' else 'Skipped because no separate partition or verification failed.' }}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.2.5.4"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.5.4"
+      - ""
+      - "Task 1: {{ req_01 }}"
+      - "  Command: ansible.builtin.lineinfile (backrefs)"
+      - "  Exit code: {{ (noexec_add_result is defined and not noexec_add_result is skipped) | ternary('0', '-1') }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "Task 2: {{ req_02 }}"
+      - "  Command: mount -o remount /var/tmp"
+      - "  Exit code: {{ remount_result.rc | default(-1) }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "Task 3: {{ req_03 }}"
+      - "  Command: mount | grep /var/tmp"
+      - "  Exit code: {{ verify_result.rc | default(-1) }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 }}"
+      - "  Details: {{ details_03 }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_03 }}"
+      - "  Details: {{ details_03 }}"
+    tags: [execute]
+
+  always:
+# === RESTORE (tag: restore) ===
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/fstab.backup"
+    register: _restore_fstab_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite {{ config_file }} with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/fstab.backup"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: _restore_fstab_stat.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if mount options backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/vartmp_mount_opts.orig"
+    register: _restore_opts_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved mount options for {{ mount_point }}"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/vartmp_mount_opts.orig"
+    register: _restore_opts_slurp
+    when: _restore_opts_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remount {{ mount_point }} with original options"
+    ansible.builtin.shell: |
+      opts=$(echo "{{ _restore_opts_slurp.content | b64decode | trim }}")
+      if [ "$opts" != "NOTMOUNTED" ]; then
+        mount -o remount,"$opts" "{{ mount_point }}" 2>/dev/null || true
+      fi
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_opts_slurp.content is defined
+    - (_restore_opts_slurp.content | b64decode | trim) != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_fstab_stat.stat.exists
+    failed_when: false
+    tags: [restore]

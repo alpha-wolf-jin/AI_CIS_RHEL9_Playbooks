@@ -1,0 +1,204 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_2.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    task_01_name: "Not recorded"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    task_02_name: "Not recorded"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_03_name: "Not recorded"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_04_name: "Not recorded"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_05_name: "Not recorded"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check if avahi package is installed"
+  shell: rpm -q avahi
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check if avahi package is installed"
+    task_01_cmd: "rpm -q avahi"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ (result_01.stdout | default('')) ~ (result_01.stderr | default('')) }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) != 0 else 'FAIL' }}"
+    details_01: "{{ 'Package avahi is not installed' if result_01.rc | default(-1) != 0 else 'Package avahi is installed — requires further checks' }}"
+
+- name: "Req 02 - Check if avahi-daemon socket and service are enabled"
+  shell: systemctl is-enabled avahi-daemon.socket avahi-daemon.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: "result_01.rc | default(-1) == 0"
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check if avahi-daemon socket and service are enabled"
+    task_02_cmd: "systemctl is-enabled avahi-daemon.socket avahi-daemon.service 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined and not result_02.skipped | default(false) else -1 }}"
+    data_02: "{{ result_02.stdout | default('') if result_02 is defined and not result_02.skipped | default(false) else 'Not applicable' }}"
+    status_02: >-
+      {%- if result_02 is defined and result_02.skipped | default(false) -%}
+      NOT_APPLICABLE
+      {%- elif result_02.rc | default(-1) == 0 -%}
+      FAIL
+      {%- else -%}
+      PASS
+      {%- endif -%}
+    details_02: >-
+      {%- if result_02 is defined and result_02.skipped | default(false) -%}
+      Check not applicable because avahi package is not installed
+      {%- elif result_02.rc | default(-1) == 0 -%}
+      FAIL: avahi-daemon units are enabled
+      {%- else -%}
+      PASS: No enabled avahi-daemon units found
+      {%- endif -%}
+
+- name: "Req 03 - Check if avahi-daemon socket and service are active"
+  shell: systemctl is-active avahi-daemon.socket avahi-daemon.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: "result_01.rc | default(-1) == 0"
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Req 03 - Check if avahi-daemon socket and service are active"
+    task_03_cmd: "systemctl is-active avahi-daemon.socket avahi-daemon.service 2>/dev/null | grep '^active'"
+    task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined and not result_03.skipped | default(false) else -1 }}"
+    data_03: "{{ result_03.stdout | default('') if result_03 is defined and not result_03.skipped | default(false) else 'Not applicable' }}"
+    status_03: >-
+      {%- if result_03 is defined and result_03.skipped | default(false) -%}
+      NOT_APPLICABLE
+      {%- elif result_03.rc | default(-1) == 0 -%}
+      FAIL
+      {%- else -%}
+      PASS
+      {%- endif -%}
+    details_03: >-
+      {%- if result_03 is defined and result_03.skipped | default(false) -%}
+      Check not applicable because avahi package is not installed
+      {%- elif result_03.rc | default(-1) == 0 -%}
+      FAIL: avahi-daemon units are active
+      {%- else -%}
+      PASS: No active avahi-daemon units found
+      {%- endif -%}
+
+- name: "Req 04 - Summarize overall compliance status"
+  set_fact:
+    status_04: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+      PASS
+      {%- elif status_02 == 'FAIL' or status_03 == 'FAIL' -%}
+      FAIL
+      {%- else -%}
+      PASS
+      {%- endif -%}
+    details_04: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+      Avahi package not installed — compliant
+      {%- elif status_02 == 'FAIL' or status_03 == 'FAIL' -%}
+      Avahi installed and services are enabled or active
+      {%- else -%}
+      Avahi installed but services not enabled and not active
+      {%- endif -%}
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Req 04 - Summarize overall compliance status"
+    task_04_cmd: "set_fact"
+    task_04_rc: 0
+    data_04: "Computed status: {{ status_04 }}"
+
+- name: "Set cis_result variable from status_04 fact"
+  set_fact:
+    cis_result: "{{ status_04 }}"
+
+- name: "Req 05 - Store final audit result in cis_result"
+  set_fact:
+    status_05: "{{ cis_result }}"
+    details_05: "Final result stored in cis_result"
+    task_05_name: "Req 05 - Store final audit result in cis_result"
+    task_05_cmd: "set_fact"
+    task_05_rc: 0
+    data_05: "cis_result = {{ cis_result }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.2"
+    - "Reference: CIS Benchmark checkpoint 2.1.2"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"

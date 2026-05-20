@@ -1,0 +1,5 @@
+playbook_name: "cis_remediation_5_3_3_1_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "1. Run the provided remediation script to fix Ensure password failed attempts lockout includes root account"
+req_02: "2. VERIFY: Run audit check to confirm Ensure password failed attempts lockout includes root account is properly configured. Expected result: System is compliant"
+req_03: "3. Create a task named 'Generate remediation report' that displays a debug msg with format"

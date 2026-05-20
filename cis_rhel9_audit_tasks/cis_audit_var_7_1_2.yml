@@ -1,0 +1,16 @@
+req_01: >-
+  Check if /etc/passwd- file exists using command: `stat -Lc 'Access: (%#a/%A)  Uid: ( %u/ %U) Gid: { %g/ %G)' /etc/passwd-`.
+  Expected result: The command should return file metadata without error.
+req_02: >-
+  Check that permissions on /etc/passwd- are 644 or more restrictive using command: `stat -Lc '%#a' /etc/passwd-`.
+  Expected result: The numeric mode is 644, 640, 600, or lower (e.g., 400, 000).
+req_03: >-
+  Check that the owner of /etc/passwd- is root (UID 0) using command: `stat -Lc '%u' /etc/passwd-`.
+  Expected result: 0
+req_04: >-
+  Check that the group owner of /etc/passwd- is root (GID 0) using command: `stat -Lc '%g' /etc/passwd-`.
+  Expected result: 0
+req_05: >-
+  Summarize overall compliance: All checks (file existence, permissions 644 or more restrictive, UID 0, GID 0)
+  must pass for compliance. Expected result: All conditions met.
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

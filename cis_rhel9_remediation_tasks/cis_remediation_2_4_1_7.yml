@@ -1,0 +1,240 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_4_1_7.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: ["snapshot"]
+- name: "Snapshot - Check if /etc/cron.d exists"
+  ansible.builtin.stat:
+    path: "{{ cron_dir }}"
+  register: snapshot_stat
+  tags: ["snapshot"]
+- name: "Snapshot - Backup metadata if exists"
+  ansible.builtin.copy:
+    content: "{{ snapshot_stat.stat.pw_name }} {{ snapshot_stat.stat.gr_name }} {{ snapshot_stat.stat.mode }}"
+    dest: "{{ backup_dir }}/cron_d_metadata"
+  when: snapshot_stat.stat.exists
+  tags: ["snapshot"]
+
+- block:
+  - name: "Req 1 - Check if cron is installed"
+    ansible.builtin.shell: |
+      if command -v cron >/dev/null 2>&1; then echo 'cron installed'; else echo 'cron not installed'; fi
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: ["execute"]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if cron is installed"
+      task_01_cmd: "if command -v cron >/dev/null 2>&1; then echo 'cron installed'; else echo 'cron not installed'; fi"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIP' if result_01.rc == 0 and 'cron not installed' in result_01.stdout else ('PASS' if result_01.rc == 0 and 'cron installed' in result_01.stdout else 'FAIL') }}"
+      details_01: "{{ 'Cron is not installed, remediation skipped' if result_01.rc == 0 and 'cron not installed' in result_01.stdout else ('Cron is installed' if result_01.rc == 0 and 'cron installed' in result_01.stdout else 'Check failed') }}"
+    tags: ["execute"]
+
+  - name: "Set cron installed fact"
+    set_fact:
+      cron_is_installed: "{{ (result_01.rc == 0 and 'cron installed' in result_01.stdout) | bool }}"
+    tags: ["execute"]
+
+  - name: "Req 2 - Check current ownership of /etc/cron.d"
+    ansible.builtin.stat:
+      path: "{{ cron_dir }}"
+    register: stat_pre_chown
+    when: cron_is_installed
+    tags: ["execute"]
+
+  - name: "Req 2 - Apply ownership root:root to /etc/cron.d"
+    ansible.builtin.shell: "chown root:root {{ cron_dir }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    when:
+    - cron_is_installed
+    - stat_pre_chown.stat.exists
+    - "stat_pre_chown.stat.pw_name != 'root' or stat_pre_chown.stat.gr_name != 'root'"
+    failed_when: false
+    tags: ["execute"]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Apply ownership root:root to /etc/cron.d"
+      task_02_cmd: "chown root:root /etc/cron.d/"
+      task_02_rc: "{{ result_02.rc | default(-1) if cron_is_installed else 0 }}"
+      data_02: "{{ (result_02.stdout | default('') | trim) if cron_is_installed else '' }}"
+      status_02: "{{ 'SKIP' if not cron_is_installed else ('PASS' if (result_02 is not defined or result_02 is skipped or result_02 is not failed) else 'FAIL') }}"
+      details_02: "{{ 'Cron not installed' if not cron_is_installed else ('Ownership already correct' if result_02 is skipped else ('Ownership changed successfully' if result_02 is not failed else 'Failed to change ownership')) }}"
+    tags: ["execute"]
+
+  - name: "Req 3 - Check current permissions of /etc/cron.d"
+    ansible.builtin.stat:
+      path: "{{ cron_dir }}"
+    register: stat_pre_chmod
+    when: cron_is_installed
+    tags: ["execute"]
+
+  - name: "Req 3 - Apply permissions og-rwx to /etc/cron.d"
+    ansible.builtin.shell: "chmod og-rwx {{ cron_dir }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    when:
+    - cron_is_installed
+    - stat_pre_chmod.stat.exists
+    - "stat_pre_chmod.stat.mode != '0700'"
+    failed_when: false
+    tags: ["execute"]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Apply permissions og-rwx to /etc/cron.d"
+      task_03_cmd: "chmod og-rwx /etc/cron.d/"
+      task_03_rc: "{{ result_03.rc | default(-1) if cron_is_installed else 0 }}"
+      data_03: "{{ (result_03.stdout | default('') | trim) if cron_is_installed else '' }}"
+      status_03: "{{ 'SKIP' if not cron_is_installed else ('PASS' if (result_03 is not defined or result_03 is skipped or result_03 is not failed) else 'FAIL') }}"
+      details_03: "{{ 'Cron not installed' if not cron_is_installed else ('Permissions already correct' if result_03 is skipped else ('Permissions changed successfully' if result_03 is not failed else 'Failed to change permissions')) }}"
+    tags: ["execute"]
+
+  - name: "Req 4 - Verify ownership and permissions on /etc/cron.d"
+    ansible.builtin.shell: "stat -c '%U:%G %a' {{ cron_dir }}"
+    args:
+      executable: /bin/bash
+    register: result_04
+    when: cron_is_installed
+    failed_when: false
+    changed_when: false
+    tags: ["execute"]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify ownership and permissions on /etc/cron.d"
+      task_04_cmd: "stat -c '%U:%G %a' /etc/cron.d/"
+      task_04_rc: "{{ result_04.rc | default(-1) if cron_is_installed else 0 }}"
+      data_04: "{{ result_04.stdout | default('') | trim if cron_is_installed else '' }}"
+      status_04: >-
+        {{ 'SKIP' if not cron_is_installed else ('PASS' if (cron_is_installed and (result_04.stdout | default('') | trim == 'root:root 700')) else 'FAIL') }}
+      details_04: >-
+        {{ 'Cron not installed' if not cron_is_installed else ('Ownership and permissions correct' if (result_04.stdout | default('') | trim == 'root:root 700') else 'Ownership/permissions incorrect') }}
+    tags: ["execute"]
+
+  - name: "Req 5 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    tags: ["execute"]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Store final remediation result in cis_result"
+      task_05_cmd: "set_fact cis_result"
+      task_05_rc: 0
+      data_05: "{{ cis_result | default('ERROR') }}"
+      status_05: "PASS"
+      details_05: "Result stored in cis_result: {{ cis_result | default('ERROR') }}"
+    tags: ["execute"]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Generate remediation report"
+      task_06_cmd: "debug msg"
+      task_06_rc: 0
+      data_06: "Report generated"
+      status_06: "PASS"
+      details_06: "Remediation report generated successfully"
+    tags: ["execute"]
+
+  - name: "Req 6 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.4.1.7"
+      - "Reference: CIS Benchmark checkpoint 2.4.1.7"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: ["execute"]
+
+  always:
+  - name: "Restore - Check if backup metadata exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cron_d_metadata"
+    register: restore_check
+    failed_when: false
+    tags: ["restore"]
+
+  - name: "Restore - Apply original ownership and permissions"
+    ansible.builtin.shell: |
+      METADATA=$(cat "{{ backup_dir }}/cron_d_metadata")
+      OWNER=$(echo "$METADATA" | awk '{print $1}')
+      GROUP=$(echo "$METADATA" | awk '{print $2}')
+      MODE=$(echo "$METADATA" | awk '{print $3}')
+      chown "$OWNER:$GROUP" "{{ cron_dir }}"
+      chmod "$MODE" "{{ cron_dir }}"
+    args:
+      executable: /bin/bash
+    when: restore_check.stat.exists | default(false)
+    failed_when: false
+    tags: ["restore"]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    tags: ["restore"]

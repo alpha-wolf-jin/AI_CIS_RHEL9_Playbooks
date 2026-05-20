@@ -1,0 +1,86 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_7_1.yml
+
+- name: "Req 01 - Check if auditd package is installed"
+  ansible.builtin.shell: "rpm -q {{ package_name }}"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if auditd package is installed"
+    task_01_cmd: "rpm -q {{ package_name }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'NOT_APPLICABLE') | trim }}"
+    details_01: "{{ ('Package installed' if result_01.rc | default(-1) == 0 else 'auditd is not installed - all checks not applicable') | trim }}"
+    auditd_installed: "{{ result_01.rc | default(-1) == 0 }}"
+
+- name: "Req 02 - Check if /var/log/audit is a separate partition"
+  ansible.builtin.shell: "findmnt -kn {{ mount_point }}"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "auditd_installed | default(true) | bool"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check if /var/log/audit is a separate partition"
+    task_02_cmd: "findmnt -kn {{ mount_point }}"
+    task_02_rc: "{{ -1 if not (auditd_installed | bool) else (result_02.rc | default(-1)) }}"
+    data_02: "{{ 'Not collected - auditd not installed' if not (auditd_installed | bool) else (result_02.stdout | default('') | trim) }}"
+    status_02: "{{ 'NOT_APPLICABLE' if not (auditd_installed | bool) else (('PASS' if (result_02.rc | default(-1) == 0 and result_02.stdout | default('') | trim | length > 0) else 'FAIL') | trim) }}"
+    details_02: "{{ 'auditd not installed - check skipped' if not (auditd_installed | bool) else (('Mount point found' if (result_02.rc | default(-1) == 0 and result_02.stdout | default('') | trim | length > 0) else 'Not mounted or not found') | trim) }}"
+
+- name: "Req 03 - Evaluate overall compliance status"
+  ansible.builtin.set_fact:
+    status_03: >-
+      {{ ('PASS' if status_01 == 'PASS' and status_02 == 'PASS' else ('NOT_APPLICABLE' if status_01 == 'NOT_APPLICABLE' and status_02 == 'NOT_APPLICABLE' else 'FAIL')) | trim }}
+    details_03: >-
+      {{ ('Both checks passed - compliant' if status_01 == 'PASS' and status_02 == 'PASS' else ('auditd is not installed - all checks not applicable' if status_01 == 'NOT_APPLICABLE' and status_02 == 'NOT_APPLICABLE' else 'One or more checks failed - non-compliant')) | trim }}
+
+- name: "Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ 'SKIPPED' if status_03 == 'NOT_APPLICABLE' else status_03 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg: |-
+      AUDIT REPORT — CIS 1.1.2.7.1
+      Reference: CIS Benchmark checkpoint 1.1.2.7.1
+
+      REQUIREMENT 01 - {{ req_01 }}:
+        Task: {{ task_01_name | default('Not recorded') }}
+        Command: {{ task_01_cmd | default('N/A') }}
+        Exit code: {{ task_01_rc | default(-1) }}
+        Data: {{ data_01 | default('') | trim }}
+        Status: {{ status_01 | default('UNKNOWN') | trim }}
+        Details: {{ details_01 | default('') | trim }}
+
+      REQUIREMENT 02 - {{ req_02 }}:
+        Task: {{ task_02_name | default('Not recorded') }}
+        Command: {{ task_02_cmd | default('N/A') }}
+        Exit code: {{ task_02_rc | default(-1) }}
+        Data: {{ data_02 | default('') | trim }}
+        Status: {{ status_02 | default('UNKNOWN') | trim }}
+        Details: {{ details_02 | default('') | trim }}
+
+      REQUIREMENT 03 - {{ req_03 }}:
+        Task: Evaluate overall compliance status
+        Command: N/A
+        Exit code: N/A
+        Data: {{ status_03 | default('UNKNOWN') | trim }}
+        Status: {{ status_03 | default('UNKNOWN') | trim }}
+        Details: {{ details_03 | default('Not evaluated') | trim }}
+
+      ========================================================
+      OVERALL COMPLIANCE:
+        Result: {{ cis_result | default('UNKNOWN') | trim }}
+        Details: {{ details_03 | default('Not evaluated') | trim }}
+      ========================================================

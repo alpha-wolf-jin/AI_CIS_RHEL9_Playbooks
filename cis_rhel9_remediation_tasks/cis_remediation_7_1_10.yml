@@ -1,0 +1,140 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_7_1_10.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ target_file }}"
+  register: _snap_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ target_file }}"
+    dest: "{{ backup_dir }}/opasswd.backup"
+    remote_src: true
+  when: "_snap_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if {{ target_file }} exists"
+    ansible.builtin.stat:
+      path: "{{ target_file }}"
+    register: _opasswd_stat
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set ownership of {{ target_file }} to {{ file_owner }}:{{ file_group }}"
+    ansible.builtin.file:
+      path: "{{ target_file }}"
+      owner: "{{ file_owner }}"
+      group: "{{ file_group }}"
+    when: "_opasswd_stat.stat.exists | default(false)"
+    failed_when: false
+    register: _remediate_owner
+    tags: [execute]
+
+  - name: "Req 01 - Set permissions on {{ target_file }} to {{ file_mode }}"
+    ansible.builtin.file:
+      path: "{{ target_file }}"
+      mode: "{{ file_mode }}"
+    when: "_opasswd_stat.stat.exists | default(false)"
+    failed_when: false
+    register: _remediate_mode
+    tags: [execute]
+
+  - name: "Req 02 - Verify ownership of {{ target_file }} is {{ file_owner }}:{{ file_group }}"
+    ansible.builtin.stat:
+      path: "{{ target_file }}"
+    register: _verify_stat
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Set ownership and permissions on {{ target_file }}"
+      task_01_cmd: "file: path={{ target_file }} owner={{ file_owner }} group={{ file_group }} mode={{ file_mode }}"
+      task_01_rc: "{{ 0 if (_remediate_owner is not failed and _remediate_mode is not failed) else -1 }}"
+      data_01: "{{ 'File exists: ' ~ (_opasswd_stat.stat.exists | default(false) | string) }}"
+      status_01: "{{ 'PASS' if (_opasswd_stat.stat.exists | default(false)) else 'SKIP' }}"
+      details_01: "{{ 'Ownership and permissions applied' if (_opasswd_stat.stat.exists | default(false)) else 'File does not exist - skipped' }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify ownership and permissions on {{ target_file }}"
+      task_02_cmd: "stat {{ target_file }}"
+      task_02_rc: "{{ 0 if (_verify_stat.stat.exists | default(false)) else -1 }}"
+      data_02: "{{ ('Owner: ' ~ (_verify_stat.stat.pw_name | default('N/A')) ~ ':' ~ (_verify_stat.stat.gr_name | default('N/A')) ~ ' Mode: ' ~ (_verify_stat.stat.mode | default('N/A'))) if (_verify_stat.stat.exists | default(false)) else 'File not found' }}"
+      status_02: >-
+        {{ 'PASS' if (_verify_stat.stat.exists | default(false)
+           and _verify_stat.stat.pw_name | default('') == file_owner
+           and _verify_stat.stat.gr_name | default('') == file_group
+           and _verify_stat.stat.mode | default('0000') == file_mode)
+           else ('SKIP' if not (_verify_stat.stat.exists | default(false))
+           else 'FAIL') }}
+      details_02: "{{ 'Compliant: owner=' ~ file_owner ~ ', group=' ~ file_group ~ ', mode=' ~ file_mode if (_verify_stat.stat.exists | default(false) and _verify_stat.stat.pw_name | default('') == file_owner and _verify_stat.stat.gr_name | default('') == file_group and _verify_stat.stat.mode | default('0000') == file_mode) else ('File does not exist' if not (_verify_stat.stat.exists | default(false)) else 'Non-compliant permissions') }}"
+    tags: [execute]
+
+  - name: "Set cis_result"
+    set_fact:
+      cis_result: "{{ status_02 }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 7.1.10"
+      - "Reference: CIS Benchmark checkpoint 7.1.10"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/opasswd.backup"
+    register: _restore_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/opasswd.backup"
+      dest: "{{ target_file }}"
+      remote_src: true
+    when: "_restore_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,273 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_7.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      data_06: "Not collected yet"
+      status_06: "ERROR"
+      details_06: "Not evaluated"
+      data_07: "Not collected yet"
+      status_07: "ERROR"
+      details_07: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      task_07_name: "Not executed"
+      task_07_cmd: "N/A"
+      task_07_rc: -1
+
+  - name: "Req 01 - Check if vsftpd package is installed"
+    shell: rpm -q vsftpd
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check vsftpd package installation"
+      task_01_cmd: "rpm -q vsftpd"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if result_01.rc | default(-1) in [0,1] else 'FAIL') | trim }}"
+      details_01: "{{ 'Package vsftpd is installed' if result_01.rc | default(-1) == 0 else 'Package vsftpd is not installed' }}"
+      vsftpd_installed: "{{ result_01.rc | default(-1) == 0 }}"
+
+  - name: "Req 01 - Check if vsftpd is a dependency"
+    shell: rpm -q --whatrequires vsftpd
+    args:
+      executable: /bin/bash
+    register: vsftpd_dep_check
+    failed_when: false
+    changed_when: false
+    when: vsftpd_installed | default(false) | bool
+    tags: [execute]
+
+  - name: "Set vsftpd dependency fact"
+    set_fact:
+      vsftpd_dependency: "{{ (vsftpd_dep_check.stdout | default('') | trim | length > 0) if vsftpd_installed | default(false) | bool else false }}"
+    tags: [execute]
+
+  - name: "Req 02 - Stop vsftpd.service"
+    systemd:
+      name: vsftpd
+      state: stopped
+    register: result_02
+    failed_when: false
+    when: vsftpd_installed | default(false) | bool
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Stop vsftpd service"
+      task_02_cmd: "systemctl stop vsftpd.service"
+      task_02_rc: "{{ result_02.rc | default(-1) if result_02 is not skipped else -1 }}"
+      data_02: "{{ 'Service stopped' if result_02 is not skipped and result_02.changed else ('No change' if result_02 is not skipped else 'Skipped') }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else ('PASS' if result_02.rc | default(0) == 0 else 'FAIL') | trim }}"
+      details_02: "{{ 'Not applicable (package not installed)' if result_02 is skipped else ('Service stopped successfully' if result_02.rc | default(0) == 0 else 'Failed to stop service') | trim }}"
+
+  - name: "Req 03 - Remove vsftpd package"
+    dnf:
+      name: vsftpd
+      state: absent
+    register: result_03
+    failed_when: false
+    when: vsftpd_installed | default(false) | bool and not vsftpd_dependency | default(false) | bool
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Remove vsftpd package"
+      task_03_cmd: "dnf remove -y vsftpd"
+      task_03_rc: "{{ result_03.rc | default(-1) if result_03 is not skipped else -1 }}"
+      data_03: "{{ result_03.stdout | default('') | trim if result_03 is not skipped else 'Skipped' }}"
+      status_03: "{{ ('SKIP' if result_03 is skipped else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL')) | trim }}"
+      details_03: "{{ 'Package removed' if result_03 is not skipped and result_03.rc | default(-1) == 0 else ('Removal failed' if result_03 is not skipped else 'Not applicable (package not installed or is a dependency)') | trim }}"
+
+  - name: "Req 04 - Mask vsftpd.service"
+    systemd:
+      name: vsftpd
+      masked: yes
+    register: result_04
+    failed_when: false
+    when: vsftpd_installed | default(false) | bool and vsftpd_dependency | default(false) | bool
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Mask vsftpd service"
+      task_04_cmd: "systemctl mask vsftpd.service"
+      task_04_rc: "{{ result_04.rc | default(-1) if result_04 is not skipped else -1 }}"
+      data_04: "{{ 'Service masked' if result_04 is not skipped and result_04.rc | default(-1) == 0 else '' }}"
+      status_04: "{{ ('SKIP' if result_04 is skipped else ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL')) | trim }}"
+      details_04: "{{ 'Service masked successfully' if result_04 is not skipped and result_04.rc | default(-1) == 0 else ('Masking failed' if result_04 is not skipped else 'Not applicable (no dependency or package not installed)') | trim }}"
+
+  - name: "Req 05 - Check for other FTP server packages"
+    shell: rpm -qa | grep -E '^vsftpd|proftpd|pure-ftpd'
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Check for other FTP server packages"
+      task_05_cmd: "rpm -qa | grep -E '^vsftpd|proftpd|pure-ftpd'"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: "{{ ('PASS' if result_05.stdout | default('') | trim == '' or result_05.rc | default(-1) != 0 else 'FAIL') | trim }}"
+      details_05: "{{ 'No unauthorized FTP packages found' if result_05.stdout | default('') | trim == '' else 'Unauthorized FTP packages detected: ' + (result_05.stdout | default('') | trim) }}"
+
+  - name: "Req 06 - Verify vsftpd.service is not active"
+    shell: systemctl is-active vsftpd.service
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Verify vsftpd service inactive"
+      task_06_cmd: "systemctl is-active vsftpd.service"
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: "{{ ('PASS' if result_06.rc | default(-1) != 0 else 'FAIL') | trim }}"
+      details_06: "{{ 'Service is not active (inactive or masked)' if result_06.rc | default(-1) != 0 else 'Service is still active' }}"
+
+  - name: "Req 07 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_06 | default('ERROR') | trim }}"
+      status_07: "{{ status_06 | default('ERROR') | trim }}"
+      details_07: "{{ details_06 | default('Not evaluated') | trim }}"
+      data_07: "{{ status_06 | default('ERROR') | trim }}"
+      task_07_name: "Store overall remediation result"
+      task_07_cmd: "set_fact"
+      task_07_rc: 0
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.7"
+      - "Reference: CIS Benchmark checkpoint 2.1.7"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('ERROR') | trim }}"
+      - "  Details: {{ details_07 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup directory exists"
+    stat:
+      path: "{{ backup_dir }}"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_backup_stat.stat.exists | default(false)
+    tags: [restore]

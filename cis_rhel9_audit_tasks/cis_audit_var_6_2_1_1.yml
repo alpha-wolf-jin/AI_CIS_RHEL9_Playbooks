@@ -1,0 +1,5 @@
+req_01: "Check if systemd-journald is installed using command: `systemctl list-unit-files | grep systemd-journald.service`. Expected result: output contains 'systemd-journald.service'"
+req_02: "Check if systemd-journald is enabled using command: `systemctl is-enabled systemd-journald.service`. Expected result: static"
+req_03: "Check if systemd-journald is active using command: `systemctl is-active systemd-journald.service`. Expected result: active"
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if systemd-journald is not installed, FAIL if installed but not static or not active."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

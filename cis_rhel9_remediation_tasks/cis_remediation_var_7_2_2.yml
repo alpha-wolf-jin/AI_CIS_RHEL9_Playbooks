@@ -1,0 +1,8 @@
+playbook_name: "cis_7_2_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply lock to accounts with empty password fields using command: `passwd -l <username>`. Expected result: The account is locked and cannot be used for login without a password."
+req_02: "Check if the account is currently logged in using command: `who | grep <username>` or `last | grep <username>`. Expected result: Identify active sessions for investigation."
+req_03: "Investigate the account usage and determine if it needs to be forced off. Expected result: Appropriate action taken based on findings."
+req_04: |
+  Verify that no accounts have empty password fields using command: `awk -F: '($2 == \"\") { print $1 }' /etc/shadow`. Expected result: No output, indicating all accounts have a password set.
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

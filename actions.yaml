@@ -1,0 +1,47 @@
+---
+
+#- debug: var=cis_action
+#- debug: var=cis_item
+
+- name:  trigger verificaiton task when selction ends with '.' - substring match
+  block:
+    - name: remove special meaning for . in selection
+      ansible.builtin.set_fact:
+        filter_str: "^{{ selection.replace('.', '\\.') }}"
+
+    - name: trigger the CIS action for list of policies
+      ansible.builtin.include_tasks: execute.yaml
+      loop: "{{ rhel9_cis.keys() | select('match', filter_str) | list }}"
+      loop_control:
+        loop_var: cis_item
+  when:
+  - selection is match("^([0-9]|\\.)+\\.$")
+
+
+- name:  trigger verificaiton task when selction exactly match
+  block:
+    - name: trigger the CIS action for single policies
+      ansible.builtin.include_tasks: execute.yaml
+      vars:
+        cis_item: "{{ selection }}"
+  when:
+  - selection in rhel9_cis.keys()|list
+
+
+#- name: script full path
+#  ansible.builtin.set_fact:
+#    execution_path: "{{ os }}/{{ cis_action }}/{{ cis_item | replace('.','-') }}"
+#    method: "{{ cis_action }}_method"
+#
+#- name: Convert filtered indexes to file paths
+#  set_fact:
+#    audit_task_playbook: "{{ filtered_indexes | map('replace', '.', '_') | map('regex_replace', '^(.*)$', 'cis_rhel9_audit_tasks/cis_audit_\\1.yml') | list }}"
+#
+#    - name: Show final task list
+#      debug:
+#        var: audit_task_playbook
+#
+#    - name: Trigger the audit tasks
+#      include_tasks: "{{ item }}"
+#      ignore_errors: yes
+#

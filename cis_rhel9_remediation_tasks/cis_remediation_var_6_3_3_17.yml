@@ -1,0 +1,7 @@
+playbook_name: "cis_6_3_3_17_chacl_audit"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_rules_file: "/etc/audit/rules.d/50-perm_chng.rules"
+audit_key: "perm_chng"
+chacl_path: "/usr/bin/chacl"
+req_01: "Apply remediation for: Ensure successful and unsuccessful attempts to use the chacl command are collected. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure successful and unsuccessful attempts to use the chacl command are collected is properly configured. Expected result: Compliant"

@@ -1,0 +1,8 @@
+req_01: "Check if OpenSSH server is installed using command: `dpkg -l openssh-server 2>/dev/null || rpm -q openssh-server 2>/dev/null`. Expected result: package is installed."
+req_02: "Check if CVE-2023-48795 has been addressed or if CBC is disabled for OpenSSH server using command: `sshd -T | grep -i 'cipher.*cbc'` and `sshd -T | grep -i 'kex.*chacha20-poly1305'` (or relevant patch check). Expected result: either CBC ciphers are not present or the system is patched for CVE-2023-48795."
+req_03: |
+  Check if system-wide crypto policy version is 9.3 or later (required for EtM disable support) using command: `cat /etc/crypto-policies/state/CURRENT.pol | head -1` or `rpm -q crypto-policies --queryformat '%{VERSION}\\n'`. Expected result: version >= 9.3.
+req_04: |
+  Check if EtM is disabled for SSH in system-wide crypto policy using command: `grep -Psi -- '^\\h*etm\\b' /etc/crypto-policies/state/CURRENT.pol`. Expected result: output includes 'etm@libssh = DISABLE_ETM', 'etm@openssh-client = DISABLE_ETM', 'etm@openssh-server = DISABLE_ETM', or 'etm = DISABLE_ETM'.
+req_05: "Summarize overall compliance status: if all previous checks pass, the system is compliant with disabling EtM for SSH; otherwise, it is non-compliant."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

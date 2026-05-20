@@ -1,0 +1,123 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_2_2.yml
+
+- name: "Req 01 - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Req 01 - Set sudo_installed fact"
+  ansible.builtin.set_fact:
+    sudo_installed: "{{ sudo_package_name in ansible_facts.packages }}"
+
+- name: "Req 01 - Check sudo binary path"
+  ansible.builtin.shell: which {{ sudo_package_name }}
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: sudo_installed | default(false)
+
+- name: "Req 02 - Check use_pty in sudoers"
+  ansible.builtin.shell: grep -rPi -- '^\h*Defaults\h+([^#\n\r]+,\h*)?use_pty\b' /etc/sudoers*
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: sudo_installed | default(false)
+
+- name: "Req 03 - Check !use_pty absence in sudoers"
+  ansible.builtin.shell: grep -rPi -- '^\h*Defaults\h+([^#\n\r]+,\h*)?!use_pty\b' /etc/sudoers*
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: sudo_installed | default(false)
+
+- name: "Req 04 - Determine overall compliance status (raw)"
+  ansible.builtin.set_fact:
+    _status_04_raw: >-
+      {%- if not (sudo_installed | default(false)) -%}
+      SKIPPED
+      {%- elif (result_02 is defined and result_02.stdout | default('') | trim | length > 0) and
+             (result_03 is defined and result_03.stdout | default('') | trim | length == 0) -%}
+      PASS
+      {%- else -%}
+      FAIL
+      {%- endif -%}
+    _details_04_raw: >-
+      {%- if not (sudo_installed | default(false)) -%}
+      sudo not installed
+      {%- elif (result_02 is defined and result_02.stdout | default('') | trim | length > 0) and
+             (result_03 is defined and result_03.stdout | default('') | trim | length == 0) -%}
+      Both conditions met
+      {%- else -%}
+      One or both conditions not met
+      {%- endif -%}
+
+- name: "Req 04 - Trim compliance status"
+  ansible.builtin.set_fact:
+    status_04: "{{ _status_04_raw | trim }}"
+    details_04: "{{ _details_04_raw | trim }}"
+
+- name: "Req 05 - Store final audit result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_04 | default('UNKNOWN') | trim }}"
+    task_05_name: "Set cis_result fact"
+    task_05_cmd: "N/A"
+    data_05: "{{ ('Compliant' if status_04 | trim == 'PASS' else ('Not applicable' if status_04 | trim == 'SKIPPED' else 'Non-compliant')) }}"
+    status_05: "{{ 'PASS' if (status_04 | default('') | trim) in ['PASS','FAIL','SKIPPED'] else 'ERROR' }}"
+    details_05: "Variable cis_result stored successfully with value {{ status_04 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.2.2"
+    - "Reference: CIS Benchmark checkpoint 5.2.2"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Check sudo binary path"
+    - "  Command: which sudo"
+    - "  Exit code: {{ result_01.rc if result_01 is defined else -1 }}"
+    - "  Data: {{ (result_01.stdout if result_01 is defined else '') | trim }}"
+    - "  Status: {{ 'PASS' if (result_01 is defined and result_01.rc == 0 and (result_01.stdout | default('') | trim | length > 0)) else ('SKIPPED' if not (sudo_installed | default(false)) else 'FAIL') }}"
+    - "  Details: {{ 'sudo binary found' if (result_01 is defined and result_01.rc == 0 and (result_01.stdout | default('') | trim | length > 0)) else ('sudo not installed' if not (sudo_installed | default(false)) else 'Failed to find sudo binary') }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Check use_pty in sudoers"
+    - "  Command: grep -rPi -- '^\\h*Defaults\\h+([^#\\n\\r]+,\\h*)?use_pty\\b' /etc/sudoers*"
+    - "  Exit code: {{ result_02.rc if result_02 is defined else -1 }}"
+    - "  Data: {{ (result_02.stdout if result_02 is defined else '') | trim }}"
+    - "  Status: {{ 'PASS' if (result_02 is defined and (result_02.stdout | default('') | trim | length > 0) and result_02.rc == 0) else ('SKIPPED' if not (sudo_installed | default(false)) else 'FAIL') }}"
+    - "  Details: {{ 'use_pty is set' if (result_02 is defined and (result_02.stdout | default('') | trim | length > 0) and result_02.rc == 0) else ('sudo not installed' if not (sudo_installed | default(false)) else 'use_pty is NOT set') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Check !use_pty absence in sudoers"
+    - "  Command: grep -rPi -- '^\\h*Defaults\\h+([^#\\n\\r]+,\\h*)?!use_pty\\b' /etc/sudoers*"
+    - "  Exit code: {{ result_03.rc if result_03 is defined else -1 }}"
+    - "  Data: {{ (result_03.stdout if result_03 is defined else '') | trim }}"
+    - "  Status: {{ 'PASS' if (result_03 is defined and (result_03.stdout | default('') | trim | length == 0)) else ('SKIPPED' if not (sudo_installed | default(false)) else 'FAIL') }}"
+    - "  Details: {{ '!use_pty is not set' if (result_03 is defined and (result_03.stdout | default('') | trim | length == 0)) else ('sudo not installed' if not (sudo_installed | default(false)) else '!use_pty is set') }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Overall compliance summary"
+    - "  Command: N/A"
+    - "  Exit code: 0"
+    - "  Data: {{ 'Compliant' if status_04 | trim == 'PASS' else ('Not applicable' if status_04 | trim == 'SKIPPED' else 'Non-compliant') }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: 0"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"

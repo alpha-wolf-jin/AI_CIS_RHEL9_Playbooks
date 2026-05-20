@@ -1,0 +1,505 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_19.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Capture xinetd service active state"
+  ansible.builtin.shell: "systemctl is-active {{ service_name }}.service >/dev/null 2>&1 && echo active || echo unknown"
+  args:
+    executable: /bin/bash
+  register: _snap_active
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if active state file already exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/active_state.txt"
+  register: _snap_active_file_stat
+  tags: [snapshot]
+- name: "Snapshot - Save active state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_active.stdout | trim }}"
+    dest: "{{ backup_dir }}/active_state.txt"
+  when: not _snap_active_file_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Capture xinetd service enabled state"
+  ansible.builtin.shell: "systemctl is-enabled {{ service_name }}.service >/dev/null 2>&1 && echo enabled || echo unknown"
+  args:
+    executable: /bin/bash
+  register: _snap_enabled
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if enabled state file already exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/enabled_state.txt"
+  register: _snap_enabled_file_stat
+  tags: [snapshot]
+- name: "Snapshot - Save enabled state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_enabled.stdout | trim }}"
+    dest: "{{ backup_dir }}/enabled_state.txt"
+  when: not _snap_enabled_file_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Check if xinetd package is installed"
+  ansible.builtin.shell: "if rpm -q {{ package_name }} >/dev/null 2>&1; then echo yes; else echo no; fi"
+  args:
+    executable: /bin/bash
+  register: _snap_pkg_installed
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if package installed file already exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/package_installed.txt"
+  register: _snap_pkg_file_stat
+  tags: [snapshot]
+- name: "Snapshot - Save package installed state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_pkg_installed.stdout | trim }}"
+    dest: "{{ backup_dir }}/package_installed.txt"
+  when: not _snap_pkg_file_stat.stat.exists | default(false)
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "SKIP"
+      details_02: "xinetd not installed"
+      data_03: "Not collected yet"
+      status_03: "SKIP"
+      details_03: "xinetd not installed"
+      data_04: "Not collected yet"
+      status_04: "SKIP"
+      details_04: "xinetd not installed or already removed"
+      data_05: "Not collected yet"
+      status_05: "SKIP"
+      details_05: "xinetd not installed"
+      data_06: "Not collected yet"
+      status_06: "ERROR"
+      details_06: "Not evaluated"
+      data_07: "Not collected yet"
+      status_07: "ERROR"
+      details_07: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: ""
+      task_02_cmd: ""
+      task_02_rc: -1
+      task_03_name: ""
+      task_03_cmd: ""
+      task_03_rc: -1
+      task_04_name: ""
+      task_04_cmd: ""
+      task_04_rc: -1
+      task_05_name: ""
+      task_05_cmd: ""
+      task_05_rc: -1
+      task_06_name: ""
+      task_06_cmd: ""
+      task_06_rc: -1
+      task_07_name: ""
+      task_07_cmd: ""
+      task_07_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check systemctl and dnf availability"
+    ansible.builtin.shell: "which systemctl && which dnf"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check systemctl and dnf availability"
+      task_01_cmd: "which systemctl && which dnf"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ ('Both commands found' if result_01.rc | default(-1) == 0 else 'Missing required commands') | trim }}"
+    tags: [execute]
+
+  - name: "Check if xinetd package is installed"
+    ansible.builtin.shell: "rpm -q {{ package_name }}"
+    args:
+      executable: /bin/bash
+    register: xinetd_installed_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set xinetd installed fact"
+    set_fact:
+      xinetd_installed: "{{ xinetd_installed_check.rc == 0 }}"
+    tags: [execute]
+
+  - name: "Req 02 - Stop xinetd.service"
+    ansible.builtin.shell: "systemctl stop {{ service_name }}.service"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: xinetd_installed | bool
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Stop xinetd service"
+      task_02_cmd: "systemctl stop {{ service_name }}.service"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {%- if not (xinetd_installed | bool) -%}
+          SKIP
+        {%- elif result_02.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if not (xinetd_installed | bool) -%}
+          xinetd not installed
+        {%- elif result_02.rc | default(-1) == 0 -%}
+          Service stopped successfully
+        {%- else -%}
+          Failed to stop service
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 03 - Remove xinetd package"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: absent
+    register: result_03
+    failed_when: false
+    when: xinetd_installed | bool
+    tags: [execute]
+
+  - name: "Determine removal success"
+    set_fact:
+      removal_success: "{{ xinetd_installed | bool and result_03.rc | default(-1) == 0 }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Remove xinetd package"
+      task_03_cmd: "dnf remove -y {{ package_name }}"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: >-
+        {%- if not (xinetd_installed | bool) -%}
+          SKIP
+        {%- elif result_03.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_03: >-
+        {%- if not (xinetd_installed | bool) -%}
+          xinetd not installed
+        {%- elif result_03.rc | default(-1) == 0 -%}
+          Package removed successfully
+        {%- else -%}
+          Failed to remove package (may be a dependency)
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 04 - Stop and mask xinetd.service (fallback)"
+    ansible.builtin.shell: "systemctl stop {{ service_name }}.service && systemctl mask {{ service_name }}.service"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when:
+    - xinetd_installed | bool
+    - "not (removal_success | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Stop and mask xinetd service"
+      task_04_cmd: "systemctl stop {{ service_name }}.service && systemctl mask {{ service_name }}.service"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: >-
+        {%- if not (xinetd_installed | bool) or (removal_success | bool) -%}
+          SKIP
+        {%- elif result_04.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_04: >-
+        {%- if not (xinetd_installed | bool) -%}
+          xinetd not installed
+        {%- elif removal_success | bool -%}
+          Package removed, masking not needed
+        {%- elif result_04.rc | default(-1) == 0 -%}
+          Service stopped and masked
+        {%- else -%}
+          Failed to stop and mask service
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 05 - Verify xinetd service is not active"
+    ansible.builtin.shell: "systemctl is-active {{ service_name }}.service"
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Verify xinetd service inactive"
+      task_05_cmd: "systemctl is-active {{ service_name }}.service"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: >-
+        {%- set active_output = result_05.stdout | default('') | trim -%}
+        {%- if active_output in ['inactive', 'unknown'] -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_05: >-
+        {%- set active_output = result_05.stdout | default('') | trim -%}
+        {%- if active_output in ['inactive', 'unknown'] -%}
+          Service is {{ active_output }}
+        {%- else -%}
+          Service is active: {{ active_output }}
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 06 - Verify xinetd package removed or service masked"
+    ansible.builtin.shell: |
+      set -o pipefail
+      if rpm -q {{ package_name }} >/dev/null 2>&1; then
+        if systemctl is-masked {{ service_name }}.service 2>/dev/null | grep -q masked; then
+          echo "COMPLIANT: package installed but service masked"
+          exit 0
+        else
+          echo "NON-COMPLIANT: package installed and service not masked"
+          exit 1
+        fi
+      else
+        echo "COMPLIANT: package not installed"
+        exit 0
+      fi
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Verify xinetd removed or masked"
+      task_06_cmd: "Verify xinetd package removed or service masked (see task details)"
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: >-
+        {%- if result_06.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_06: >-
+        {%- if result_06.rc | default(-1) == 0 -%}
+          Verification passed: {{ result_06.stdout | default('') | trim }}
+        {%- else -%}
+          Verification failed: {{ result_06.stdout | default('') | trim }}
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 07 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ status_06 | default('ERROR') | trim }}"
+      status_07: "{{ status_06 | default('ERROR') | trim }}"
+      data_07: "{{ status_06 | default('ERROR') | trim }}"
+      details_07: "{{ details_06 | default('') | trim }}"
+      task_07_name: "Set cis_result"
+      task_07_cmd: "set_fact cis_result = status_06"
+      task_07_rc: 0
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.19"
+      - "Reference: CIS Benchmark checkpoint 2.1.19"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('ERROR') | trim }}"
+      - "  Details: {{ details_07 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if active state file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/active_state.txt"
+    register: _restore_active_file_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/active_state.txt"
+    register: _restore_active
+    when: _restore_active_file_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore active state"
+    ansible.builtin.shell: |
+      if [ "{{ _restore_active.content | b64decode | trim }}" = "active" ]; then
+        systemctl start {{ service_name }}.service 2>/dev/null || true
+      else
+        systemctl stop {{ service_name }}.service 2>/dev/null || true
+      fi
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_active_file_stat.stat.exists | default(false)
+    - _restore_active.content | default('') | b64decode | trim != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if enabled state file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/enabled_state.txt"
+    register: _restore_enabled_file_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/enabled_state.txt"
+    register: _restore_enabled
+    when: _restore_enabled_file_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore mask and enablement"
+    ansible.builtin.shell: |
+      original_state="{{ _restore_enabled.content | b64decode | trim }}"
+      if [ "$original_state" = "masked" ]; then
+        systemctl mask {{ service_name }}.service 2>/dev/null || true
+      else
+        systemctl unmask {{ service_name }}.service 2>/dev/null || true
+        if [ "$original_state" = "enabled" ]; then
+          systemctl enable {{ service_name }}.service 2>/dev/null || true
+        elif [ "$original_state" = "disabled" ]; then
+          systemctl disable {{ service_name }}.service 2>/dev/null || true
+        fi
+      fi
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_enabled_file_stat.stat.exists | default(false)
+    - _restore_enabled.content | default('') | b64decode | trim != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if package installed file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/package_installed.txt"
+    register: _restore_pkg_installed_file_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read package installed state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/package_installed.txt"
+    register: _restore_pkg_installed
+    when: _restore_pkg_installed_file_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reinstall xinetd package if originally installed"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: present
+    when:
+    - _restore_pkg_installed_file_stat.stat.exists | default(false)
+    - (_restore_pkg_installed.content | default('') | b64decode | trim) == 'yes'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

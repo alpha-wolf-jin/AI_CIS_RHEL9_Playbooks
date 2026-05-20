@@ -1,0 +1,111 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_4_4.yml
+
+- name: "Req 01 - Check if auditd package is installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Req 01 - Set auditd installation status"
+  ansible.builtin.set_fact:
+    auditd_installed: "{{ 'audit' in ansible_facts.packages or 'auditd' in ansible_facts.packages }}"
+
+- name: "Req 01 - Initialize data variables when auditd not installed"
+  ansible.builtin.set_fact:
+    status_01: "NOT_APPLICABLE"
+    details_01: "auditd package not installed"
+    data_01: ""
+    task_01_name: "Execute audit script for CIS 6.3.4.4"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: -1
+    status_02: "NOT_APPLICABLE"
+    details_02: "auditd package not installed"
+    data_02: "Overall compliance: NOT_APPLICABLE"
+    task_02_name: "Verify compliance status for CIS 6.3.4.4"
+    task_02_cmd: "N/A"
+    task_02_rc: 0
+    cis_result: "NOT_APPLICABLE"
+    task_03_name: "Store final CIS result in cis_result"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "Overall compliance: NOT_APPLICABLE"
+    status_03: "NOT_APPLICABLE"
+    details_03: "auditd package not installed"
+  when: "not auditd_installed"
+
+- name: "Req 01 - Execute audit script inline via shell"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ audit_script_content }}"
+    executable: /bin/bash
+  register: audit_result
+  when: "auditd_installed"
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Store requirement details from script output"
+  ansible.builtin.set_fact:
+    status_01: "{{ 'PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'UNKNOWN') | trim }}"
+    details_01: "{{ 'Audit script passed' if '** PASS **' in audit_result.stdout | default('') else ('Audit script failed' if '** FAIL **' in audit_result.stdout | default('') else 'Script output indeterminate') | trim }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    task_01_name: "Execute audit script for CIS 6.3.4.4"
+    task_01_cmd: "/bin/bash (inline audit script)"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+  when: "auditd_installed"
+
+- name: "Req 02 - Set compliance summary"
+  ansible.builtin.set_fact:
+    status_02: "{{ status_01 }}"
+    details_02: "{{ 'Compliant' if status_01 == 'PASS' else ('Not compliant' if status_01 == 'FAIL' else 'Not applicable or unknown') | trim }}"
+    data_02: "Overall compliance: {{ status_01 }}"
+    task_02_name: "Verify compliance status for CIS 6.3.4.4"
+    task_02_cmd: "N/A"
+    task_02_rc: "0"
+  when: "auditd_installed"
+
+- name: "Req 03 - Store final CIS result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_name: "Store final CIS result in cis_result"
+    task_03_cmd: "set_fact cis_result"
+    task_03_rc: 0
+    data_03: "cis_result = {{ status_02 | default('UNKNOWN') | trim }}"
+    status_03: "PASS"
+    details_03: "Variable cis_result set successfully"
+  when: "auditd_installed"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.4.4"
+    - "Reference: CIS Benchmark checkpoint 6.3.4.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

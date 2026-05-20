@@ -1,0 +1,161 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_4_3_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ shells_file }}"
+  register: _snap_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ shells_file }}"
+    dest: "{{ backup_dir }}/shells.present"
+    remote_src: true
+  when: "_snap_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if sed is available"
+    ansible.builtin.shell: "which sed"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if sed is available"
+      task_01_cmd: "which sed"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'sed found at: ' ~ (result_01.stdout | default('') | trim) if (result_01.rc | default(-1)) == 0 else 'sed not found' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Remove nologin lines from /etc/shells"
+    ansible.builtin.lineinfile:
+      path: "{{ shells_file }}"
+      regexp: 'nologin'
+      state: absent
+    register: result_02
+    failed_when: false
+    when: "status_01 == 'PASS'"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Remove nologin lines from /etc/shells"
+      task_02_cmd: "lineinfile: path={{ shells_file }} regexp=nologin state=absent"
+      task_02_rc: "{{ 0 if not result_02.failed | default(false) else 1 }}"
+      data_02: "{{ 'Lines removed' if result_02.changed | default(false) else 'No changes needed' }}"
+      status_02: "{{ 'PASS' if not result_02.failed | default(false) else 'FAIL' }}"
+      details_02: "{{ 'nologin lines removed successfully' if result_02.changed | default(false) else 'No nologin lines found to remove' }}"
+    when: "status_01 == 'PASS'"
+    tags: [execute]
+
+  - name: "Store requirement 02 skipped details"
+    ansible.builtin.set_fact:
+      task_02_name: "Remove nologin lines from /etc/shells"
+      task_02_cmd: "lineinfile: path={{ shells_file }} regexp=nologin state=absent"
+      task_02_rc: -1
+      data_02: "Skipped"
+      status_02: "SKIPPED"
+      details_02: "Skipped because sed is not available"
+    when: "status_01 != 'PASS'"
+    tags: [execute]
+
+  - name: "Req 03 - Verify no nologin lines remain"
+    ansible.builtin.shell: "grep -i nologin {{ shells_file }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Verify no nologin lines remain"
+      task_03_cmd: "grep -i nologin {{ shells_file }}"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (result_03.rc | default(-1)) != 0 else 'FAIL' }}"
+      details_03: "{{ 'No nologin lines found - compliant' if (result_03.rc | default(-1)) != 0 else 'nologin lines still present: ' ~ (result_03.stdout | default('') | trim) }}"
+    tags: [execute]
+
+  - name: "Store overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_03 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.4.3.1"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.4.3.1"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/shells.present"
+    register: _restore_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/shells.present"
+      dest: "{{ shells_file }}"
+      remote_src: true
+    when: "_restore_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

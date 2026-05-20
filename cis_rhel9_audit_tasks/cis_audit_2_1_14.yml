@@ -1,0 +1,81 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_14.yml
+
+- name: "Req 01 - Check if net-snmp package is installed"
+  ansible.builtin.shell: rpm -q net-snmp
+  args:
+    executable: /bin/bash
+  register: pkg_result
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Check if snmpd service is enabled"
+  ansible.builtin.shell: systemctl is-enabled snmpd.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: enabled_result
+  when: pkg_result.rc == 0
+  failed_when: false
+  changed_when: false
+
+- name: "Req 03 - Check if snmpd service is active"
+  ansible.builtin.shell: systemctl is-active snmpd.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: active_result
+  when: pkg_result.rc == 0
+  failed_when: false
+  changed_when: false
+
+- name: "Req 04 - Determine overall compliance status and set cis_result"
+  ansible.builtin.set_fact:
+    cis_result: >-
+      {{ 
+        'PASS' if (pkg_result.rc != 0) 
+          or (pkg_result.rc == 0 
+            and (enabled_result.skipped | default(false) or (enabled_result.rc | default(-1) != 0))
+            and (active_result.skipped | default(false) or (active_result.rc | default(-1) != 0))
+          ) 
+        else 'FAIL' 
+      | trim }}
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.14"
+    - "Reference: CIS Benchmark checkpoint 2.1.14"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Check net-snmp package"
+    - "  Command: rpm -q net-snmp"
+    - "  Exit code: {{ pkg_result.rc | default(-1) }}"
+    - "  Data: {{ pkg_result.stdout | default('') | trim }}"
+    - "  Status: {{ 'PASS' if pkg_result.rc | default(-1) != 0 else 'FAIL' }}"
+    - "  Details: {{ 'net-snmp is not installed' if pkg_result.rc | default(-1) != 0 else 'net-snmp is installed' }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Check snmpd service enabled"
+    - "  Command: systemctl is-enabled snmpd.service 2>/dev/null | grep 'enabled'"
+    - "  Exit code: {{ 'SKIP' if enabled_result.skipped | default(false) else enabled_result.rc | default(-1) }}"
+    - "  Data: {{ '' if enabled_result.skipped | default(false) else (enabled_result.stdout | default('') | trim) }}"
+    - "  Status: {{ 'SKIP' if enabled_result.skipped | default(false) else ('PASS' if enabled_result.rc | default(-1) != 0 else 'FAIL') }}"
+    - "  Details: {{ 'Skipped (package not installed)' if enabled_result.skipped | default(false) else ('snmpd is not enabled' if enabled_result.rc | default(-1) != 0 else 'snmpd is enabled') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Check snmpd service active"
+    - "  Command: systemctl is-active snmpd.service 2>/dev/null | grep '^active'"
+    - "  Exit code: {{ 'SKIP' if active_result.skipped | default(false) else active_result.rc | default(-1) }}"
+    - "  Data: {{ '' if active_result.skipped | default(false) else (active_result.stdout | default('') | trim) }}"
+    - "  Status: {{ 'SKIP' if active_result.skipped | default(false) else ('PASS' if active_result.rc | default(-1) != 0 else 'FAIL') }}"
+    - "  Details: {{ 'Skipped (package not installed)' if active_result.skipped | default(false) else ('snmpd is not active' if active_result.rc | default(-1) != 0 else 'snmpd is active') }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Compliance determination"
+    - "  Command: N/A"
+    - "  Exit code: 0"
+    - "  Data: {{ cis_result }}"
+    - "  Status: {{ cis_result }}"
+    - "  Details: Overall compliance"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"

@@ -1,0 +1,104 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_4_1.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [audit]
+- name: "Set auditd installation status"
+  ansible.builtin.set_fact:
+    auditd_installed: "{{ ('audit' in ansible_facts.packages) | bool }}"
+  tags: [audit]
+- name: "Req 01 - Execute CIS audit script"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ audit_script_content }}"
+    executable: /bin/bash
+  register: script_result
+  when: auditd_installed | bool
+  failed_when: false
+  changed_when: false
+  tags: [audit]
+- name: "Req 01 & Req 02 - Store audit details and compliance status"
+  ansible.builtin.set_fact:
+    task_01_name: "Run CIS audit script"
+    task_01_cmd: "bash script (see CIS benchmark)"
+    task_01_rc: "{{ script_result.rc | default(-1) }}"
+    data_01: "{{ script_result.stdout | default('') }}"
+    status_01: "{{ 'PASS' if '** PASS **' in script_result.stdout | default('') else 'FAIL' }}"
+    details_01: "{{ 'Audit script reported PASS' if '** PASS **' in script_result.stdout | default('') else 'Audit script reported FAIL' }}"
+    task_02_name: "Summarize compliance status"
+    task_02_cmd: "Interpret script output"
+    task_02_rc: 0
+    data_02: "Compliance: {{ 'PASS' if '** PASS **' in script_result.stdout | default('') else 'FAIL' }}"
+    status_02: "{{ 'PASS' if '** PASS **' in script_result.stdout | default('') else 'FAIL' }}"
+    details_02: "{{ 'Overall compliance PASS: directory mode meets requirements' if '** PASS **' in script_result.stdout | default('') else 'Overall compliance FAIL: directory mode does not meet requirements' }}"
+  when: auditd_installed | bool and script_result is defined
+  tags: [audit]
+- name: "Req 01 & Req 02 - Mark NOT_APPLICABLE when auditd missing"
+  ansible.builtin.set_fact:
+    task_01_name: "Run CIS audit script"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "NOT_APPLICABLE"
+    status_01: "NOT_APPLICABLE"
+    details_01: "auditd package is not installed"
+    task_02_name: "Summarize compliance status"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "NOT_APPLICABLE"
+    status_02: "NOT_APPLICABLE"
+    details_02: "Compliance check skipped because auditd is not installed"
+  when: not auditd_installed | bool
+  tags: [audit]
+- name: "Req 03 - Store final compliance result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') }}"
+  tags: [audit]
+- name: "Req 03 - Record task details for report"
+  ansible.builtin.set_fact:
+    task_03_name: "Store final compliance result in cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: 0
+    data_03: "cis_result = {{ cis_result }}"
+    status_03: "PASS"
+    details_03: "cis_result set successfully to {{ cis_result }}"
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.4.1"
+    - "Reference: CIS Benchmark checkpoint 6.3.4.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') }}"
+    - "  Details: {{ details_01 | default('') }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') }}"
+    - "  Details: {{ details_02 | default('') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') }}"
+    - "  Details: {{ details_03 | default('') }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') }}"
+    - "  Details: {{ details_02 | default('Not evaluated') }}"
+    - "========================================================"
+  tags: [audit]

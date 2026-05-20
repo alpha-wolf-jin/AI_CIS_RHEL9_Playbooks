@@ -1,0 +1,137 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_4_2.yml
+
+- name: "Req 1 - Check if a separate partition exists for /var"
+  ansible.builtin.command: findmnt -kn {{ mount_point }}
+  register: findmnt_result
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if a separate partition exists for /var"
+    task_01_cmd: "findmnt -kn {{ mount_point }}"
+    task_01_rc: "{{ findmnt_result.rc | default(-1) }}"
+    data_01: "{{ findmnt_result.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if findmnt_result.rc | default(-1) == 0 else 'FAIL' }}"
+    details_01: "{{ 'Separate partition found' if findmnt_result.rc | default(-1) == 0 else ('No separate partition exists' if findmnt_result.rc | default(-1) == 1 else 'Unexpected error') }}"
+
+# Requirement 2: Check nodev option (only if /var partition exists)
+- name: "Req 2 - Check if nodev option is set on /var partition"
+  ansible.builtin.shell: findmnt -kn {{ mount_point }} | grep -v {{ mount_option }}
+  args:
+    executable: /bin/bash
+  register: nodev_check
+  failed_when: false
+  changed_when: false
+  when: "findmnt_result.rc | default(-1) == 0"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check if nodev option is set on /var partition"
+    task_02_cmd: "findmnt -kn {{ mount_point }} | grep -v {{ mount_option }}"
+    task_02_rc: "{{ (nodev_check | default({})).rc | default(-1) if nodev_check is defined else -1 }}"
+    data_02: "{{ (nodev_check | default({})).stdout | default('') | trim if nodev_check is defined else '' }}"
+    status_02: >-
+      {{ 'PASS' if nodev_check is defined and (nodev_check.rc | default(-1)) == 1
+         else ('FAIL' if nodev_check is defined and (nodev_check.rc | default(-1)) == 0
+         else ('SKIPPED' if nodev_check is not defined
+         else 'ERROR')) }}
+    details_02: >-
+      {{ 'nodev option is set' if nodev_check is defined and (nodev_check.rc | default(-1)) == 1
+         else ('nodev option is NOT set' if nodev_check is defined and (nodev_check.rc | default(-1)) == 0
+         else ('Not applicable - no separate /var partition' if nodev_check is not defined
+         else 'Unexpected error')) }}
+
+# Requirement 3: Summarize overall compliance
+- name: "Req 3 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_03_name: "Summarize overall compliance"
+    task_03_cmd: "N/A (compliance evaluation)"
+    task_03_rc: -1
+    data_03: "Overall compliance determined"
+    status_03: >-
+      {{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS')
+         else ('FAIL' if (status_01 == 'PASS' and status_02 == 'FAIL')
+         else ('SKIPPED' if status_01 == 'FAIL'
+         else 'UNKNOWN')) }}
+    details_03: >-
+      {{ 'System is compliant - nodev option is set on /var partition' if (status_01 == 'PASS' and status_02 == 'PASS')
+         else ('System is non-compliant - nodev option is NOT set on /var partition' if (status_01 == 'PASS' and status_02 == 'FAIL')
+         else ('Not applicable - no separate /var partition exists' if status_01 == 'FAIL'
+         else 'Unexpected condition')) }}
+
+# Requirement 4: Store final cis_result variable
+- name: "Store final cis_result variable"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 }}"
+
+- name: "Store requirement 04 details"
+  ansible.builtin.set_fact:
+    task_04_name: "Store final cis_result variable"
+    task_04_cmd: "N/A (set_fact operation)"
+    task_04_rc: -1
+    data_04: "{{ cis_result }}"
+    status_04: "PASS"
+    details_04: "cis_result set to {{ cis_result }}"
+
+# Alignment verification
+- name: "Evaluate status alignment with AI expected results"
+  ansible.builtin.set_fact:
+    alignment_01: "{{ 'PASS' if status_01 | default('UNKNOWN') | trim == expected_ai_status_01 else 'FAIL' }}"
+    alignment_02: "{{ 'PASS' if status_02 | default('UNKNOWN') | trim == expected_ai_status_02 else 'FAIL' }}"
+    alignment_03: "{{ 'PASS' if status_03 | default('UNKNOWN') | trim == expected_ai_status_03 else 'FAIL' }}"
+
+# Generate audit report with status alignment verification
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "========================================================"
+    - "        AUDIT REPORT — CIS 1.1.2.4.2"
+    - "        Reference: CIS Benchmark checkpoint 1.1.2.4.2"
+    - "========================================================"
+    - ""
+    - "REQUIREMENT 01 — {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Task not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 02 — {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Task not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 03 — {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Task not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 04 — {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Task not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"
+    - ""
+    - "STATUS ALIGNMENT VERIFICATION (Playbook vs AI Expected):"
+    - "  Requirement 1: Expected={{ expected_ai_status_01 }}, Actual={{ status_01 | default('UNKNOWN') | trim }}, Alignment={{ alignment_01 }}"
+    - "  Requirement 2: Expected={{ expected_ai_status_02 }}, Actual={{ status_02 | default('UNKNOWN') | trim }}, Alignment={{ alignment_02 }}"
+    - "  Requirement 3: Expected={{ expected_ai_status_03 }}, Actual={{ status_03 | default('UNKNOWN') | trim }}, Alignment={{ alignment_03 }}"
+    - "========================================================"

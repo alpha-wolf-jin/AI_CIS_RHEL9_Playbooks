@@ -1,0 +1,6 @@
+playbook_name: "cis_7_1_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+target_file: "/etc/passwd-"
+req_01: "Apply remove excess permissions on /etc/passwd- using command: `chmod u-x,go-wx /etc/passwd-`. Expected result: Permissions are set to u-x,go-wx (owner cannot execute, group and others cannot write or execute)."
+req_02: "Apply set owner and group to root on /etc/passwd- using command: `chown root:root /etc/passwd-`. Expected result: Owner and group are both root."
+req_03: "Verify permissions and ownership on /etc/passwd- using command: `stat -c '%a %U:%G' /etc/passwd-`. Expected result: Output shows permissions without execute for group/others (e.g., 644) and owner:group as root:root."

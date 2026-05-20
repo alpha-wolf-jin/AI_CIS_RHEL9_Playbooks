@@ -1,0 +1,252 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snap_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/{{ config_file | basename }}.present"
+    remote_src: true
+  when: _snap_config_stat.stat.exists
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Record whether config file existed"
+  ansible.builtin.copy:
+    content: "{{ _snap_config_stat.stat.exists }}"
+    dest: "{{ backup_dir }}/config_existed"
+  tags: [snapshot]
+- name: "Snapshot - Record current kernel parameter value"
+  ansible.builtin.shell: "sysctl -n {{ config_param }}"
+  args:
+    executable: /bin/bash
+  register: _snap_sysctl_val
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save original kernel parameter value"
+  ansible.builtin.copy:
+    content: "{{ _snap_sysctl_val.stdout | trim }}"
+    dest: "{{ backup_dir }}/kparam_original"
+  when: _snap_sysctl_val.stdout | default('') | trim != ''
+  tags: [snapshot]
+- name: "Snapshot - Check if temporary script exists"
+  ansible.builtin.stat:
+    path: "{{ script_path }}"
+  register: _snap_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Record whether temporary script existed"
+  ansible.builtin.copy:
+    content: "{{ _snap_script_stat.stat.exists }}"
+    dest: "{{ backup_dir }}/script_existed"
+  tags: [snapshot]
+- name: "Snapshot - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ backup_dir }}/checkpoint.flag"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE (tag: execute) ===
+  - name: "Req 01 - Write sysctl config line"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^#?\s*{{ config_param | regex_escape() }}\s*=\s*
+      line: "{{ config_param }} = {{ config_value }}"
+      create: yes
+      mode: '0644'
+    register: result_01_config
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      dest: "{{ script_path }}"
+      mode: '0700'
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+          sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1
+          sysctl -w net.ipv4.route.flush=1
+        }
+        {% endraw %}
+    register: result_01_script_copy
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash "{{ script_path }}"
+    args:
+      executable: /bin/bash
+    register: result_01_script_exec
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary script"
+    ansible.builtin.file:
+      path: "{{ script_path }}"
+      state: absent
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify kernel parameter value"
+    ansible.builtin.shell: "sysctl -n {{ config_param }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Write sysctl config and execute script"
+      task_01_cmd: "lineinfile; bash script (sysctl -w+route flush)"
+      task_01_rc: "lineinfile: {{ result_01_config is not failed }}, script: {{ result_01_script_exec.rc | default(-1) }}"
+      data_01: "Config: {{ config_param }} = {{ config_value }}; Script stdout: {{ result_01_script_exec.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if (result_01_config is not failed) and (result_01_script_exec.rc | default(-1) == 0) else 'FAIL') | trim }}"
+      details_01: "{{ ('Both config and script succeeded' if (result_01_config is not failed) and (result_01_script_exec.rc | default(-1) == 0) else 'One or both failed') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify sysctl parameter"
+      task_02_cmd: "sysctl -n {{ config_param }}"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (result_02.stdout | default('') | trim) == config_value else 'FAIL') | trim }}"
+      details_02: "{{ ('Parameter active and set to ' + config_value if (result_02.stdout | default('') | trim) == config_value else 'Parameter value is ' + (result_02.stdout | default('skipped') | trim)) }}"
+    tags: [execute]
+
+  - name: "Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 3.3.4"
+      - "Reference: CIS Benchmark checkpoint 3.3.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === RESTORE PHASE (tag: restore) ===
+  - name: "Restore - Check if checkpoint flag exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/checkpoint.flag"
+    register: _restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original kernel parameter value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/kparam_original"
+    register: _restore_kparam_original
+    failed_when: false
+    when: _restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Set kernel parameter to original value"
+    ansible.builtin.shell: "sysctl -w {{ config_param }}='{{ _restore_kparam_original.content | b64decode | trim }}'"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_kparam_original.content is defined
+    - (_restore_kparam_original.content | b64decode | trim) != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/{{ config_file | basename }}.present"
+    register: _restore_config_backup
+    failed_when: false
+    when: _restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Overwrite config with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/{{ config_file | basename }}.present"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when:
+    - _restore_config_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/config_existed"
+    register: _restore_existed
+    failed_when: false
+    when: _restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Delete config if it was absent before"
+    ansible.builtin.file:
+      path: "{{ config_file }}"
+      state: absent
+    when:
+    - _restore_existed.content is defined
+    - (_restore_existed.content | b64decode | trim) == 'False'
+    failed_when: false
+    tags: [restore]
+
+# --- Cleanup of temporary remediation script ---
+  - name: "Restore - Read script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/script_existed"
+    register: _restore_script_existed
+    failed_when: false
+    when: _restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Delete temporary script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ script_path }}"
+      state: absent
+    when:
+    - _restore_script_existed.content is defined
+    - (_restore_script_existed.content | b64decode | trim) == 'False'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

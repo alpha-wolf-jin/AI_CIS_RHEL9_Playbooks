@@ -1,0 +1,11 @@
+playbook_name: "cis_6_3_4_1"
+checkpoint_id: "cis_6_3_4_1"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+auditd_conf: "/etc/audit/auditd.conf"
+req_01: "Apply prerequisite check for awk, chmod, dirname, and xargs using command: `which awk chmod dirname xargs`. Expected result: all commands return a path."
+req_02: |
+  Apply mode 0750 or less permissive to the audit log directory using command: `chmod g-w,o-rwx \"$(dirname \"$(awk -F= '/^\\s*log_file\\s*/{print $2}' /etc/audit/auditd.conf | xargs)\")\"`. Expected result: The audit log directory mode is set to 0750 or less permissive.
+req_03: |
+  Verify the audit log directory mode using command: `stat -c \"%a %n\" \"$(dirname \"$(awk -F= '/^\\s*log_file\\s*/{print $2}' /etc/audit/auditd.conf | xargs)\")\"`. Expected result: The directory mode is 0750 or less (e.g., 0750, 0700, 0755 is not acceptable).
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

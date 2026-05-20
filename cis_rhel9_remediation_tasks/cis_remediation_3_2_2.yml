@@ -1,0 +1,355 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_2_2.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore previous tipc.conf if backed up as present"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/tipc.conf.present"
+    dest: "/etc/modprobe.d/{{ kernel_module }}.conf"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove previous tipc.conf if absent marker exists"
+  ansible.builtin.file:
+    path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+    state: absent
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore load state from previous snapshot"
+  ansible.builtin.slurp:
+    src: "{{ state_guard_dir }}/tipc_load.state"
+  register: _sg_restore_load
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Reload tipc module if it was originally loaded"
+  ansible.builtin.shell: |
+    if [ "$(cat {{ state_guard_dir }}/tipc_load.state)" = "loaded" ]; then modprobe tipc 2>/dev/null; fi
+  args:
+    executable: /bin/bash
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if tipc.conf exists"
+  ansible.builtin.stat:
+    path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+  register: _sg_conf_stat
+  tags: [snapshot]
+- name: "State Guard - Backup existing tipc.conf"
+  ansible.builtin.copy:
+    src: "/etc/modprobe.d/{{ kernel_module }}.conf"
+    dest: "{{ state_guard_dir }}/tipc.conf.present"
+    remote_src: true
+  when: _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark tipc.conf as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/tipc.conf.absent"
+  when: not _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Save current module load state"
+  ansible.builtin.shell: |
+    lsmod | grep -q '^{{ kernel_module }} ' && echo loaded || echo not_loaded
+  args:
+    executable: /bin/bash
+  register: _sg_load_state
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Persist module load state"
+  ansible.builtin.copy:
+    content: "{{ _sg_load_state.stdout }}"
+    dest: "{{ state_guard_dir }}/tipc_load.state"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === STATE GUARD — EXECUTE PHASE ===
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not executed"
+      status_01: "SKIPPED"
+      details_01: "No remediation run"
+      task_01_name: "N/A"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not executed"
+      status_02: "SKIPPED"
+      details_02: "No verification run"
+      task_02_name: "N/A"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+
+# Requirement 1: Run the provided remediation script
+  - name: "Req 01 - Apply remediation script for {{ kernel_module }} kernel module"
+    block:
+    - name: "Copy CIS remediation script to target"
+      ansible.builtin.copy:
+        dest: "{{ script_path }}"
+        content: |
+          {% raw %}
+          #!/usr/bin/env bash
+          {
+             unset a_output2; l_output3="" l_dl="" # unset arrays and clear variables
+             l_mod_name="tipc" # set module name
+             l_mod_type="net" # set module type
+             l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
+             f_module_fix()
+             {
+                l_dl="y" # Set to ignore duplicate checks
+                a_showconfig=() # Create array with modprobe output
+                while IFS= read -r l_showconfig; do
+                   a_showconfig+=("$l_showconfig")
+                done < <(modprobe --showconfig | grep -P -- '\b(install|blacklist)\h+'"${l_mod_name//-/_}"'\b')
+                if  lsmod | grep "$l_mod_name" &> /dev/null; then # Check if the module is currently loaded
+                   a_output2+=(" - unloading kernel module: \"$l_mod_name\"")
+                   modprobe -r "$l_mod_name" 2>/dev/null; rmmod "$l_mod_name" 2>/dev/null
+                fi
+                if ! grep -Pq -- '\binstall\h+'"${l_mod_name//- /_}"'\h+\/bin\/(true|false)\b' <<< "${a_showconfig[*]}"; then
+                   a_output2+=(" - setting kernel  module: \"$l_mod_name\" to \"/bin/false\"")
+                   printf '%s\n' "install $l_mod_name /bin/false" >> /etc/modprobe.d/"$l_mod_name".conf
+                fi
+                if ! grep -Pq -- '\bblacklist\h+'"${l_mod_name//-/_}"'\b' <<< "${a_showconfig[*]}"; then
+                   a_output2+=(" - denylisting kernel  module: \"$l_mod_name\"")
+                   printf '%s\n' "blacklist $l_mod_name" >> /etc/modprobe.d/"$l_mod_name".conf
+                fi
+             }
+             for l_mod_base_directory in $l_mod_path; do # Check if the module exists on the system
+                if [ -d "$l_mod_base_directory/${l_mod_name/-/\/}" ] && [ -n "$(ls -A $l_mod_base_directory/${l_mod_name/-/\/})" ]; then
+                   l_output3="$l_output3\n  - \"$l_mod_base_directory\""
+                   [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
+                   [ "$l_dl" != "y" ] && f_module_fix
+                else
+                   echo -e " - kernel module: \"$l_mod_name\" doesn't exist in \"$l_mod_base_directory\""
+                fi
+             done
+             [ -n "$l_output3" ] && echo -e "\n\n -- INFO --\n - module: \"$l_mod_name\" exists in:$l_output3"
+             [ "${#a_output2[@]}" -gt 0 ] && printf '%s\n' "${a_output2[@]}"
+             echo -e "\n - remediation of kernel module: \"$l_mod_name\" complete\n"
+          }
+          {% endraw %}
+        mode: '0700'
+      tags: [execute]
+
+    - name: "Execute the remediation script"
+      ansible.builtin.shell: "/bin/bash {{ script_path }}"
+      args:
+        executable: /bin/bash
+      register: rem_script_result
+      failed_when: false
+      tags: [execute]
+
+    - name: "Clean up script file"
+      ansible.builtin.file:
+        path: "{{ script_path }}"
+        state: absent
+      tags: [execute]
+
+    rescue:
+    - name: "Set failure details on script error"
+      set_fact:
+        rem_script_result: {rc: 1, stdout: "", stderr: "Script execution failed"}
+      tags: [execute]
+
+    always:
+    - name: "Store remediation task details"
+      set_fact:
+        task_01_name: "Apply remediation script for {{ kernel_module }}"
+        task_01_cmd: "/bin/bash {{ script_path }}"
+        task_01_rc: "{{ rem_script_result.rc | default(-1) }}"
+        data_01: "{{ rem_script_result.stdout | default('') | trim }}"
+        status_01: "{{ ('PASS' if rem_script_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
+        details_01: "{{ ('Completed successfully' if (rem_script_result.rc | default(-1) == 0) else 'Failed to execute') | trim }}"
+      tags: [execute]
+
+# Requirement 2: Verify compliance
+  - name: "Req 02 - Verify tipc module is not available"
+    ansible.builtin.shell: |
+      set -euo pipefail
+      # Check if module exists in any installed kernel
+      module_exists=false
+      for d in /lib/modules/*/kernel/net; do
+        if [ -d "$d/tipc" ] && [ -n "$(ls -A $d/tipc 2>/dev/null)" ]; then
+          module_exists=true
+          break
+        fi
+      done
+      if [ "$module_exists" = false ]; then
+        # Module does not exist → pass automatically
+        echo "PASS: tipc module does not exist in any kernel"
+        exit 0
+      fi
+      # Module exists → check configuration and load state
+      if lsmod | grep -q '^{{ kernel_module }} '; then
+        echo "FAIL: tipc module is loaded"
+        exit 1
+      fi
+      if ! grep -qr "blacklist {{ kernel_module }}" /etc/modprobe.d/; then
+        echo "FAIL: Blacklist entry missing"
+        exit 1
+      fi
+      if ! grep -qr "install {{ kernel_module }} /bin/false" /etc/modprobe.d/; then
+        echo "FAIL: Install /bin/false entry missing"
+        exit 1
+      fi
+      echo "PASS: tipc module is properly disabled"
+      exit 0
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store verification details"
+    set_fact:
+      task_02_name: "Verify tipc module is not available"
+      task_02_cmd: "Multiline shell check"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if verify_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_02: "{{ ('System compliant' if (verify_result.rc | default(-1) == 0) else 'Non-compliant') | trim }}"
+    tags: [execute]
+
+# Store the final remediation result in cis_result
+  - name: "Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_02 }}"
+    tags: [execute]
+
+# Requirement 3: Generate report (task name fixed per feedback)
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 3.2.2"
+      - "========================================================"
+      - ""
+      - "Reference: CIS Benchmark checkpoint 3.2.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not executed') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not executed') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove temporary script"
+    ansible.builtin.file:
+      path: "{{ script_path }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if tipc.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/tipc.conf.present"
+    register: _sg_restore_tipc_present
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore tipc.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/tipc.conf.present"
+      dest: "/etc/modprobe.d/{{ kernel_module }}.conf"
+      remote_src: true
+    when:
+    - _sg_restore_tipc_present.stat.exists | default(false)
+    - cis_result | default('') != 'PASS'
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if tipc.conf absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/tipc.conf.absent"
+    register: _sg_restore_tipc_absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete tipc.conf created by remediation"
+    ansible.builtin.file:
+      path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+      state: absent
+    when:
+    - _sg_restore_tipc_absent.stat.exists | default(false)
+    - cis_result | default('') != 'PASS'
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved module load state"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/tipc_load.state"
+    register: _sg_restore_load
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Reload tipc module if originally loaded"
+    ansible.builtin.shell: |
+      if [ "$(cat {{ state_guard_dir }}/tipc_load.state)" = "loaded" ]; then modprobe tipc 2>/dev/null; fi
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_load is not failed
+    - _sg_restore_load.content is defined
+    - cis_result | default('') != 'PASS'
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

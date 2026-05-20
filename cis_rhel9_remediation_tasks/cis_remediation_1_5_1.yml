@@ -1,0 +1,201 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_5_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ sysctl_conf_file }}"
+  register: cfg_stat
+  tags: [snapshot]
+- name: "Snapshot - Check if backup config already exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/60-kernel_sysctl.conf.backup"
+  register: backup_cfg_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists and backup not yet created"
+  ansible.builtin.copy:
+    src: "{{ sysctl_conf_file }}"
+    dest: "{{ backup_dir }}/60-kernel_sysctl.conf.backup"
+    remote_src: true
+  when:
+  - cfg_stat.stat.exists
+  - not (backup_cfg_stat.stat.exists | default(false))
+  tags: [snapshot]
+- name: "Snapshot - Mark config file as absent if not present"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/60-kernel_sysctl.conf.absent"
+  when: not cfg_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if kernel parameter backup exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/kernel_randomize_va_space.orig"
+  register: snap_param_stat
+  tags: [snapshot]
+- name: "Snapshot - Capture and save current kernel parameter value"
+  block:
+  - name: "Snapshot - Get current kernel parameter value"
+    ansible.builtin.shell: sysctl -n {{ kernel_param }}
+    args:
+      executable: /bin/bash
+    register: snap_kernel_value
+    changed_when: false
+
+  - name: "Snapshot - Save value to backup file"
+    ansible.builtin.copy:
+      content: "{{ snap_kernel_value.stdout | trim }}"
+      dest: "{{ backup_dir }}/kernel_randomize_va_space.orig"
+      mode: '0644'
+  when: not snap_param_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check sysctl installed"
+    ansible.builtin.shell: "which sysctl"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Ensure kernel.randomize_va_space in sysctl config"
+    ansible.builtin.lineinfile:
+      path: "{{ sysctl_conf_file }}"
+      regexp: |
+        ^kernel\.randomize_va_space
+      line: 'kernel.randomize_va_space = 2'
+      create: yes
+      mode: '0644'
+    register: result_02
+    failed_when: false
+    when: result_01.rc == 0
+    tags: [execute]
+
+  - name: "Req 03 - Apply active kernel parameter"
+    ansible.builtin.shell: "sysctl -w {{ kernel_param }}={{ kernel_value }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: result_01.rc == 0
+    tags: [execute]
+
+  - name: "Req 04 - Verify the setting"
+    ansible.builtin.shell: "sysctl {{ kernel_param }}"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: result_01.rc == 0
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-kernel_sysctl.conf.backup"
+    register: restore_config_stat
+    failed_when: false
+    when: "not permanent_remediation | default(false)"
+    tags: [restore]
+
+  - name: "Restore - Overwrite config with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/60-kernel_sysctl.conf.backup"
+      dest: "{{ sysctl_conf_file }}"
+      remote_src: true
+    when:
+    - "not permanent_remediation | default(false)"
+    - restore_config_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete config if it was absent before"
+    ansible.builtin.file:
+      path: "{{ sysctl_conf_file }}"
+      state: absent
+    when:
+    - "not permanent_remediation | default(false)"
+    - not restore_config_stat.stat.exists | default(false)
+    - ansible_check_mode is not defined or not ansible_check_mode
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if kernel parameter backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/kernel_randomize_va_space.orig"
+    register: restore_param_stat
+    failed_when: false
+    when: "not permanent_remediation | default(false)"
+    tags: [restore]
+
+  - name: "Restore - Read saved kernel parameter value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/kernel_randomize_va_space.orig"
+    register: restore_param_slurp
+    when:
+    - "not permanent_remediation | default(false)"
+    - restore_param_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore active kernel parameter"
+    ansible.builtin.shell: "sysctl -w {{ kernel_param }}={{ restore_param_slurp.content | b64decode | trim }}"
+    args:
+      executable: /bin/bash
+    when:
+    - "not permanent_remediation | default(false)"
+    - restore_param_stat.stat.exists | default(false)
+    - restore_param_slurp.content is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    when: "not permanent_remediation | default(false)"
+    tags: [restore]
+
+- name: "Generate remediation report"
+  ansible.builtin.debug:
+    msg:
+    - "REMEDIATION REPORT — CIS 1.5.1"
+    - "Reference: CIS Benchmark checkpoint 1.5.1"
+    - ""
+    - "Req 1 - Task: Check sysctl installed"
+    - "  Command: which sysctl"
+    - "  Exit code: {{ result_01.rc }}"
+    - "  Data: {{ result_01.stdout | default('') | trim }}"
+    - "  Status: {{ 'APPLIED' if result_01.rc == 0 else 'FAILED' }}"
+    - "  Details: {{ 'sysctl found at ' + result_01.stdout if result_01.rc == 0 else 'sysctl not found' }}"
+    - ""
+    - "Req 2 - Task: Ensure config line in {{ sysctl_conf_file }}"
+    - "  Command: lineinfile - path={{ sysctl_conf_file }} line='kernel.randomize_va_space = 2'"
+    - "  Exit code: {{ 0 if result_02 is not skipped and not result_02.failed else (1 if result_02.failed else 'N/A') }}"
+    - "  Data: {{ 'OK' if result_02 is not skipped and not result_02.failed else (result_02.stderr | default('') | trim) }}"
+    - "  Status: {{ 'SKIPPED' if result_01.rc != 0 else ('APPLIED' if result_02 is not skipped and not result_02.failed else 'FAILED') }}"
+    - "  Details: {{ 'sysctl not available' if result_01.rc != 0 else ('Config line ensured' if result_02 is not skipped and not result_02.failed else 'Error: ' + result_02.msg | default('') | trim) }}"
+    - ""
+    - "Req 3 - Task: Apply active kernel parameter"
+    - "  Command: sysctl -w {{ kernel_param }}={{ kernel_value }}"
+    - "  Exit code: {{ result_03.rc }}"
+    - "  Data: {{ result_03.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if result_01.rc != 0 else ('APPLIED' if result_03.rc == 0 else 'FAILED') }}"
+    - "  Details: {{ 'sysctl not available' if result_01.rc != 0 else ('Parameter set' if result_03.rc == 0 else 'Error: ' + result_03.stderr | default('') | trim) }}"
+    - ""
+    - "Req 4 - Task: Verify setting"
+    - "  Command: sysctl {{ kernel_param }}"
+    - "  Exit code: {{ result_04.rc }}"
+    - "  Data: {{ result_04.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if result_01.rc != 0 else ('APPLIED' if (result_04.stdout | default('') | trim is match('.* = 2')) else 'FAILED') }}"
+    - "  Details: {{ 'sysctl not available' if result_01.rc != 0 else ('Verification passed' if (result_04.stdout | default('') | trim is match('.* = 2')) else 'Verification failed: ' + result_04.stdout | default('') | trim) }}"
+    - ""
+    - "OVERALL REMEDIATION: {{ 'SKIPPED' if result_01.rc != 0 else ('APPLIED' if (result_04.stdout | default('') | trim is match('.* = 2')) else 'FAILED') }}"
+  tags: [execute]

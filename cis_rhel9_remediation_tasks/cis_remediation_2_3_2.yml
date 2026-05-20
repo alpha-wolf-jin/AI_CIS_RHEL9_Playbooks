@@ -1,0 +1,304 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_3_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/chrony.conf exists"
+  ansible.builtin.stat:
+    path: /etc/chrony.conf
+  register: _sg_chrony_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/chrony.conf if present"
+  ansible.builtin.copy:
+    src: /etc/chrony.conf
+    dest: "{{ backup_dir }}/chrony.conf.present"
+    remote_src: true
+  when: _sg_chrony_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/chrony.d/cis.conf exists"
+  ansible.builtin.stat:
+    path: /etc/chrony.d/cis.conf
+  register: _sg_cis_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/chrony.d/cis.conf if present"
+  ansible.builtin.copy:
+    src: /etc/chrony.d/cis.conf
+    dest: "{{ backup_dir }}/cis.conf.present"
+    remote_src: true
+  when: _sg_cis_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark /etc/chrony.d/cis.conf as absent if not present"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/cis.conf.absent"
+  when: not _sg_cis_conf_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE ===
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+    tags: [execute]
+
+# Requirement 1 - Check if chrony is installed
+  - name: "Req 01 - Check chrony installation"
+    shell: "which chronyd || dpkg -l | grep chrony || rpm -q chrony"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      chrony_available: "{{ result_01.rc == 0 }}"
+      task_01_name: "Check chrony installation"
+      task_01_cmd: "which chronyd || dpkg -l | grep chrony || rpm -q chrony"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if result_01.rc == 0 else 'SKIP') | trim }}"
+      details_01: "{{ ('chrony is installed' if result_01.rc == 0 else 'chrony is not installed - skipping remediation') | trim }}"
+    tags: [execute]
+
+  - name: "Set skipped statuses when chrony is absent"
+    set_fact:
+      status_02: "SKIP"
+      details_02: "chrony not installed"
+      status_03: "SKIP"
+      details_03: "chrony not installed"
+      status_04: "SKIP"
+      details_04: "chrony not installed"
+    when: not chrony_available
+    tags: [execute]
+
+# Requirement 2 - Add server line if none exists
+  - name: "Req 02 - Ensure server line in chrony config"
+    shell: |
+      if ! grep -Eq '^\s*(server|pool)\s+' /etc/chrony.conf /etc/chrony.d/*.conf 2>/dev/null; then
+        echo 'server pool.ntp.org iburst' > /etc/chrony.d/cis.conf
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: chrony_available | bool
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Ensure server line"
+      task_02_cmd: "if ! grep -Eq ... then echo 'server pool.ntp.org iburst' > /etc/chrony.d/cis.conf"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ 'NTP source added or already present' if result_02.rc == 0 else 'Failed to add server line' | trim }}"
+      status_02: "{{ ('PASS' if result_02.rc == 0 else 'FAIL') | trim }}"
+      details_02: "{{ ('Server line ensured' if result_02.rc == 0 else 'Error: could not ensure server line') | trim }}"
+    when: chrony_available | bool
+    tags: [execute]
+
+# Requirement 3 - Restart chronyd
+  - name: "Req 03 - Restart chrony service"
+    ansible.builtin.systemd:
+      name: chronyd
+      state: restarted
+    register: result_03
+    failed_when: false
+    when: chrony_available | bool
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Restart chronyd"
+      task_03_cmd: "systemctl restart chronyd"
+      task_03_rc: "{{ 0 if not result_03.failed else 1 }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ ('PASS' if not result_03.failed else 'FAIL') | trim }}"
+      details_03: "{{ 'Service restarted' if not result_03.failed else 'Failed to restart service' | trim }}"
+    when: chrony_available | bool
+    tags: [execute]
+
+# Requirement 4 - Verify synchronization
+  - name: "Req 04 - Verify chrony synchronization"
+    shell: |
+      chronyc sources -v | grep -E '^\*|\+' && echo "SYNCHRONIZED" || echo "NOT_SYNCHRONIZED"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: chrony_available | bool
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify chrony sync"
+      task_04_cmd: |
+        chronyc sources -v | grep -E '^\*|\+' && echo SYNCED
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ ('PASS' if 'SYNCHRONIZED' in result_04.stdout else 'FAIL') | trim }}"
+      details_04: "{{ ('Synchronized' if 'SYNCHRONIZED' in result_04.stdout else 'Not synchronized') | trim }}"
+    when: chrony_available | bool
+    tags: [execute]
+
+# Requirement 5 - Store cis_result
+  - name: "Req 05 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Set cis_result fact"
+      task_05_cmd: "N/A"
+      task_05_rc: 0
+      data_05: "{{ cis_result }}"
+      status_05: "{{ cis_result }}"
+      details_05: "Overall result set to {{ cis_result }}"
+    tags: [execute]
+
+# Requirement 6 - Generate remediation report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.3.2"
+      - "Reference: CIS Benchmark checkpoint 2.3.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === RESTORE PHASE ===
+  - name: "Restore - Check if chrony.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/chrony.conf.present"
+    register: _restore_chrony_conf
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/chrony.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/chrony.conf.present"
+      dest: /etc/chrony.conf
+      remote_src: true
+    register: _restore_chrony_conf_copy
+    when: _restore_chrony_conf.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if cis.conf absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cis.conf.absent"
+    register: _restore_cis_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete /etc/chrony.d/cis.conf (was absent before)"
+    ansible.builtin.file:
+      path: /etc/chrony.d/cis.conf
+      state: absent
+    when: _restore_cis_absent.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if cis.conf present backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cis.conf.present"
+    register: _restore_cis_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/chrony.d/cis.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/cis.conf.present"
+      dest: /etc/chrony.d/cis.conf
+      remote_src: true
+    register: _restore_cis_conf_copy
+    when: _restore_cis_present.stat.exists
+    failed_when: false
+    tags: [restore]
+
+        # Only restart chronyd if all config restores that ran succeeded.
+# This prevents compounding a failed config restore with an invalid service restart.
+  - name: "Restore - Restart chronyd after config restore"
+    ansible.builtin.systemd:
+      name: chronyd
+      state: restarted
+    when:
+    - "_restore_chrony_conf_copy.failed | default(false) == false"
+    - "_restore_cis_conf_copy.failed | default(false) == false"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

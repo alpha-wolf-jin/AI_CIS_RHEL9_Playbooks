@@ -1,0 +1,187 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_2_3_2.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check rsyslog package installation"
+  shell: "dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_01_pkg
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check rsyslog package installation"
+    task_01_cmd: "dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null"
+    task_01_rc: "{{ result_01_pkg.rc | default(-1) }}"
+    data_01: "{{ result_01_pkg.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01_pkg.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Package rsyslog is installed' if result_01_pkg.rc | default(-1) == 0 else 'Package rsyslog is not installed') | trim }}"
+    rsyslog_applicable: "{{ (result_01_pkg.rc | default(-1) == 0) }}"
+
+- name: "Set skipped statuses if rsyslog not installed"
+  set_fact:
+    status_02: "SKIP"
+    details_02: "Not applicable: rsyslog is not installed"
+    status_03: "SKIP"
+    details_03: "Not applicable: rsyslog is not installed"
+    status_04: "SKIP"
+    details_04: "SKIP: rsyslog is not installed, audit not applicable"
+  when: "not rsyslog_applicable | bool"
+
+- name: "Req 02 - Check if rsyslog service is enabled"
+  shell: "systemctl is-enabled rsyslog 2>/dev/null | grep 'enabled'"
+  args:
+    executable: /bin/bash
+  register: result_02_enabled
+  failed_when: false
+  changed_when: false
+  when: "rsyslog_applicable | default(false) | bool"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check if rsyslog service is enabled"
+    task_02_cmd: "systemctl is-enabled rsyslog 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ result_02_enabled.rc | default(-1) }}"
+    data_02: "{{ result_02_enabled.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if (result_02_enabled.rc | default(-1) == 0) else 'FAIL') | trim }}"
+    details_02: "{{ ('Service rsyslog is enabled' if result_02_enabled.rc | default(-1) == 0 else 'Service rsyslog is not enabled') | trim }}"
+  when: "rsyslog_applicable | default(false) | bool"
+
+- name: "Req 03 - Check if rsyslog service is active"
+  shell: "systemctl is-active rsyslog.service"
+  args:
+    executable: /bin/bash
+  register: result_03_active
+  failed_when: false
+  changed_when: false
+  when: "rsyslog_applicable | default(false) | bool"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Req 03 - Check if rsyslog service is active"
+    task_03_cmd: "systemctl is-active rsyslog.service"
+    task_03_rc: "{{ result_03_active.rc | default(-1) }}"
+    data_03: "{{ result_03_active.stdout | default('') | trim }}"
+    status_03: "{{ ('PASS' if (result_03_active.rc | default(-1) == 0 and 'active' in result_03_active.stdout | default('') | trim) else 'FAIL') | trim }}"
+    details_03: "{{ ('Service rsyslog is active' if (result_03_active.rc | default(-1) == 0 and 'active' in result_03_active.stdout | default('') | trim) else 'Service rsyslog is not active') | trim }}"
+  when: "rsyslog_applicable | default(false) | bool"
+
+- name: "Compute overall compliance status"
+  set_fact:
+    status_04: >-
+      {%- if not rsyslog_applicable | bool -%}
+        SKIP
+      {%- elif status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if not rsyslog_applicable | bool -%}
+        SKIP: rsyslog is not installed, audit not applicable
+      {%- elif status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' -%}
+        All requirements passed: rsyslog is installed, enabled, and active
+      {%- else -%}
+        One or more requirements failed
+      {%- endif -%}
+    task_04_name: "Overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "See individual requirements"
+
+- name: "Req 05 - Store cis_result for final audit result"
+  set_fact:
+    cis_result: "{{ status_04 }}"
+    task_05_name: "Req 05 - Store cis_result"
+    task_05_cmd: "set_fact: cis_result = {{ status_04 }}"
+    task_05_rc: 0
+    data_05: "{{ status_04 }}"
+    status_05: "PASS"
+    details_05: "cis_result set to overall compliance status"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.2.3.2"
+    - "Reference: CIS Benchmark checkpoint 6.2.3.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

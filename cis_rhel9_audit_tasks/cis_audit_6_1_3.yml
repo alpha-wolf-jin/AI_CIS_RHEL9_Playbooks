@@ -1,0 +1,180 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_1_3.yml
+
+- name: "Snapshot - record existence of audit script"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_snapshot
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+  tags: [execute]
+- name: "Check if AIDE package is installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [execute]
+- name: "Set AIDE installed fact"
+  ansible.builtin.set_fact:
+    aide_installed: "{{ 'aide' in ansible_facts.packages }}"
+    playbook_skipped: "{{ 'aide' not in ansible_facts.packages }}"
+  tags: [execute]
+- block:
+  - name: "Req 1 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: not playbook_skipped
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    when: not playbook_skipped
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: not playbook_skipped
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Req 01 - Execute audit script"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) if not playbook_skipped else -1 }}"
+      data_01: "{{ audit_result.stdout | default('') | trim if not playbook_skipped else 'Script not executed - AIDE not installed' }}"
+      status_01: >-
+        {{ 'SKIPPED' if playbook_skipped else ('PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'ERROR')) | trim }}
+      details_01: "{{ 'AIDE is not installed - not applicable' if playbook_skipped else ('Audit script executed successfully' if audit_result.rc | default(-1) == 0 else 'Audit script failed with exit code ' + (audit_result.rc | default(-1) | string)) | trim }}"
+    tags: [execute]
+
+  - name: "Req 2 - Determine compliance status"
+    ansible.builtin.set_fact:
+      status_02: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if '** PASS **' in audit_result.stdout | default('') else 'FAIL') | trim }}"
+      details_02: "{{ 'AIDE package not installed - not applicable' if playbook_skipped else (audit_result.stdout | default('') | trim) | trim }}"
+      task_02_name: "Req 02 - Evaluate compliance status"
+      task_02_cmd: "Parsed audit script output for PASS/FAIL markers"
+      task_02_rc: "0"
+    tags: [execute]
+
+  - name: "Req 2 - Store compliance data"
+    ansible.builtin.set_fact:
+      data_02: "{{ 'AIDE audit compliance: ' + status_02 }}"
+    tags: [execute]
+
+  - name: "Req 3 - Store final compliance result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'SKIPPED' if playbook_skipped | default(false) else status_02 | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Req 3 - Store final compliance result in cis_result"
+      task_03_cmd: "set_fact"
+      task_03_rc: "0"
+      data_03: "cis_result = {{ cis_result }}"
+      status_03: "PASS"
+      details_03: "Overall compliance status stored in cis_result"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Req 4 - Generate audit report"
+      task_04_cmd: "debug"
+      task_04_rc: "0"
+      data_04: "Audit report generated"
+      status_04: "PASS"
+      details_04: "Audit report displayed"
+    tags: [execute]
+
+  - name: "Req 4 - Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 6.1.3"
+      - "Reference: CIS Benchmark checkpoint 6.1.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - get file state"
+    ansible.builtin.stat:
+      path: "{{ audit_script }}"
+    register: script_restore
+    tags: [restore]
+
+  - name: "Restore - delete temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - script_restore.stat is defined
+    - script_restore.stat.exists
+    tags: [restore]

@@ -1,0 +1,209 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_3_1_4.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+# Requirement 1: Check if selinux-policy-targeted package is installed
+- name: "Req 01 - Check if SELinux is installed using rpm -q selinux-policy-targeted"
+  ansible.builtin.shell: rpm -q selinux-policy-targeted
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if SELinux is installed"
+    task_01_cmd: "rpm -q selinux-policy-targeted"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ 'Package installed' if result_01.rc | default(-1) == 0 else 'Package not found' | trim }}"
+    selinux_installed: "{{ result_01.rc | default(-1) == 0 }}"
+
+# Requirement 2: Check current SELinux mode (only if installed)
+- name: "Req 02 - Check current SELinux mode using getenforce"
+  ansible.builtin.shell: getenforce
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: selinux_installed | bool
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check current SELinux mode"
+    task_02_cmd: "getenforce"
+    task_02_rc: "{{ result_02.rc | default(-1) if not (result_02.skipped | default(false)) else -1 }}"
+    data_02: "{{ result_02.stdout | default('') | trim if not (result_02.skipped | default(false)) else 'SKIPPED' }}"
+    status_02: >-
+      {{ 
+        'PASS' if (not (result_02.skipped | default(false)) and 
+                    result_02.rc == 0 and 
+                    (result_02.stdout | default('') | trim | regex_search('^(Enforcing|Permissive)$')))
+        else ('SKIPPED' if result_02.skipped | default(false)
+        else 'FAIL')
+      | trim }}
+    details_02: >-
+      {{ 
+        'Current mode is Enforcing or Permissive' if (not (result_02.skipped | default(false)) and 
+                                                      result_02.rc == 0 and 
+                                                      (result_02.stdout | default('') | trim | regex_search('^(Enforcing|Permissive)$')))
+        else ('SELinux not installed' if result_02.skipped | default(false)
+        else 'Current mode is Disabled or could not be determined')
+      | trim }}
+
+# Requirement 3: Check configured SELinux mode (only if installed)
+- name: "Req 03 - Check configured SELinux mode in /etc/selinux/config"
+  ansible.builtin.shell: grep -Ei '^\s*SELINUX=(enforcing|permissive)' /etc/selinux/config
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: selinux_installed | bool
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check configured SELinux mode"
+    task_03_cmd: |
+      grep -Ei '^\\s*SELINUX=(enforcing|permissive)' /etc/selinux/config
+    task_03_rc: "{{ result_03.rc | default(-1) if not (result_03.skipped | default(false)) else -1 }}"
+    data_03: "{{ result_03.stdout | default('') | trim if not (result_03.skipped | default(false)) else 'SKIPPED' }}"
+    status_03: >-
+      {{ 
+        'PASS' if (not (result_03.skipped | default(false)) and 
+                    result_03.rc == 0 and 
+                    (result_03.stdout | default('') | regex_search('SELINUX=(enforcing|permissive)', ignorecase=True)))
+        else ('SKIPPED' if result_03.skipped | default(false)
+        else 'FAIL')
+      | trim }}
+    details_03: >-
+      {{ 
+        'Configured mode is Enforcing or Permissive' if (not (result_03.skipped | default(false)) and 
+                                                          result_03.rc == 0 and 
+                                                          (result_03.stdout | default('') | regex_search('SELINUX=(enforcing|permissive)', ignorecase=True)))
+        else ('SELinux not installed' if result_03.skipped | default(false)
+        else 'Configured mode is Disabled or could not be determined')
+      | trim }}
+
+# Requirement 4: Overall compliance summary
+- name: "Req 04 - Summarize overall compliance status"
+  set_fact:
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A (evaluation)"
+    task_04_rc: 0
+    data_04: >-
+      {{ 
+        'Current mode: ' ~ status_02 ~ ', Configured mode: ' ~ status_03 
+      }}
+    status_04: >-
+      {{ 
+        'PASS' if status_02 == 'PASS' and status_03 == 'PASS'
+        else ('NOT_APPLICABLE' if status_02 == 'SKIPPED' and status_03 == 'SKIPPED'
+        else 'FAIL')
+      | trim }}
+    details_04: >-
+      {{ 
+        'Both current and configured SELinux modes are enforcing or permissive' if (status_02 == 'PASS' and status_03 == 'PASS')
+        else ('SELinux is not installed or applicable' if (status_02 == 'SKIPPED' and status_03 == 'SKIPPED')
+        else 'SELinux mode is disabled or one of the checks failed')
+      | trim }}
+
+# Requirement 5: Store final audit result in cis_result
+- name: "Req 05 - Store final audit result in cis_result"
+  set_fact:
+    task_05_name: "Store final audit result"
+    task_05_cmd: "N/A (set_fact)"
+    task_05_rc: 0
+    data_05: "cis_result set to overall compliance status"
+    status_05: "{{ status_04 }}"
+    details_05: "{{ 'Overall compliance derived from requirements 1-4' if status_04 == 'PASS' else 'Overall compliance: ' ~ status_04 }}"
+    cis_result: "{{ status_04 }}"
+
+# Final audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.3.1.4"
+    - "Reference: CIS Benchmark checkpoint 1.3.1.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

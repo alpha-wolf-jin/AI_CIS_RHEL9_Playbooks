@@ -1,0 +1,6 @@
+autofs_package: "autofs"
+req_01: "Check if autofs package is installed using command: `rpm -q autofs`. Expected result: package autofs is not installed"
+req_02: "If autofs package is installed and required for dependencies, check if autofs.service is enabled using command: `systemctl is-enabled autofs.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If autofs package is installed and required for dependencies, check if autofs.service is active using command: `systemctl is-active autofs.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "If autofs package is installed and required for dependencies, verify that the dependent package is approved by local site policy and that stopping and masking the service and/or socket meets local site policy. Expected result: Compliance with local site policy"
+req_05: "Summarize overall compliance status: autofs services are not in use or are properly managed according to site policy."

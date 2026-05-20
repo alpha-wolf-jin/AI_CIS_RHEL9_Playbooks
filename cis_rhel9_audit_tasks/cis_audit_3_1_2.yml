@@ -1,0 +1,140 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_3_1_2.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: ""
+    task_01_name: ""
+    task_01_cmd: ""
+    task_01_rc: -1
+    status_01: "UNKNOWN"
+    details_01: ""
+    data_02: ""
+    task_02_name: ""
+    task_02_cmd: ""
+    task_02_rc: -1
+    status_02: "UNKNOWN"
+    details_02: ""
+    data_03: ""
+    task_03_name: ""
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    status_03: "UNKNOWN"
+    details_03: ""
+    cis_result: "UNKNOWN"
+
+- name: "Req 01 - Execute the provided audit script"
+  ansible.builtin.shell: |
+    {% raw %}
+    #!/usr/bin/env bash
+    {
+       l_output="" l_output2=""
+       module_chk()
+       {
+          l_loadable="$(modprobe -n -v "$l_mname")"
+          if grep -Pq -- '^\h*install \/bin\/(true|false)' <<< "$l_loadable"; then
+             l_output="$l_output\n - module: \"$l_mname\" is not loadable: \"$l_loadable\""
+          else
+             l_output2="$l_output2\n - module: \"$l_mname\" is loadable: \"$l_loadable\""
+          fi
+          if ! lsmod | grep "$l_mname" > /dev/null 2>&1; then
+             l_output="$l_output\n - module: \"$l_mname\" is not loaded"
+          else
+             l_output2="$l_output2\n - module: \"$l_mname\" is loaded"
+          fi
+          if modprobe --showconfig | grep -Pq -- "^\h*blacklist\h+$l_mname\b"; then
+             l_output="$l_output\n - module: \"$l_mname\" is deny listed in: \"$(grep -Pl -- "^\h*blacklist\h+$l_mname\b" /etc/modprobe.d/*)\""
+          else
+             l_output2="$l_output2\n - module: \"$l_mname\" is not deny listed"
+          fi
+       }
+       if [ -n "$(find /sys/class/net/*/ -type d -name wireless)" ]; then
+          l_dname=$(for driverdir in $(find /sys/class/net/*/ -type d -name wireless | xargs -0 dirname); do basename "$(readlink -f "$driverdir"/device/driver/module)";done | sort -u)
+          for l_mname in $l_dname; do
+             module_chk
+          done
+       fi
+       if [ -z "$l_output2" ]; then
+          echo -e "\n- Audit Result:\n  ** PASS **"
+          if [ -z "$l_output" ]; then
+             echo -e "\n - System has no wireless NICs installed"
+          else
+             echo -e "\n$l_output\n"
+          fi
+       else
+          echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output2\n"
+          [ -n "$l_output" ] && echo -e "\n- Correctly set:\n$l_output\n"
+       fi
+    }
+    {% endraw %}
+  args:
+    executable: /bin/bash
+  register: audit_result
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Execute audit script"
+    task_01_cmd: "Inline bash script (see audit script content)"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (audit_result.rc | default(-1) | int) == 0 else 'FAIL' }}"
+    details_01: "{{ 'Audit script executed successfully' if (audit_result.rc | default(-1) | int) == 0 else 'Audit script execution failed' }}"
+
+- name: "Req 02 - Set audit result fact for wireless interfaces compliance"
+  set_fact:
+    task_02_name: "Set compliance fact from audit result"
+    task_02_cmd: "N/A"
+    task_02_rc: 0
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'UNKNOWN') | trim }}"
+    details_02: >-
+      {{ 'Compliant: wireless interfaces are disabled' if '** PASS **' in audit_result.stdout | default('')
+         else ('Non-compliant: wireless interfaces are active' if '** FAIL **' in audit_result.stdout | default('')
+         else 'Unable to determine compliance') | trim }}
+
+- name: "Req 03 - Store overall compliance in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+    status_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+    details_03: "Overall compliance stored in cis_result as {{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_name: "Set cis_result from status_02"
+    task_03_cmd: "N/A (set_fact)"
+    task_03_rc: 0
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 3.1.2"
+    - "Reference: CIS Benchmark checkpoint 3.1.2"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

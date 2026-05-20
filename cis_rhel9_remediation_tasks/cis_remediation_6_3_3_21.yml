@@ -1,0 +1,252 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_21.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/audit/rules.d exists"
+  ansible.builtin.stat:
+    path: "/etc/audit/rules.d"
+  register: _sg_rules_dir
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/audit/rules.d directory"
+  ansible.builtin.shell: |
+    if [ -d /etc/audit/rules.d ]; then
+      cp -r /etc/audit/rules.d "{{ state_guard_dir }}/rules.d"
+    fi
+  args:
+    executable: /bin/bash
+  when: _sg_rules_dir.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/audit/rules.d as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/rules.d.absent"
+  when: not _sg_rules_dir.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Save current audit rules"
+  ansible.builtin.shell: auditctl -l
+  args:
+    executable: /bin/bash
+  register: _sg_audit_rules
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Persist audit rules to file"
+  ansible.builtin.copy:
+    content: "{{ _sg_audit_rules.stdout | default('') }}"
+    dest: "{{ state_guard_dir }}/audit_rules.state"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    playbook_skipped: false
+  tags: [execute]
+- block:
+        # === EXECUTE PHASE ===
+
+# Requirement 1: Check if auditd is installed
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if auditd not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'audit' not in ansible_facts.packages }}"
+    tags: [execute]
+
+# Requirement 1: Apply remediation - augenrules --load
+  - name: "Req 01 - Merge and load all audit rules with augenrules"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 01 - Check if reboot is required"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -s | grep "enabled"
+    args:
+      executable: /bin/bash
+    register: result_01_reboot
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 01 - Reboot if required"
+    ansible.builtin.reboot:
+      reboot_timeout: 180
+    when:
+    - "not playbook_skipped"
+    - "result_01_reboot.stdout | default('') | regex_search('2')"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Merge and load audit rules with augenrules --load"
+      task_01_cmd: "augenrules --load"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if playbook_skipped else ('APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED') }}"
+      details_01: "{{ 'auditd not installed' if playbook_skipped else ('Rules merged and loaded successfully' if result_01.rc | default(-1) == 0 else 'Failed to merge and load rules') }}"
+    tags: [execute]
+
+# Requirement 2: VERIFY
+  - name: "Req 02 - Verify running and on-disk audit configuration match"
+    ansible.builtin.shell: |
+      set -o pipefail
+      augenrules --check 2>&1 || echo "MISMATCH"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify running and on-disk audit configuration match"
+      task_02_cmd: "augenrules --check"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if playbook_skipped else ('APPLIED' if 'MISMATCH' not in result_02.stdout | default('') else 'FAILED') }}"
+      details_02: "{{ 'auditd not installed' if playbook_skipped else ('Running and on-disk configuration match' if 'MISMATCH' not in result_02.stdout | default('') else 'Running and on-disk configuration do not match') }}"
+    tags: [execute]
+
+# Requirement 3: Generate remediation report
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.3.3.21"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.21"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if rules.d backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/rules.d"
+    register: _sg_restore_rules_dir
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/audit/rules.d from backup"
+    ansible.builtin.shell: |
+      rm -rf /etc/audit/rules.d/*
+      cp -r "{{ state_guard_dir }}/rules.d/"* /etc/audit/rules.d/
+    args:
+      executable: /bin/bash
+    when: _sg_restore_rules_dir.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/rules.d.absent"
+    register: _sg_restore_absent_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /etc/audit/rules.d if it was absent"
+    ansible.builtin.file:
+      path: "/etc/audit/rules.d"
+      state: absent
+    when: _sg_restore_absent_marker.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved audit rules"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/audit_rules.state"
+    register: _sg_restore_rules_data
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Reload original audit rules"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_rules_data is not failed
+    - _sg_restore_rules_data.content is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

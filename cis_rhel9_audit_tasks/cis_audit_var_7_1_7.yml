@@ -1,0 +1,6 @@
+req_01: "Check if /etc/gshadow exists using command: `stat -Lc '%s' /etc/gshadow 2>/dev/null || echo 'NOT_FOUND'`. Expected result: a numeric size (file exists)."
+req_02: "Check permissions on /etc/gshadow using command: `stat -Lc 'Access: (%#a/%A)' /etc/gshadow`. Expected result: Access: (0/----------)"
+req_03: "Check UID ownership on /etc/gshadow using command: `stat -Lc 'Uid: ( %u/ %U)' /etc/gshadow`. Expected result: Uid: ( 0/ root)"
+req_04: "Check GID ownership on /etc/gshadow using command: `stat -Lc 'Gid: ( %g/ %G)' /etc/gshadow`. Expected result: Gid: ( 0/ root)"
+req_05: "Summarize overall compliance: if all above checks pass, then compliant; otherwise non-compliant."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

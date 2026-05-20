@@ -1,0 +1,139 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_3_2_3.yml
+
+- name: "Snapshot - Ensure backup directory exists"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0750'
+  changed_when: false
+  failed_when: false
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_stat_pre
+  failed_when: false
+  changed_when: false
+
+- name: "Snapshot - Record marker if script does not exist"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}/script_did_not_exist"
+    state: touch
+  when:
+  - not script_stat_pre.stat.exists
+  failed_when: false
+  changed_when: false
+
+
+- block:
+  - name: "Req 01 - Copy audit script for rds module"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      content: "{{ audit_script_content }}"
+      mode: '0700'
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01 - Execute audit script for rds module"
+    ansible.builtin.shell: "/bin/bash {{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Store requirement details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute audit script for rds module"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if 'PASS' in audit_result.stdout | default('') else 'FAIL' if 'FAIL' in audit_result.stdout | default('') else 'UNKNOWN') | trim }}"
+      details_01: "{{ ('Audit script completed successfully' if audit_result.rc | default(-1) | int == 0 else 'Audit script execution failed') | trim }}"
+
+  - name: "Req 02 - Evaluate compliance status for rds module"
+    ansible.builtin.set_fact:
+      task_02_name: "Summarise compliance status"
+      task_02_cmd: "Evaluate compliance from audit output"
+      task_02_rc: "0"
+      data_02: "{{ ('PASS' if 'PASS' in audit_result.stdout | default('') else 'FAIL' if 'FAIL' in audit_result.stdout | default('') else 'UNKNOWN') | trim }}"
+      status_02: "{{ ('PASS' if 'PASS' in audit_result.stdout | default('') else 'FAIL' if 'FAIL' in audit_result.stdout | default('') else 'UNKNOWN') | trim }}"
+      details_02: "{{ ('Compliance status derived from audit output' if 'PASS' in audit_result.stdout | default('') else 'Compliance check returned FAIL' if 'FAIL' in audit_result.stdout | default('') else 'Unable to determine compliance from audit output') | trim }}"
+
+  - name: "Req 03 - Store cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+  - name: "Req 04 - Set report variables"
+    ansible.builtin.set_fact:
+      task_04_name: "Generate audit report"
+      task_04_cmd: "debug msg"
+      task_04_rc: "0"
+      data_04: "Report generated successfully"
+      status_04: "PASS"
+      details_04: "Audit report displayed"
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 3.2.3"
+      - "Reference: CIS Benchmark checkpoint 3.2.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store cis_result using set_fact"
+      - "  Command: set_fact cis_result={{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Exit code: 0"
+      - "  Data: cis_result stored as {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Status: PASS"
+      - "  Details: cis_result variable set from status_02"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+  always:
+  - name: "Always - Check if script marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/script_did_not_exist"
+    register: marker_stat
+    failed_when: false
+    changed_when: false
+
+  - name: "Always - Remove audit script if it was created by us"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: marker_stat.stat.exists
+    failed_when: false
+    changed_when: false
+
+  - name: "Always - Clean up marker"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/script_did_not_exist"
+      state: absent
+    failed_when: false
+    changed_when: false

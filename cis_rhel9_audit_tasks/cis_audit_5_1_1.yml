@@ -1,0 +1,136 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_1.yml
+
+- name: "Check if openssh-server package is installed using package_facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set sshd_installed fact"
+  ansible.builtin.set_fact:
+    sshd_installed: "{{ 'openssh-server' in ansible_facts.packages | default({}) }}"
+
+- name: "Req 01 - Run audit script to check permissions on sshd configuration files"
+  ansible.builtin.shell: |
+    /bin/bash <<'SCRIPT_EOF'
+    {{ audit_script_content }}
+    SCRIPT_EOF
+  args:
+    executable: /bin/bash
+  register: audit_result
+  failed_when: false
+  changed_when: false
+  when: sshd_installed | bool
+
+- name: "Record requirement 01 details"
+  set_fact:
+    task_01_name: "Run provided audit script to check sshd config file permissions"
+    task_01_cmd: "The complete CIS audit script (heredoc)"
+    task_01_rc: "{{ audit_result.rc | default(-1) if audit_result is defined else -1 }}"
+    data_01: "{{ (audit_result.stdout | default('')) if audit_result is defined else '' }}"
+    status_01: >-
+      {%- if not (sshd_installed | bool) -%}
+        SKIP
+      {%- elif audit_result is defined and audit_result.rc | default(-1) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_01: >-
+      {%- if not (sshd_installed | bool) -%}
+        Prerequisite not met - openssh-server not installed
+      {%- elif audit_result is defined and audit_result.rc | default(-1) == 0 -%}
+        Script executed successfully
+      {%- else -%}
+        Script execution failed with rc={{ audit_result.rc | default(-1) }}
+      {%- endif -%}
+
+- name: "Record requirement 02 details"
+  set_fact:
+    task_02_name: "Verify compliance status from audit script output"
+    task_02_cmd: "Evaluation of script output for PASS/FAIL"
+    task_02_rc: "{{ audit_result.rc | default(-1) if audit_result is defined else -1 }}"
+    data_02: "{{ (audit_result.stdout | default('')) if audit_result is defined else '' }}"
+    status_02: >-
+      {%- if not (sshd_installed | bool) -%}
+        SKIP
+      {%- elif audit_result is defined and audit_result.stdout is defined and '*** PASS ***' in audit_result.stdout -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not (sshd_installed | bool) -%}
+        Prerequisite not met - openssh-server not installed
+      {%- elif audit_result is defined and audit_result.stdout is defined and '*** PASS ***' in audit_result.stdout -%}
+        Configuration is compliant - all sshd config files have correct permissions and ownership
+      {%- else -%}
+        Configuration is NOT compliant - some sshd config files have incorrect permissions or ownership
+      {%- endif -%}
+
+- name: "Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | default('ERROR') | trim }}"
+
+- name: "Record requirement 03 details"
+  set_fact:
+    task_03_name: "Store final audit result"
+    task_03_cmd: "set_fact cis_result = {{ cis_result | default('ERROR') }}"
+    task_03_rc: 0
+    data_03: "{{ cis_result | default('ERROR') | trim }}"
+    status_03: "PASS"
+    details_03: "cis_result set to {{ cis_result }} - overall compliance status"
+
+- name: "Record requirement 04 details"
+  set_fact:
+    task_04_name: "Generate audit report"
+    task_04_cmd: "debug msg with audit report"
+    task_04_rc: 0
+    data_04: "N/A"
+    status_04: "PASS"
+    details_04: "Report generated"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.1"
+    - "Reference: CIS Benchmark checkpoint 5.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

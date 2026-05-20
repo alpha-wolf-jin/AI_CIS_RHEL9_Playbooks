@@ -1,0 +1,14 @@
+req_01: "Check if auditd is installed using command: `which auditctl && which aureport && which ausearch && which autrace && which auditd && which augenrules`. Expected result: All paths should exist."
+req_02: |
+  Check that /sbin/auditctl is owned by root using command: `stat -Lc \"%n %U\" /sbin/auditctl | awk '$2 != \"root\" {print}'`. Expected result: No output.
+req_03: |
+  Check that /sbin/aureport is owned by root using command: `stat -Lc \"%n %U\" /sbin/aureport | awk '$2 != \"root\" {print}'`. Expected result: No output.
+req_04: |
+  Check that /sbin/ausearch is owned by root using command: `stat -Lc \"%n %U\" /sbin/ausearch | awk '$2 != \"root\" {print}'`. Expected result: No output.
+req_05: |
+  Check that /sbin/autrace is owned by root using command: `stat -Lc \"%n %U\" /sbin/autrace | awk '$2 != \"root\" {print}'`. Expected result: No output.
+req_06: |
+  Check that /sbin/auditd is owned by root using command: `stat -Lc \"%n %U\" /sbin/auditd | awk '$2 != \"root\" {print}'`. Expected result: No output.
+req_07: |
+  Check that /sbin/augenrules is owned by root using command: `stat -Lc \"%n %U\" /sbin/augenrules | awk '$2 != \"root\" {print}'`. Expected result: No output.
+req_08: "Summarize overall compliance: All audit tool files must be owned by root. Expected result: No output from any of the above checks."

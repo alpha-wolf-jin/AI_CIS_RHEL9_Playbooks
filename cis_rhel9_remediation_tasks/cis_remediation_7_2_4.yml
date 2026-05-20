@@ -1,0 +1,359 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_7_2_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if passwd file exists"
+  ansible.builtin.stat:
+    path: "{{ passwd_file }}"
+  register: _snap_passwd_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup passwd file if exists"
+  ansible.builtin.copy:
+    src: "{{ passwd_file }}"
+    dest: "{{ backup_dir }}/passwd.backup"
+    remote_src: true
+  when: _snap_passwd_stat.stat.exists
+  tags: [snapshot]
+
+- name: "Initialize report variables"
+  set_fact:
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    duplicate_uids: []
+    remediation_applied: false
+  tags: [execute]
+- block:
+  - name: "Req 01 - Check if passwd file is readable"
+    ansible.builtin.shell: "test -r {{ passwd_file }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if passwd file is readable"
+      task_01_cmd: "test -r {{ passwd_file }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.rc | default(-1) | string }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'Passwd file is readable' if (result_01.rc | default(-1)) == 0 else 'Passwd file is not readable' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Identify duplicate UIDs"
+    ansible.builtin.shell: "awk -F: '{print $3}' {{ passwd_file }} | sort | uniq -d"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "(result_01.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Identify duplicate UIDs"
+      task_02_cmd: "awk -F: '{print $3}' {{ passwd_file }} | sort | uniq -d"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_02: "{{ 'Duplicate UIDs found: ' + (result_02.stdout | default('') | trim) if (result_02.stdout | default('') | trim) != '' else 'No duplicate UIDs found' }}"
+      duplicate_uids: "{{ result_02.stdout_lines | default([]) }}"
+    when: result_02 is defined
+    tags: [execute]
+
+  - name: "Req 03 - List users sharing duplicate UIDs"
+    ansible.builtin.shell: |
+      {% raw %}
+      for uid in $(awk -F: '{print $3}' /etc/passwd | sort | uniq -d); do
+        echo "=== UID: $uid ==="
+        awk -F: -v uid="$uid" '$3 == uid {print $1}' /etc/passwd
+      done
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    when:
+    - "result_02 is defined"
+    - "(result_02.stdout | default('') | trim) != ''"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "List users sharing duplicate UIDs"
+      task_03_cmd: "awk -F: -v uid='<DUPLICATE_UID>' '$3 == uid {print $1}' /etc/passwd (for each duplicate UID)"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'SKIPPED' if (result_03.skipped | default(false)) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_03: "{{ 'No duplicate UIDs to list' if (result_03.skipped | default(false)) else ('Users listed for each duplicate UID' if (result_03.rc | default(-1)) == 0 else 'Failed to list users') }}"
+    when: result_03 is defined
+    tags: [execute]
+
+  - name: "Req 04 - Find files owned by duplicate UIDs"
+    ansible.builtin.shell: |
+      {% raw %}
+      for uid in $(awk -F: '{print $3}' /etc/passwd | sort | uniq -d); do
+        echo "=== Files owned by UID: $uid ==="
+        find / -user "$uid" -ls 2>/dev/null
+      done
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when:
+    - "result_02 is defined"
+    - "(result_02.stdout | default('') | trim) != ''"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Find files owned by duplicate UIDs"
+      task_04_cmd: "find / -user <DUPLICATE_UID> -ls 2>/dev/null (for each duplicate UID)"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'SKIPPED' if (result_04.skipped | default(false)) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_04: "{{ 'No duplicate UIDs to process' if (result_04.skipped | default(false)) else ('Files listed for each duplicate UID' if (result_04.rc | default(-1)) == 0 else 'Failed to list files') }}"
+    when: result_04 is defined
+    tags: [execute]
+
+  - name: "Req 05 - Assign new unique UIDs to users with duplicate UIDs"
+    ansible.builtin.shell: |
+      {% raw %}
+      new_uid=2000
+      for uid in $(awk -F: '{print $3}' /etc/passwd | sort | uniq -d); do
+        users=$(awk -F: -v uid="$uid" '$3 == uid && $1 != "root" {print $1}' /etc/passwd)
+        for user in $users; do
+          while awk -F: -v uid="$new_uid" '$3 == uid {exit 1}' /etc/passwd; do
+            new_uid=$((new_uid + 1))
+          done
+          usermod -u "$new_uid" "$user"
+          echo "Changed $user from UID $uid to $new_uid"
+          new_uid=$((new_uid + 1))
+        done
+      done
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    when:
+    - "result_02 is defined"
+    - "(result_02.stdout | default('') | trim) != ''"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Assign new unique UIDs to users"
+      task_05_cmd: "usermod -u <NEW_UNIQUE_UID> <username> (for each user with duplicate UID)"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: "{{ 'SKIPPED' if (result_05.skipped | default(false)) else ('PASS' if (result_05.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_05: "{{ 'No duplicate UIDs to process' if (result_05.skipped | default(false)) else ('New UIDs assigned' if (result_05.rc | default(-1)) == 0 else 'Failed to assign new UIDs') }}"
+      remediation_applied: "{{ true if (result_05.rc | default(-1)) == 0 else false }}"
+    when: result_05 is defined
+    tags: [execute]
+
+  - name: "Req 06 - Reassign file ownership to new UIDs"
+    ansible.builtin.shell: |
+      {% raw %}
+      for uid in $(awk -F: '{print $3}' /etc/passwd | sort | uniq -d); do
+        users=$(awk -F: -v uid="$uid" '$3 == uid && $1 != "root" {print $1}' /etc/passwd)
+        for user in $users; do
+          new_uid=$(id -u "$user" 2>/dev/null)
+          if [ -n "$new_uid" ] && [ "$new_uid" != "$uid" ]; then
+            find / -user "$uid" -exec chown "$new_uid" {} + 2>/dev/null
+            echo "Reassigned files from UID $uid to $new_uid ($user)"
+          fi
+        done
+      done
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    when:
+    - "result_05 is defined"
+    - "remediation_applied | default(false) | bool"
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Reassign file ownership to new UIDs"
+      task_06_cmd: "find / -user <OLD_DUPLICATE_UID> -exec chown <NEW_UNIQUE_UID> {} + 2>/dev/null"
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: "{{ 'SKIPPED' if (result_06.skipped | default(false)) else ('PASS' if (result_06.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_06: "{{ 'No duplicate UIDs to process' if (result_06.skipped | default(false)) else ('File ownership reassigned' if (result_06.rc | default(-1)) == 0 else 'Failed to reassign file ownership') }}"
+    when: result_06 is defined
+    tags: [execute]
+
+  - name: "Req 07 - Verify no duplicate UIDs remain"
+    ansible.builtin.shell: "awk -F: '{print $3}' {{ passwd_file }} | sort | uniq -d"
+    args:
+      executable: /bin/bash
+    register: result_07
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 07 details"
+    set_fact:
+      task_07_name: "Verify no duplicate UIDs remain"
+      task_07_cmd: "awk -F: '{print $3}' {{ passwd_file }} | sort | uniq -d"
+      task_07_rc: "{{ result_07.rc | default(-1) }}"
+      data_07: "{{ result_07.stdout | default('') | trim }}"
+      status_07: "{{ 'PASS' if (result_07.stdout | default('') | trim) == '' else 'FAIL' }}"
+      details_07: "{{ 'No duplicate UIDs remain' if (result_07.stdout | default('') | trim) == '' else 'Duplicate UIDs still present: ' + (result_07.stdout | default('') | trim) }}"
+    tags: [execute]
+
+  - name: "Set cis_result for final report"
+    set_fact:
+      cis_result: "{{ status_07 }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 7.2.4"
+      - "Reference: CIS Benchmark checkpoint 7.2.4"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/passwd.backup"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite passwd with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/passwd.backup"
+      dest: "{{ passwd_file }}"
+      remote_src: true
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

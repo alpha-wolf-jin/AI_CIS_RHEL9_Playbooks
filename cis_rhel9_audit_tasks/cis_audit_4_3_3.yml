@@ -1,0 +1,170 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_4_3_3.yml
+
+- name: "Gather installed package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [audit]
+- name: "Set nftables installed fact"
+  ansible.builtin.set_fact:
+    nftables_installed: "{{ 'nftables' in ansible_facts.packages }}"
+  tags: [audit]
+- name: "Initialize report variables"
+  ansible.builtin.set_fact:
+    task_01_name: "Not recorded"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_02_name: "Not recorded"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_03_name: "Not recorded"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_04_name: "Not recorded"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+  tags: [audit]
+- name: "Req 1 - Check if nftables service is enabled"
+  ansible.builtin.command:
+    cmd: systemctl --quiet is-enabled nftables.service
+  register: result_01
+  failed_when: false
+  when: nftables_installed
+  tags: [audit]
+- name: "Store Req 1 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if nftables service is enabled"
+    task_01_cmd: "systemctl --quiet is-enabled nftables.service"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.rc | default(-1) | string }}"
+    status_01: "{{ 'SKIPPED' if not nftables_installed else 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+    details_01: "{{ 'Not applicable - nftables package not installed' if not nftables_installed else 'Service is enabled' if result_01.rc | default(-1) == 0 else 'Service is not enabled' }}"
+  tags: [audit]
+- name: "Req 2 - Check nftables input hook default policy"
+  ansible.builtin.shell: >
+    systemctl --quiet is-enabled nftables.service &&
+    nft list ruleset | grep 'hook input' | grep -v 'policy drop'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  when:
+  - nftables_installed
+  - result_01.rc | default(-1) == 0
+  tags: [audit]
+- name: "Store Req 2 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check nftables input hook default policy"
+    task_02_cmd: "systemctl --quiet is-enabled nftables.service && nft list ruleset | grep 'hook input' | grep -v 'policy drop'"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim if (nftables_installed and result_01.rc | default(-1) == 0) else 'N/A' }}"
+    status_02: "{{ 'SKIPPED' if not nftables_installed else 'SKIPPED' if result_01.rc | default(-1) != 0 else 'PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL' }}"
+    details_02: "{{ 'Not applicable - nftables package not installed' if not nftables_installed else 'Skipped - nftables service not enabled' if result_01.rc | default(-1) != 0 else 'Input base chain has default DROP policy' if (result_02.stdout | default('') | trim) == '' else 'Non-compliant hooks: ' ~ (result_02.stdout | default('') | trim) }}"
+  tags: [audit]
+- name: "Req 3 - Check nftables forward hook default policy"
+  ansible.builtin.shell: >
+    systemctl --quiet is-enabled nftables.service &&
+    nft list ruleset | grep 'hook forward' | grep -v 'policy drop'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  when:
+  - nftables_installed
+  - result_01.rc | default(-1) == 0
+  tags: [audit]
+- name: "Store Req 3 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check nftables forward hook default policy"
+    task_03_cmd: "systemctl --quiet is-enabled nftables.service && nft list ruleset | grep 'hook forward' | grep -v 'policy drop'"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim if (nftables_installed and result_01.rc | default(-1) == 0) else 'N/A' }}"
+    status_03: "{{ 'SKIPPED' if not nftables_installed else 'SKIPPED' if result_01.rc | default(-1) != 0 else 'PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL' }}"
+    details_03: "{{ 'Not applicable - nftables package not installed' if not nftables_installed else 'Skipped - nftables service not enabled' if result_01.rc | default(-1) != 0 else 'Forward base chain has default DROP policy' if (result_03.stdout | default('') | trim) == '' else 'Non-compliant hooks: ' ~ (result_03.stdout | default('') | trim) }}"
+  tags: [audit]
+- name: "Determine overall compliance"
+  ansible.builtin.set_fact:
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "N/A"
+    status_04: >-
+      {% if not nftables_installed %}
+        SKIPPED
+      {% elif result_01.rc | default(-1) != 0 %}
+        SKIPPED
+      {% elif (result_02.stdout | default('') | trim) == '' and (result_03.stdout | default('') | trim) == '' %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+    details_04: >-
+      {% if not nftables_installed %}
+        Skipped - nftables package not installed
+      {% elif result_01.rc | default(-1) != 0 %}
+        Skipped - nftables service not enabled
+      {% elif (result_02.stdout | default('') | trim) == '' and (result_03.stdout | default('') | trim) == '' %}
+        System is compliant with nftables default deny firewall policy
+      {% else %}
+        Non-compliant - base chains do not have default DROP policy
+      {% endif %}
+  tags: [audit]
+- name: "Set final cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_04 | trim }}"
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 4.3.3"
+    - "Reference: CIS Benchmark checkpoint 4.3.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+  tags: [audit]

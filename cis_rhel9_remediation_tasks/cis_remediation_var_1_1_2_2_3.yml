@@ -1,0 +1,8 @@
+playbook_name: "CIS_1_1_2_2_3_nosuid_dev_shm"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+# Requirement descriptions for report
+req_01: "Check if a separate partition exists for /dev/shm using command: `mount | grep /dev/shm`. Expected result: output shows a separate partition for /dev/shm."
+req_02: |
+  Edit /etc/fstab to add nosuid to the fourth field for /dev/shm partition using command: `sed -i '/\\/dev\\/shm/s/defaults.*/defaults,rw,nosuid,nodev,noexec,relatime/' /etc/fstab`. Expected result: the line for /dev/shm in /etc/fstab includes nosuid.
+req_03: "Remount /dev/shm with the configured options using command: `mount -o remount /dev/shm`. Expected result: /dev/shm is remounted with nosuid option."
+req_04: "Verify the nosuid option is set on /dev/shm using command: `mount | grep /dev/shm | grep nosuid`. Expected result: output shows /dev/shm mounted with nosuid."

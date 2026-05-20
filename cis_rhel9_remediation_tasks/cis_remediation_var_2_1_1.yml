@@ -1,0 +1,8 @@
+playbook_name: "cis_2_1_1_autofs"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+autofs_service: "autofs.service"
+autofs_package: "autofs"
+req_01: "Apply stop autofs.service using command: `systemctl stop autofs.service`. Expected result: autofs service is stopped."
+req_02: "Apply remove autofs package using command: `dnf remove autofs`. Expected result: autofs package is removed."
+req_03: "Apply mask autofs.service using command: `systemctl mask autofs.service`. Expected result: autofs service is masked and cannot start."
+req_04: "Verify autofs service is not active using command: `systemctl is-active autofs.service`. Expected result: inactive or masked."

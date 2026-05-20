@@ -1,0 +1,322 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_22.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if sshd_config exists"
+  ansible.builtin.stat:
+    path: /etc/ssh/sshd_config
+  register: _snap_sshd_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup sshd_config if exists"
+  ansible.builtin.copy:
+    src: /etc/ssh/sshd_config
+    dest: "{{ backup_dir }}/sshd_config.orig"
+    remote_src: true
+  when: _snap_sshd_stat.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    playbook_skipped: false
+  tags: [execute]
+- block:
+  - name: "Req 01 - Check if openssh-server is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if openssh-server is installed"
+      task_01_cmd: "package_facts: manager=auto"
+      task_01_rc: 0
+      data_01: "{{ 'installed' if 'openssh-server' in ansible_facts.packages else 'not_installed' }}"
+      status_01: "{{ 'SKIPPED' if 'openssh-server' not in ansible_facts.packages else 'PASS' }}"
+      details_01: "{{ 'OpenSSH server not installed - remediation skipped' if 'openssh-server' not in ansible_facts.packages else 'OpenSSH server is installed' }}"
+      playbook_skipped: "{{ 'openssh-server' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Set skipped status for remaining requirements when prerequisite not met"
+    set_fact:
+      status_02: "SKIPPED"
+      details_02: "Skipped - openssh-server not installed"
+      status_03: "SKIPPED"
+      details_03: "Skipped - openssh-server not installed"
+      status_04: "SKIPPED"
+      details_04: "Skipped - openssh-server not installed"
+      status_05: "SKIPPED"
+      details_05: "Skipped - openssh-server not installed"
+      status_06: "SKIPPED"
+      details_06: "Skipped - openssh-server not installed"
+      status_07: "SKIPPED"
+      details_07: "Skipped - openssh-server not installed"
+    when: "playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 02 - Check if UsePAM is already set to yes"
+    ansible.builtin.shell: "grep -E '^UsePAM[[:space:]]+yes' /etc/ssh/sshd_config"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Check if UsePAM is already set to yes"
+      task_02_cmd: "grep -E '^UsePAM[[:space:]]+yes' /etc/ssh/sshd_config"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if result_02.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: "{{ 'UsePAM is already set to yes' if result_02.rc | default(-1) == 0 else 'UsePAM is not set to yes or not found' }}"
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 03 - Insert UsePAM yes before any Include entries"
+    ansible.builtin.shell: "sed -i '/^Include/i UsePAM yes' /etc/ssh/sshd_config"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when:
+    - "not playbook_skipped | default(false) | bool"
+    - "result_02.rc | default(1) != 0"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Insert UsePAM yes before any Include entries"
+      task_03_cmd: "sed -i '/^Include/i UsePAM yes' /etc/ssh/sshd_config"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if result_03.rc | default(-1) == 0 else ('SKIPPED' if result_02.rc | default(1) == 0 else 'FAIL') }}"
+      details_03: "{{ 'UsePAM yes inserted before Include' if result_03.rc | default(-1) == 0 else ('Already set correctly - skipped' if result_02.rc | default(1) == 0 else 'Failed to set UsePAM') }}"
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 04 - Append UsePAM yes if no Include entries exist"
+    ansible.builtin.shell: |
+      grep -q '^UsePAM' /etc/ssh/sshd_config || echo 'UsePAM yes' >> /etc/ssh/sshd_config
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Append UsePAM yes if no Include entries exist"
+      task_04_cmd: "grep -q '^UsePAM' /etc/ssh/sshd_config || echo 'UsePAM yes' >> /etc/ssh/sshd_config"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if result_04.rc | default(-1) == 0 else 'FAIL' }}"
+      details_04: "{{ 'UsePAM yes appended if not present' if result_04.rc | default(-1) == 0 else 'Failed to append UsePAM' }}"
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 05 - Restart SSH service to apply changes"
+    ansible.builtin.service:
+      name: sshd
+      state: restarted
+    register: result_05
+    failed_when: false
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Restart SSH service"
+      task_05_cmd: "systemctl restart sshd"
+      task_05_rc: "{{ result_05.rc | default(0) }}"
+      data_05: "{{ result_05.state | default('') | trim }}"
+      status_05: "{{ 'PASS' if result_05 is not failed else 'FAIL' }}"
+      details_05: "{{ 'SSH service restarted successfully' if result_05 is not failed else 'Failed to restart SSH service' }}"
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 06 - Verify UsePAM is enabled"
+    ansible.builtin.shell: "sshd -T 2>/dev/null | grep -i 'usepam' || echo 'VERIFY_FAILED'"
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Verify UsePAM is enabled"
+      task_06_cmd: "sshd -T | grep -i 'usepam'"
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: "{{ 'PASS' if 'usepam yes' in (result_06.stdout | default('') | lower | trim) else 'FAIL' }}"
+      details_06: "{{ 'UsePAM is enabled' if 'usepam yes' in (result_06.stdout | default('') | lower | trim) else 'UsePAM is NOT enabled' }}"
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 07 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ status_06 | default('ERROR') | trim }}"
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+# NEW: Store requirement 07 reporting details
+  - name: "Store requirement 07 details"
+    set_fact:
+      task_07_name: "Store final remediation result in cis_result"
+      task_07_cmd: "set_fact: cis_result = status_06"
+      task_07_rc: 0
+      data_07: "{{ cis_result }}"
+      status_07: "{{ cis_result }}"
+      details_07: "cis_result set to {{ cis_result }}"
+    when: "not playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.1.22"
+      - "        Reference: CIS Benchmark checkpoint 5.1.22"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if sshd_config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sshd_config.orig"
+    register: _restore_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite sshd_config with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/sshd_config.orig"
+      dest: /etc/ssh/sshd_config
+      remote_src: true
+    when: _restore_check.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

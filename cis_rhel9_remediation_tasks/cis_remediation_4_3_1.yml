@@ -1,0 +1,264 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_4_3_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- name: "Initialize report variables"
+  set_fact:
+    status_01: "SKIPPED"
+    details_01: "Not yet evaluated"
+    data_01: ""
+    status_02: "SKIPPED"
+    details_02: "Not yet evaluated"
+    data_02: ""
+    status_03: "SKIPPED"
+    details_03: "Not yet evaluated"
+    data_03: ""
+    status_04: "SKIPPED"
+    details_04: "Not yet evaluated"
+    data_04: ""
+    status_05: "SKIPPED"
+    details_05: "Not yet evaluated"
+    data_05: ""
+    status_06: "SKIPPED"
+    details_06: "Not yet evaluated"
+    data_06: ""
+  tags: [execute]
+- block:
+# Requirement 1 – firewalld active check
+  - name: "Req 01 - Check if firewalld service is active"
+    ansible.builtin.systemd:
+      name: firewalld
+    register: firewalld_svc
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set firewalld_active fact"
+    set_fact:
+      firewalld_active: "{{ firewalld_svc.status.ActiveState == 'active' }}"
+    tags: [execute]
+
+  - name: "Collect Req 01 details"
+    set_fact:
+      task_01_name: "Req 01 - Check firewalld"
+      task_01_cmd: "systemctl is-active firewalld (systemd module)"
+      task_01_rc: "0"
+      data_01: "{{ 'firewalld is active' if firewalld_active else 'firewalld is not active' }}"
+      status_01: "{{ 'SKIPPED' if firewalld_active else 'APPLIED' }}"
+      details_01: "{{ 'No action required: firewalld is active, skipping nftables remediation' if firewalld_active else 'firewalld not active, proceeding' }}"
+    tags: [execute]
+
+# Requirement 2 – nft installed check
+  - name: "Req 02 - Check if nft binary is installed"
+    shell: which nft
+    args:
+      executable: /bin/bash
+    register: nft_check
+    failed_when: false
+    changed_when: false
+    when: "not firewalld_active | default(false) | bool"
+    tags: [execute]
+
+  - name: "Set nft_installed fact"
+    set_fact:
+      nft_installed: "{{ nft_check.rc | default(1) == 0 }}"
+    when: "not firewalld_active | default(false) | bool"
+    tags: [execute]
+
+  - name: "Collect Req 02 details"
+    set_fact:
+      task_02_name: "Req 02 - Check nft installation"
+      task_02_cmd: "which nft"
+      task_02_rc: "{{ nft_check.rc | default(-1) }}"
+      data_02: "{{ nft_check.stdout | default('') | trim }}"
+      status_02: "{{ 'APPLIED' if nft_installed else 'FAILED' }}"
+      details_02: "{{ 'nft binary found at ' ~ nft_check.stdout if nft_installed else 'nft not found' }}"
+    when: "not firewalld_active | default(false) | bool"
+    tags: [execute]
+
+# Requirement 3 – input chain
+  - name: "Req 03 - Add base chain for input hook"
+    shell: |
+      nft add chain inet filter input { type filter hook input priority 0 \\\\; }
+    args:
+      executable: /bin/bash
+    register: chain_input
+    failed_when: false
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Collect Req 03 details"
+    set_fact:
+      task_03_name: "Req 03 - Add input chain"
+      task_03_cmd: "nft add chain inet filter input { type filter hook input priority 0 ; }"
+      task_03_rc: "{{ chain_input.rc | default(-1) }}"
+      data_03: "{{ chain_input.stdout | default('') | trim }}"
+      status_03: "{{ 'APPLIED' if chain_input.rc == 0 else ('APPLIED' if 'File exists' in chain_input.stderr else 'FAILED') }}"
+      details_03: "{{ 'Chain input created' if chain_input.rc == 0 else ('Chain input already exists' if 'File exists' in chain_input.stderr else 'Failed to add chain') }}"
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+# Requirement 4 – forward chain
+  - name: "Req 04 - Add base chain for forward hook"
+    shell: |
+      nft add chain inet filter forward { type filter hook forward priority 0 \\\\; }
+    args:
+      executable: /bin/bash
+    register: chain_forward
+    failed_when: false
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Collect Req 04 details"
+    set_fact:
+      task_04_name: "Req 04 - Add forward chain"
+      task_04_cmd: "nft add chain inet filter forward { type filter hook forward priority 0 ; }"
+      task_04_rc: "{{ chain_forward.rc | default(-1) }}"
+      data_04: "{{ chain_forward.stdout | default('') | trim }}"
+      status_04: "{{ 'APPLIED' if chain_forward.rc == 0 else ('APPLIED' if 'File exists' in chain_forward.stderr else 'FAILED') }}"
+      details_04: "{{ 'Chain forward created' if chain_forward.rc == 0 else ('Chain forward already exists' if 'File exists' in chain_forward.stderr else 'Failed to add chain') }}"
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+# Requirement 5 – output chain
+  - name: "Req 05 - Add base chain for output hook"
+    shell: |
+      nft add chain inet filter output { type filter hook output priority 0 \\\\; }
+    args:
+      executable: /bin/bash
+    register: chain_output
+    failed_when: false
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Collect Req 05 details"
+    set_fact:
+      task_05_name: "Req 05 - Add output chain"
+      task_05_cmd: "nft add chain inet filter output { type filter hook output priority 0 ; }"
+      task_05_rc: "{{ chain_output.rc | default(-1) }}"
+      data_05: "{{ chain_output.stdout | default('') | trim }}"
+      status_05: "{{ 'APPLIED' if chain_output.rc == 0 else ('APPLIED' if 'File exists' in chain_output.stderr else 'FAILED') }}"
+      details_05: "{{ 'Chain output created' if chain_output.rc == 0 else ('Chain output already exists' if 'File exists' in chain_output.stderr else 'Failed to add chain') }}"
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+# Requirement 6 – verify chains exist
+  - name: "Req 06 - Verify base chains exist"
+    shell: |
+      nft list chains inet filter | grep -q 'chain input' && \
+      nft list chains inet filter | grep -q 'chain forward' && \
+      nft list chains inet filter | grep -q 'chain output' && \
+      echo PASS || echo FAIL
+    args:
+      executable: /bin/bash
+    register: verify_chains
+    failed_when: false
+    changed_when: false
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Collect Req 06 details"
+    set_fact:
+      task_06_name: "Req 06 - Verify chains"
+      task_06_cmd: "nft list chains inet filter | grep -q chain input/forward/output"
+      task_06_rc: "{{ verify_chains.rc | default(-1) }}"
+      data_06: "{{ verify_chains.stdout | default('') | trim }}"
+      status_06: "{{ 'APPLIED' if verify_chains.stdout == 'PASS' else 'FAILED' }}"
+      details_06: "{{ 'All three base chains present' if verify_chains.stdout == 'PASS' else 'One or more chains missing' }}"
+    when: "not firewalld_active | default(false) | bool and nft_installed | default(false) | bool"
+    tags: [execute]
+
+# --- Determine overall remediation status ---
+  - name: "Determine overall remediation status"
+    set_fact:
+      overall_status: >-
+        {%- set statuses = [status_01, status_02, status_03, status_04, status_05, status_06] -%}
+        {%- if 'FAILED' in statuses %}FAIL
+        {%- elif 'APPLIED' in statuses %}APPLIED
+        {%- else %}SKIPPED
+        {%- endif -%}
+    tags: [execute]
+
+# --- Store overall result in cis_result (Requirement 7) ---
+  - name: "Set cis_result for CIS report"
+    set_fact:
+      cis_result: "{{ overall_status | trim }}"
+    tags: [execute]
+
+# Final remediation report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 4.3.1"
+      - "Reference: CIS Benchmark checkpoint 4.3.1"
+      - ""
+      - "Requirement 1: {{ req_01 }}"
+      - "  Task: {{ task_01_name | default('Not executed') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('N/A') | trim }}"
+      - "  Status: {{ status_01 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 2: {{ req_02 }}"
+      - "  Task: {{ task_02_name | default('Not executed') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('N/A') | trim }}"
+      - "  Status: {{ status_02 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 3: {{ req_03 }}"
+      - "  Task: {{ task_03_name | default('Not executed') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('N/A') | trim }}"
+      - "  Status: {{ status_03 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 4: {{ req_04 }}"
+      - "  Task: {{ task_04_name | default('Not executed') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('N/A') | trim }}"
+      - "  Status: {{ status_04 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 5: {{ req_05 }}"
+      - "  Task: {{ task_05_name | default('Not executed') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('N/A') | trim }}"
+      - "  Status: {{ status_05 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "Requirement 6: {{ req_06 }}"
+      - "  Task: {{ task_06_name | default('Not executed') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('N/A') | trim }}"
+      - "  Status: {{ status_06 | default('SKIPPED') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

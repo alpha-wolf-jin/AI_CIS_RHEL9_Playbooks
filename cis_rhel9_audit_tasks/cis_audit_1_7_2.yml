@@ -1,0 +1,162 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_7_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+  tags: [snapshot]
+- name: "Snapshot - Create marker for temporary script"
+  ansible.builtin.file:
+    path: "{{ marker_file }}"
+    state: touch
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      data_01: "Not collected yet"
+      task_01_name: "Not executed"
+      task_01_rc: -1
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      data_02: "Not collected yet"
+      task_02_name: "Not executed"
+      task_02_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check if /etc/issue file exists and is readable"
+    ansible.builtin.stat:
+      path: /etc/issue
+    register: issue_stat
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Read contents of /etc/issue file"
+    ansible.builtin.shell: cat /etc/issue
+    args:
+      executable: /bin/bash
+    register: issue_content
+    failed_when: false
+    changed_when: false
+    when: issue_stat.stat.exists | default(false)
+    tags: [execute]
+
+  - name: "Req 01 - Set compliance status for file existence and content"
+    ansible.builtin.set_fact:
+      task_01_name: "Cat /etc/issue to verify content"
+      task_01_rc: "{{ issue_content.rc | default(-1) }}"
+      data_01: "{{ (issue_content.stdout | default('') | trim) if issue_stat.stat.exists | default(false) else 'File does not exist' }}"
+      status_01: >-
+        {% set banner = expected_banner | default('') | trim %}
+        {% if banner == '' %}
+        UNKNOWN
+        {% elif issue_stat.stat.exists | default(false) and (issue_content.stdout | default('') | trim) == banner %}
+        PASS
+        {% else %}
+        FAIL
+        {% endif %}
+      details_01: >-
+        {% set banner = expected_banner | default('') | trim %}
+        {% if banner == '' %}
+        Expected banner not defined; unable to verify against site policy
+        {% elif issue_stat.stat.exists | default(false) and (issue_content.stdout | default('') | trim) == banner %}
+        File exists and matches site policy
+        {% else %}
+        File missing, empty, or does not match policy
+        {% endif %}
+    tags: [execute]
+
+  - name: "Req 02 - Copy grep script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script_02 }}"
+      mode: '0700'
+      content: "{{ audit_script_02_content }}"
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Execute grep script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script_02 }}"
+    args:
+      executable: /bin/bash
+    register: os_info_grep
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Set compliance status for OS information check"
+    ansible.builtin.set_fact:
+      task_02_name: "Grep for OS details in /etc/issue"
+      task_02_cmd: "{{ req_02_command }}"
+      task_02_rc: "{{ os_info_grep.rc | default(-1) }}"
+      data_02: "{{ os_info_grep.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (os_info_grep.rc | default(1) != 0 or os_info_grep.stdout | default('') | trim == '') else 'FAIL') | trim }}"
+      details_02: "{{ ('No OS information detected' if (os_info_grep.rc | default(1) != 0 or os_info_grep.stdout | default('') | trim == '') else 'OS information found: ' + (os_info_grep.stdout | default(''))) | trim }}"
+    tags: [execute]
+
+  - name: "Store overall compliance result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ ('PASS' if status_01 | trim == 'PASS' and status_02 | trim == 'PASS' else 'FAIL') | trim }}"
+    tags: [execute]
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.7.2"
+      - "Reference: CIS Benchmark checkpoint 1.7.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: cat /etc/issue"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Overall compliance evaluation"
+      - "  Command: N/A"
+      - "  Exit code: {{ 0 if (status_01 == 'PASS' and status_02 == 'PASS') else 1 }}"
+      - "  Data: Not collected"
+      - "  Status: {{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS') else 'FAIL' | trim }}"
+      - "  Details: {{ 'Compliant' if (status_01 == 'PASS' and status_02 == 'PASS') else 'Not compliant' | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ 'Compliant' if cis_result == 'PASS' else 'Not compliant' }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if temporary script was created"
+    ansible.builtin.stat:
+      path: "{{ marker_file }}"
+    register: marker_check
+    tags: [restore]
+
+  - name: "Restore - Remove temporary grep script"
+    ansible.builtin.file:
+      path: "{{ audit_script_02 }}"
+      state: absent
+    when: marker_check.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Remove marker file"
+    ansible.builtin.file:
+      path: "{{ marker_file }}"
+      state: absent
+    when: marker_check.stat.exists | default(false)
+    tags: [restore]

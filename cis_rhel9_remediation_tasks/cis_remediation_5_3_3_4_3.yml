@@ -1,0 +1,373 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_4_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if authselect package is installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Set authselect installed fact"
+  ansible.builtin.set_fact:
+    authselect_installed: "{{ 'authselect' in ansible_facts.packages }}"
+    playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+  tags: [snapshot]
+- name: "Snapshot - Check if password-auth exists in authselect profile"
+  ansible.builtin.shell: |
+    l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null)"
+    if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+      l_pam_profile_path="/etc/authselect/$l_pam_profile"
+    else
+      l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+    fi
+    if [ -f "$l_pam_profile_path/password-auth" ]; then
+      echo "EXISTS:$l_pam_profile_path/password-auth"
+    else
+      echo "MISSING"
+    fi
+  args:
+    executable: /bin/bash
+  register: _snap_pw_auth_check
+  failed_when: false
+  changed_when: false
+  when: "authselect_installed | default(false)"
+  tags: [snapshot]
+- name: "Snapshot - Store password-auth original path"
+  ansible.builtin.copy:
+    content: |
+      {{ _snap_pw_auth_check.stdout | regex_replace('^EXISTS:(.*)$', '\\1') }}
+    dest: "{{ backup_dir }}/password-auth.path"
+  when:
+  - "authselect_installed | default(false)"
+  - "_snap_pw_auth_check.stdout | default('') | regex_search('^EXISTS:')"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup password-auth if exists"
+  ansible.builtin.copy:
+    src: |
+      {{ _snap_pw_auth_check.stdout | regex_replace('^EXISTS:(.*)$', '\\1') }}
+    dest: "{{ backup_dir }}/password-auth.backup"
+    remote_src: true
+  when:
+  - "authselect_installed | default(false)"
+  - "_snap_pw_auth_check.stdout | default('') | regex_search('^EXISTS:')"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if system-auth exists in authselect profile"
+  ansible.builtin.shell: |
+    l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null)"
+    if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+      l_pam_profile_path="/etc/authselect/$l_pam_profile"
+    else
+      l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+    fi
+    if [ -f "$l_pam_profile_path/system-auth" ]; then
+      echo "EXISTS:$l_pam_profile_path/system-auth"
+    else
+      echo "MISSING"
+    fi
+  args:
+    executable: /bin/bash
+  register: _snap_sys_auth_check
+  failed_when: false
+  changed_when: false
+  when: "authselect_installed | default(false)"
+  tags: [snapshot]
+- name: "Snapshot - Store system-auth original path"
+  ansible.builtin.copy:
+    content: |
+      {{ _snap_sys_auth_check.stdout | regex_replace('^EXISTS:(.*)$', '\\1') }}
+    dest: "{{ backup_dir }}/system-auth.path"
+  when:
+  - "authselect_installed | default(false)"
+  - "_snap_sys_auth_check.stdout | default('') | regex_search('^EXISTS:')"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup system-auth if exists"
+  ansible.builtin.copy:
+    src: |
+      {{ _snap_sys_auth_check.stdout | regex_replace('^EXISTS:(.*)$', '\\1') }}
+    dest: "{{ backup_dir }}/system-auth.backup"
+    remote_src: true
+  when:
+  - "authselect_installed | default(false)"
+  - "_snap_sys_auth_check.stdout | default('') | regex_search('^EXISTS:')"
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+        # === EXECUTE PHASE (tag: execute) ===
+
+# Determine if authselect is available for the execute phase (independent of pre_tasks)
+  - name: "Check if authselect binary exists (for execute phase)"
+    ansible.builtin.stat:
+      path: "/usr/sbin/authselect"
+    register: _exec_authselect_bin
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set fact for execute phase skip condition"
+    ansible.builtin.set_fact:
+      playbook_skipped_local: "{{ not (_exec_authselect_bin.stat.exists | default(false)) }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check current password hashing algorithm in PAM configuration"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf)"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      grep -P -- '^\h*password\h+(requisite|required|sufficient)\h+pam_unix\.so\h+([^#\n\r]+\h+)?(sha512|yescrypt)\b' "$l_pam_profile_path"/password-auth "$l_pam_profile_path"/system-auth 2>/dev/null
+    args:
+      executable: /bin/bash
+    register: result_01_check
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped_local | default(false))"
+    tags: [execute]
+
+  - name: "Req 01 - Set fact for remediation needed"
+    ansible.builtin.set_fact:
+      remediation_needed: "{{ result_01_check.stdout | default('') | trim == '' or 'sha512' not in result_01_check.stdout | default('') and 'yescrypt' not in result_01_check.stdout | default('') }}"
+    when: "not (playbook_skipped_local | default(false))"
+    tags: [execute]
+
+  - name: "Req 01 - Run remediation script to update weak or missing hashing algorithm"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf)"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      for l_authselect_file in "$l_pam_profile_path"/password-auth "$l_pam_profile_path"/system-auth; do
+        if grep -Pq '^\h*password\h+(requisite|required|sufficient)\h+pam_unix\.so\h+([^#\n\r]+\h+)?(sha512|yescrypt)\b' "$l_authselect_file"; then
+          echo "- A strong password hashing algorithm is correctly set in $l_authselect_file"
+        elif grep -Pq '^\h*password\h+(requisite|required|sufficient)\h+pam_unix\.so\h+([^#\n\r]+\h+)?(md5|bigcrypt|sha256|blowfish)\b' "$l_authselect_file"; then
+          echo "- A weak password hashing algorithm is set in $l_authselect_file, updating to sha512"
+          sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_unix\.so\s+.*)(md5|bigcrypt|sha256|blowfish)(\s*.*)$/\1\4 sha512/g' "$l_authselect_file"
+        else
+          echo "No password hashing algorithm is set in $l_authselect_file, updating to sha512"
+          sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_unix\.so\s+.*)$/& sha512/g' "$l_authselect_file"
+        fi
+      done
+    args:
+      executable: /bin/bash
+    register: result_01_remediate
+    failed_when: false
+    when:
+    - "not (playbook_skipped_local | default(false))"
+    - "remediation_needed | default(false)"
+    tags: [execute]
+
+  - name: "Req 01 - Apply authselect changes"
+    ansible.builtin.shell: authselect apply-changes 2>&1
+    args:
+      executable: /bin/bash
+    register: result_01_apply
+    failed_when: false
+    when:
+    - "not (playbook_skipped_local | default(false))"
+    - "remediation_needed | default(false)"
+    tags: [execute]
+
+  - name: "Req 02 - Verify strong password hashing algorithm in password-auth"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf)"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      if grep -Pq '^\h*password\h+(requisite|required|sufficient)\h+pam_unix\.so\h+([^#\n\r]+\h+)?(sha512|yescrypt)\b' "$l_pam_profile_path"/password-auth 2>/dev/null; then
+        echo "PASS: Strong hashing algorithm found in password-auth"
+        exit 0
+      else
+        echo "FAIL: Strong hashing algorithm NOT found in password-auth"
+        exit 1
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02_pw
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped_local | default(false))"
+    tags: [execute]
+
+  - name: "Req 02 - Verify strong password hashing algorithm in system-auth"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf)"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      if grep -Pq '^\h*password\h+(requisite|required|sufficient)\h+pam_unix\.so\h+([^#\n\r]+\h+)?(sha512|yescrypt)\b' "$l_pam_profile_path"/system-auth 2>/dev/null; then
+        echo "PASS: Strong hashing algorithm found in system-auth"
+        exit 0
+      else
+        echo "FAIL: Strong hashing algorithm NOT found in system-auth"
+        exit 1
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02_sys
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped_local | default(false))"
+    tags: [execute]
+
+  - name: "Req 03 - Set cis_result fact"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {%- if (playbook_skipped_local | default(false)) -%}
+        SKIP
+        {%- elif (result_02_pw.rc | default(-1) == 0) and (result_02_sys.rc | default(-1) == 0) -%}
+        PASS
+        {%- else -%}
+        FAIL
+        {%- endif -%}
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Store reporting details"
+    ansible.builtin.set_fact:
+      task_03_name: "Set cis_result fact"
+      task_03_cmd: "set_fact: cis_result = derived from verification results"
+      task_03_rc: 0
+      data_03: "{{ cis_result }}"
+      status_03: "PASS"
+      details_03: "cis_result variable stored for overall remediation result"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.3.4.3"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.4.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Req 01 - Run remediation script and apply authselect changes"
+      - "  Command: sed -ri to update pam_unix.so hashing algorithm + authselect apply-changes"
+      - "  Exit code: {{ result_01_remediate.rc | default(-1) if (remediation_needed | default(false)) else 0 }}"
+      - "  Data: {{ result_01_remediate.stdout | default('No remediation needed') | trim }}"
+      - "  Status: {{ 'APPLIED' if (remediation_needed | default(false)) and (result_01_remediate.rc | default(-1) == 0) else 'SKIPPED' if not (remediation_needed | default(false)) else 'FAILED' }}"
+      - "  Details: {{ 'Remediation script executed successfully' if (remediation_needed | default(false)) and (result_01_remediate.rc | default(-1) == 0) else 'No remediation needed - strong algorithm already present' if not (remediation_needed | default(false)) else 'Remediation script failed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Req 02 - Verify strong hashing algorithm in password-auth and system-auth"
+      - "  Command: grep for sha512/yescrypt in PAM password-auth and system-auth"
+      - "  Exit code (password-auth): {{ result_02_pw.rc | default(-1) }}"
+      - "  Exit code (system-auth): {{ result_02_sys.rc | default(-1) }}"
+      - "  Data (password-auth): {{ result_02_pw.stdout | default('') | trim }}"
+      - "  Data (system-auth): {{ result_02_sys.stdout | default('') | trim }}"
+      - "  Status: {{ 'SKIP' if (playbook_skipped_local | default(false)) else ('PASS' if (result_02_pw.rc | default(-1) == 0) and (result_02_sys.rc | default(-1) == 0) else 'FAIL') }}"
+      - "  Details: {{ 'Authselect not available - verification skipped' if (playbook_skipped_local | default(false)) else ('Both password-auth and system-auth have strong hashing algorithm' if (result_02_pw.rc | default(-1) == 0) and (result_02_sys.rc | default(-1) == 0) else 'One or both PAM files missing strong hashing algorithm') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Set cis_result fact') }}"
+      - "  Command: {{ task_03_cmd | default('set_fact') }}"
+      - "  Exit code: {{ task_03_rc | default(0) }}"
+      - "  Data: {{ data_03 | default(cis_result) }}"
+      - "  Status: {{ status_03 | default('PASS') }}"
+      - "  Details: {{ details_03 | default('cis_result variable stored') }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ 'System is compliant - pam_unix uses strong password hashing' if (cis_result | default('ERROR') | trim == 'PASS') else 'System is NOT compliant - remediation may be required' if (cis_result | default('ERROR') | trim == 'FAIL') else 'Authselect package not installed - remediation skipped' if (cis_result | default('ERROR') | trim == 'SKIP') else 'Unable to determine' }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === RESTORE PHASE (tag: restore) ===
+        # NOTE: The always block discovers all state from disk — no references
+        # to variables registered in pre_tasks or the block above.
+
+  - name: "Restore - Check if password-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/password-auth.backup"
+    register: _restore_pw_auth
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read password-auth original path"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/password-auth.path"
+    register: _restore_pw_auth_path
+    when: "_restore_pw_auth.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore password-auth from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/password-auth.backup"
+      dest: "{{ _restore_pw_auth_path.content | b64decode | trim }}"
+      remote_src: true
+    when:
+    - "_restore_pw_auth.stat.exists | default(false)"
+    - "_restore_pw_auth_path.content is defined"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if system-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/system-auth.backup"
+    register: _restore_sys_auth
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read system-auth original path"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/system-auth.path"
+    register: _restore_sys_auth_path
+    when: "_restore_sys_auth.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore system-auth from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/system-auth.backup"
+      dest: "{{ _restore_sys_auth_path.content | b64decode | trim }}"
+      remote_src: true
+    when:
+    - "_restore_sys_auth.stat.exists | default(false)"
+    - "_restore_sys_auth_path.content is defined"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if authselect binary exists"
+    ansible.builtin.stat:
+      path: "/usr/sbin/authselect"
+    register: _restore_authselect_bin
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply authselect changes after restore"
+    ansible.builtin.shell: authselect apply-changes 2>&1
+    args:
+      executable: /bin/bash
+    when:
+    - "_restore_pw_auth.stat.exists | default(false) or _restore_sys_auth.stat.exists | default(false)"
+    - "_restore_authselect_bin.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

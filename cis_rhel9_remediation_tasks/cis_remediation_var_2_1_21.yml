@@ -1,0 +1,7 @@
+playbook_name: "cis_2_1_21"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for postfix using command: `which postfix`. Expected result: path to postfix binary."
+req_02: "Apply configuration to set inet_interfaces to loopback-only in /etc/postfix/main.cf using command: `sed -i 's/^inet_interfaces.*/inet_interfaces = loopback-only/' /etc/postfix/main.cf || echo 'inet_interfaces = loopback-only' >> /etc/postfix/main.cf`. Expected result: configuration file updated."
+req_03: "Apply restart of postfix service using command: `systemctl restart postfix`. Expected result: postfix service restarted successfully."
+req_04: "Verify postfix is listening only on loopback using command: `ss -tlnp | grep -E ':(25|587|465)' | grep -v '127.0.0.1' | grep -v '::1'`. Expected result: no output (no non-loopback listeners)."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

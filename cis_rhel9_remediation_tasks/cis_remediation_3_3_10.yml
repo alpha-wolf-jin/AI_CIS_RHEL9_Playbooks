@@ -1,0 +1,246 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_10.yml
+
+- name: "State Guard - Remove stale checkpoint directory if exists"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: "0700"
+  tags: [snapshot]
+- name: "State Guard - Snapshot current sysctl value"
+  ansible.builtin.shell: sysctl -n {{ sysctl_param }}
+  args:
+    executable: /bin/bash
+  register: _sg_sysctl_current
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Save current sysctl value to state file"
+  ansible.builtin.copy:
+    content: "{{ _sg_sysctl_current.stdout | default('') | trim }}"
+    dest: "{{ state_guard_dir }}/sysctl_param.state"
+  tags: [snapshot]
+- name: "State Guard - Check if sysctl config file exists"
+  ansible.builtin.stat:
+    path: "{{ sysctl_file }}"
+  register: _sg_sysctl_file_stat
+  tags: [snapshot]
+- name: "State Guard - Backup sysctl config file if exists"
+  ansible.builtin.copy:
+    src: "{{ sysctl_file }}"
+    dest: "{{ state_guard_dir }}/sysctl_file.present"
+    remote_src: true
+  when: _sg_sysctl_file_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "State Guard - Mark config file as absent if not exists"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/sysctl_file.absent"
+  when: not (_sg_sysctl_file_stat.stat.exists | default(false))
+  tags: [snapshot]
+- name: "State Guard - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "{{ remediation_script }}"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "State Guard - Mark remediation script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/cis_remediation_script.absent"
+  when: not (_sg_script_stat.stat.exists | default(false))
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === REMEDIATION EXECUTION PHASE ===
+
+# Requirement 1: Ensure config line and run provided script
+  - name: "Req 01 - Ensure {{ sysctl_param }} = {{ sysctl_value }} in {{ sysctl_file }}"
+    ansible.builtin.lineinfile:
+      path: "{{ sysctl_file }}"
+      regexp: "^#?{{ sysctl_param }}"
+      line: "{{ sysctl_param }} = {{ sysctl_value }}"
+      state: present
+      create: true
+      mode: "0644"
+    register: _line_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Copy remediation script to remote"
+    ansible.builtin.copy:
+      dest: "{{ remediation_script }}"
+      mode: '0700'
+      content: "{{ remediation_script_content }}"
+    tags: [execute]
+
+  - name: "Req 01 - Execute provided remediation script"
+    ansible.builtin.shell: /bin/bash "{{ remediation_script }}"
+    args:
+      executable: /bin/bash
+    register: _script_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary remediation script"
+    ansible.builtin.file:
+      path: "{{ remediation_script }}"
+      state: absent
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+# Requirement 2: Verify
+  - name: "Req 02 - Verify {{ sysctl_param }} is enabled"
+    ansible.builtin.shell: sysctl -n {{ sysctl_param }}
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    tags: [execute]
+
+# Requirement 3: Store overall result in cis_result
+  - name: "Req 03 - Store overall result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'PASS' if (_verify_result.stdout | default('') | trim == sysctl_value) else 'FAIL' }}"
+    tags: [execute]
+
+# Requirement 4: Generate remediation report
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 3.3.10"
+      - "========================================================"
+      - ""
+      - "Reference: CIS Benchmark checkpoint 3.3.10"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Ensure {{ sysctl_param }} = {{ sysctl_value }} in {{ sysctl_file }} and execute script"
+      - "  Command: lineinfile + shell: /bin/bash {{ remediation_script }}"
+      - "  Exit code: {{ _script_result.rc | default(-1) }}"
+      - "  Data: {{ _script_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if _script_result.rc | default(-1) == 0 else 'FAIL' }}"
+      - "  Details: Config line applied and kernel parameters set"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify sysctl value"
+      - "  Command: sysctl -n {{ sysctl_param }}"
+      - "  Exit code: {{ _verify_result.rc | default(-1) }}"
+      - "  Data: {{ _verify_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if (_verify_result.stdout | default('') | trim == sysctl_value) else 'FAIL' }}"
+      - "  Details: Current value is {{ _verify_result.stdout | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store overall result in cis_result"
+      - "  Command: set_fact cis_result={{ cis_result }}"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result }}"
+      - "  Status: PASS"
+      - "  Details: cis_result set to {{ cis_result }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Generate remediation report"
+      - "  Command: debug msg (this report)"
+      - "  Exit code: 0"
+      - "  Data: Report displayed above"
+      - "  Status: PASS"
+      - "  Details: Report generated and displayed"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for sysctl file present backup"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sysctl_file.present"
+    register: _sg_restore_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore sysctl file from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/sysctl_file.present"
+      dest: "{{ sysctl_file }}"
+      remote_src: true
+    when: _sg_restore_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for sysctl file absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sysctl_file.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete sysctl file if it did not exist before"
+    ansible.builtin.file:
+      path: "{{ sysctl_file }}"
+      state: absent
+    when: _sg_restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for remediation script absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/cis_remediation_script.absent"
+    register: _sg_restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete remediation script if it was created"
+    ansible.builtin.file:
+      path: "{{ remediation_script }}"
+      state: absent
+    when: _sg_restore_script_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved sysctl value"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/sysctl_param.state"
+    register: _sg_restore_sysctl
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore original sysctl value"
+    ansible.builtin.shell:
+      cmd: sysctl -w {{ sysctl_param }}={{ _sg_restore_sysctl.content | b64decode | trim }}
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_sysctl is defined
+    - _sg_restore_sysctl.content is defined
+    - (_sg_restore_sysctl.content | b64decode | trim) != ''
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

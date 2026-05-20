@@ -1,0 +1,180 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_4_9.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit tools exist and capture ownership"
+  ansible.builtin.shell: |
+    for f in {{ audit_tools | join(' ') }}; do
+      if [ -f "$f" ]; then
+        stat -c '%U %n' "$f"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  register: _snapshot_ownership
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save ownership state"
+  ansible.builtin.copy:
+    content: "{{ _snapshot_ownership.stdout | default('') }}"
+    dest: "{{ backup_dir }}/audit_tools_ownership.state"
+    mode: '0600'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+    tags: [execute]
+
+  - name: "Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Apply ownership change to audit tools"
+    ansible.builtin.file:
+      path: "{{ item }}"
+      owner: root
+      state: file
+    loop: "{{ audit_tools }}"
+    register: result_01
+    failed_when: false
+    when: "'audit' in ansible_facts.packages | default({})"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Apply ownership change to audit tools"
+      task_01_cmd: "chown root {{ audit_tools | join(' ') }}"
+      task_01_rc: "{{ 0 if result_01 is not skipped else -1 }}"
+      data_01: "{{ result_01.results | default([]) | map(attribute='item') | join(', ') if result_01 is not skipped else 'Skipped - audit package not installed' }}"
+      status_01: "{{ 'SKIP' if result_01 is skipped else ('FAIL' if result_01 is failed else 'PASS') }}"
+      details_01: "{{ 'Audit package not installed - remediation skipped' if result_01 is skipped else ('Ownership set to root for all audit tools' if result_01 is not failed else 'Failed to set ownership') }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify ownership of audit tools"
+    ansible.builtin.shell: "stat -c '%U %n' {{ audit_tools | join(' ') }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "'audit' in ansible_facts.packages | default({})"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify ownership of audit tools"
+      task_02_cmd: "stat -c '%U %n' {{ audit_tools | join(' ') }}"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {{ 'SKIP' if result_02 is skipped
+           else ('PASS' if ('root' in result_02.stdout | default(''))
+           else 'FAIL') }}
+      details_02: "{{ 'Audit package not installed - verification skipped' if result_02 is skipped else ('All audit tools owned by root' if ('root' in result_02.stdout | default('')) else 'Ownership verification failed') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "N/A"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+      status_03: "PASS"
+      details_03: "Final remediation result set to {{ status_02 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.3.4.9"
+      - "Reference: CIS Benchmark checkpoint 6.3.4.9"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/audit_tools_ownership.state"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Revert ownership from backup"
+    ansible.builtin.shell: |
+      while read -r owner file; do
+        if [ -f "$file" ] && [ "$owner" != "root" ]; then
+          chown "$owner" "$file"
+        fi
+      done < "{{ backup_dir }}/audit_tools_ownership.state"
+    args:
+      executable: /bin/bash
+    when: "_restore_backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

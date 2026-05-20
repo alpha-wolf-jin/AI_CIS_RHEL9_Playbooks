@@ -1,0 +1,7 @@
+req_01: "Check if bluez package is installed using command: `rpm -q bluez`. Expected result: package bluez is not installed"
+req_02: "If bluez package is installed, check if bluetooth.service is enabled using command: `systemctl is-enabled bluetooth.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If bluez package is installed, check if bluetooth.service is active using command: `systemctl is-active bluetooth.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if bluez package is not installed, FAIL if bluez package is installed and bluetooth.service is enabled or active."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+package_name: "bluez"
+service_name: "bluetooth.service"

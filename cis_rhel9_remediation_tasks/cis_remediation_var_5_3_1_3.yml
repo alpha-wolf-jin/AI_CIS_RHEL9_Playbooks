@@ -1,0 +1,8 @@
+playbook_name: "cis_5_3_1_3_libpwquality"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+package_name: "libpwquality"
+min_version: "1.4.4-8"
+req_01: "Apply prerequisite check for dnf package manager using command: `which dnf`. Expected result: path to dnf binary."
+req_02: "Apply install libpwquality using command: `dnf install libpwquality`. Expected result: libpwquality is installed."
+req_03: "Apply update libpwquality to latest version if current version is less than 1.4.4-8 using command: `dnf upgrade libpwquality`. Expected result: libpwquality is updated to the latest version."
+req_04: "Apply verify libpwquality version using command: `rpm -q libpwquality`. Expected result: libpwquality version is 1.4.4-8 or later."

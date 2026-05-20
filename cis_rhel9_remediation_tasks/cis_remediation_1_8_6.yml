@@ -1,0 +1,289 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_8_6.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/dconf from previous checkpoint if exists"
+  ansible.builtin.shell: |
+    if [ -d "{{ state_guard_dir }}/dconf_backup" ]; then
+      rm -rf /etc/dconf && cp -a "{{ state_guard_dir }}/dconf_backup" /etc/dconf && dconf update
+    fi
+  args:
+    executable: /bin/bash
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/dconf exists"
+  ansible.builtin.stat:
+    path: /etc/dconf
+  register: _sg_dconf_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/dconf (present)"
+  ansible.builtin.shell: "cp -a /etc/dconf {{ state_guard_dir }}/dconf_backup"
+  args:
+    executable: /bin/bash
+  when: _sg_dconf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/dconf as absent (original state)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/dconf.absent"
+  when: not _sg_dconf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# ========== EXECUTE PHASE ==========
+  - name: "Check if GDM package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set gdm installed fact"
+    ansible.builtin.set_fact:
+      gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 1 - Copy remediation script"
+    ansible.builtin.copy:
+      dest: "{{ state_guard_dir }}/remediate_1_8_6.sh"
+      mode: '0700'
+      content: |
+        {% raw %}#!/usr/bin/env bash
+
+        {
+           l_pkgoutput=""
+           l_gpname="local" # Set to desired dconf profile name (default is local)
+           # Check if GNOME Desktop Manager is installed.  If package isn't installed, recommendation is Not Applicable\n
+           # determine system's package manager
+           if command -v dpkg-query > /dev/null 2>&1; then
+              l_pq="dpkg-query -W"
+           elif command -v rpm > /dev/null 2>&1; then
+              l_pq="rpm -q"
+           fi
+           # Check if GDM is installed
+           l_pcl="gdm gdm3" # Space separated list of packages to check
+           for l_pn in $l_pcl; do
+              $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="$l_pkgoutput\n - Package: \"$l_pn\" exists on the system\n - checking configuration"
+           done
+           # Check configuration (If applicable)
+           if [ -n "$l_pkgoutput" ]; then
+              echo -e "$l_pkgoutput"
+              # Look for existing settings and set variables if they exist
+              l_kfile="$(grep -Prils -- '^\h*automount\b' /etc/dconf/db/*.d)"
+              l_kfile2="$(grep -Prils -- '^\h*automount-open\b' /etc/dconf/db/*.d)"
+              # Set profile name based on dconf db directory ({PROFILE_NAME}.d)
+              if [ -f "$l_kfile" ]; then
+                 l_gpname="$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_kfile")"
+                 echo " - updating dconf profile name to \"$l_gpname\""
+              elif [ -f "$l_kfile2" ]; then
+                 l_gpname="$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_kfile2")"
+                 echo " - updating dconf profile name to \"$l_gpname\""
+              fi
+              # check for consistency (Clean up configuration if needed)
+              if [ -f "$l_kfile" ] && [ "$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_kfile")" != "$l_gpname" ]; then
+                 sed -ri "/^\s*automount\s*=/s/^/# /" "$l_kfile"
+                 l_kfile="/etc/dconf/db/$l_gpname.d/00-media-automount"
+              fi
+              if [ -f "$l_kfile2" ] && [ "$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_kfile2")" != "$l_gpname" ]; then
+                 sed -ri "/^\s*automount-open\s*=/s/^/# /" "$l_kfile2"
+              fi
+              [ -z "$l_kfile" ] && l_kfile="/etc/dconf/db/$l_gpname.d/00-media- automount"
+              # Check if profile file exists
+              if grep -Pq -- "^\h*system-db:$l_gpname\b" /etc/dconf/profile/*; then
+                 echo -e "\n - dconf database profile exists in: \"$(grep -Pl -- "^\h*system-db:$l_gpname\b" /etc/dconf/profile/*)\""
+              else
+                 if [ ! -f "/etc/dconf/profile/user" ]; then
+                    l_gpfile="/etc/dconf/profile/user"
+                 else
+                    l_gpfile="/etc/dconf/profile/user2"
+                 fi
+                 echo -e " - creating dconf database profile"
+                 {
+                    echo -e "\nuser-db:user"
+                    echo "system-db:$l_gpname"
+                 } >> "$l_gpfile"
+              fi
+              # create dconf directory if it doesn't exists
+              l_gpdir="/etc/dconf/db/$l_gpname.d"
+              if [ -d "$l_gpdir" ]; then
+                 echo " - The dconf database directory \"$l_gpdir\" exists"
+              else
+                 echo " - creating dconf database directory \"$l_gpdir\""
+                 mkdir "$l_gpdir"
+              fi
+              # check automount-open setting
+              if grep -Pqs -- '^\h*automount-open\h*=\h*false\b' "$l_kfile"; then
+                 echo " - \"automount-open\" is set to false in: \"$l_kfile\""
+              else
+                 echo " - creating \"automount-open\" entry in \"$l_kfile\""
+                 ! grep -Psq -- '\^\h*\[org\/gnome\/desktop\/media-handling\]\b' "$l_kfile" && echo '[org/gnome/desktop/media-handling]' >> "$l_kfile"
+                 sed -ri '/^\s*\[org\/gnome\/desktop\/media-handling\]/a \\nautomount-open=false' "$l_kfile"
+              fi
+              # check automount setting
+              if grep -Pqs -- '^\h*automount\h*=\h*false\b' "$l_kfile"; then
+                 echo " - \"automount\" is set to false in: \"$l_kfile\""
+              else
+                 echo " - creating \"automount\" entry in \"$l_kfile\""
+                 ! grep -Psq -- '\^\h*\[org\/gnome\/desktop\/media-handling\]\b' "$l_kfile" && echo '[org/gnome/desktop/media-handling]' >> "$l_kfile"
+                 sed -ri '/^\s*\[org\/gnome\/desktop\/media-handling\]/a \\nautomount=false' "$l_kfile"
+              fi
+              # update dconf database
+              dconf update
+           else
+              echo -e "\n - GNOME Desktop Manager package is not installed on the system\n  - Recommendation is not applicable"
+           fi
+        }
+        {% endraw %}
+    when: gdm_installed
+    tags: [execute]
+
+  - name: "Req 1 - Execute remediation script"
+    ansible.builtin.shell: "/bin/bash {{ state_guard_dir }}/remediate_1_8_6.sh"
+    args:
+      executable: /bin/bash
+    register: result_remediate
+    when: gdm_installed
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Verify automount is disabled"
+    ansible.builtin.shell: "grep -Pr '^\\s*automount\\s*=\\s*false\\b' /etc/dconf/db/*.d"
+    args:
+      executable: /bin/bash
+    register: result_verify_automount
+    when: gdm_installed
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Verify automount-open is disabled"
+    ansible.builtin.shell: "grep -Pr '^\\s*automount-open\\s*=\\s*false\\b' /etc/dconf/db/*.d"
+    args:
+      executable: /bin/bash
+    register: result_verify_automount_open
+    when: gdm_installed
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set report data - requirement 01"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute remediation script for GDM automount (CIS 1.8.6)"
+      task_01_cmd: "/bin/bash {{ state_guard_dir }}/remediate_1_8_6.sh"
+      task_01_rc: "{{ result_remediate.rc | default(-1) }}"
+      data_01: "{{ result_remediate.stdout | default('') | trim }}"
+      status_01: "{{ ('SKIPPED' if not gdm_installed else ('APPLIED' if result_remediate.rc | default(-1) == 0 else 'FAILED')) | trim }}"
+      details_01: "{{ ('GDM package not installed' if not gdm_installed else ('Script executed successfully' if result_remediate.rc | default(-1) == 0 else 'Script failed')) | trim }}"
+    tags: [execute]
+
+  - name: "Set report data - requirement 02"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify GDM automatic mounting of removable media is disabled"
+      task_02_cmd: |
+        grep -Pr 'automount\\s*=\\s*false' and 'automount-open\\s*=\\s*false'
+      task_02_rc: "{{ (result_verify_automount.rc | default(1) == 0 and result_verify_automount_open.rc | default(1) == 0) | ternary(0, 1) }}"
+      data_02: "Automount disabled: {{ (result_verify_automount.rc | default(1) == 0) | ternary('true','false') }}, Automount-open disabled: {{ (result_verify_automount_open.rc | default(1) == 0) | ternary('true','false') }}"
+      status_02: "{{ ('SKIPPED' if not gdm_installed else ('APPLIED' if result_verify_automount.rc | default(1) == 0 and result_verify_automount_open.rc | default(1) == 0 else 'FAILED')) | trim }}"
+      details_02: "{{ ('GDM package not installed' if not gdm_installed else ('System is compliant' if result_verify_automount.rc | default(1) == 0 and result_verify_automount_open.rc | default(1) == 0 else 'One or both settings not disabled')) | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.8.6"
+      - "Reference: CIS Benchmark checkpoint 1.8.6"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+    tags: [execute]
+
+  always:
+# ========== STATE GUARD – GUARANTEED RESTORE ==========
+  - name: "State Guard Restore - Check for checkpoint flag"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if dconf backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/dconf_backup"
+    register: _sg_restore_dconf_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if dconf absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/dconf.absent"
+    register: _sg_restore_dconf_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/dconf from backup"
+    ansible.builtin.shell: "rm -rf /etc/dconf && cp -a {{ state_guard_dir }}/dconf_backup /etc/dconf && dconf update"
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_dconf_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove /etc/dconf (was originally absent)"
+    ansible.builtin.file:
+      path: /etc/dconf
+      state: absent
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_dconf_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

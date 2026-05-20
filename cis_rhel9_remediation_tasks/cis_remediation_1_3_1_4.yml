@@ -1,0 +1,321 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_3_1_4.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/selinux/config from previous checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/selinux-config.present"
+    dest: "{{ selinux_config }}"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if selinux config exists"
+  ansible.builtin.stat:
+    path: "{{ selinux_config }}"
+  register: _sg_config_stat
+  tags: [snapshot]
+- name: "State Guard - Backup selinux config"
+  ansible.builtin.copy:
+    src: "{{ selinux_config }}"
+    dest: "{{ state_guard_dir }}/selinux-config.present"
+    remote_src: true
+  when: _sg_config_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE ===
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set selinux installed fact"
+    ansible.builtin.set_fact:
+      selinux_installed: "{{ selinux_package in ansible_facts.packages }}"
+      playbook_skipped: "{{ selinux_package not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Capture SELinux config before modifications"
+    ansible.builtin.slurp:
+      src: "{{ selinux_config }}"
+    register: _before_config_slurp
+    failed_when: false
+    when: not (playbook_skipped | default(false) | bool)
+    tags: [execute]
+
+  - name: "Set before config content"
+    ansible.builtin.set_fact:
+      before_config: "{{ _before_config_slurp.content | b64decode }}"
+    when:
+    - not (playbook_skipped | default(false) | bool)
+    - _before_config_slurp.content is defined
+    tags: [execute]
+
+  - name: "Get current SELinux mode"
+    ansible.builtin.command: getenforce
+    args:
+      executable: /bin/bash
+    register: current_selinux_mode
+    failed_when: false
+    changed_when: false
+    when: not (playbook_skipped | default(false) | bool)
+    tags: [execute]
+
+  - name: "Req 01 - Apply SELinux enforcing mode"
+    ansible.builtin.command: setenforce 1
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when:
+    - not (playbook_skipped | default(false) | bool)
+    - selinux_desired_mode == 'enforcing'
+    - (current_selinux_mode.stdout | default('') | trim | lower) != 'enforcing'
+    tags: [execute]
+
+  - name: "Req 02 - Apply SELinux permissive mode"
+    ansible.builtin.command: setenforce 0
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when:
+    - not (playbook_skipped | default(false) | bool)
+    - selinux_desired_mode == 'permissive'
+    - (current_selinux_mode.stdout | default('') | trim | lower) != 'permissive'
+    tags: [execute]
+
+  - name: "Req 03 - Edit /etc/selinux/config to set SELINUX=enforcing"
+    ansible.builtin.lineinfile:
+      path: "{{ selinux_config }}"
+      regexp: '^SELINUX='
+      line: 'SELINUX=enforcing'
+    register: result_03
+    failed_when: false
+    when:
+    - not (playbook_skipped | default(false) | bool)
+    - selinux_desired_mode == 'enforcing'
+    tags: [execute]
+
+  - name: "Req 04 - Edit /etc/selinux/config to set SELINUX=permissive"
+    ansible.builtin.lineinfile:
+      path: "{{ selinux_config }}"
+      regexp: '^SELINUX='
+      line: 'SELINUX=permissive'
+    register: result_04
+    failed_when: false
+    when:
+    - not (playbook_skipped | default(false) | bool)
+    - selinux_desired_mode == 'permissive'
+    tags: [execute]
+
+  - name: "Capture SELinux config after modifications"
+    ansible.builtin.slurp:
+      src: "{{ selinux_config }}"
+    register: _after_config_slurp
+    failed_when: false
+    when: not (playbook_skipped | default(false) | bool)
+    tags: [execute]
+
+  - name: "Set after config content"
+    ansible.builtin.set_fact:
+      after_config: "{{ _after_config_slurp.content | b64decode }}"
+    when:
+    - not (playbook_skipped | default(false) | bool)
+    - _after_config_slurp.content is defined
+    tags: [execute]
+
+  - name: "Req 05 - Verify SELinux mode"
+    ansible.builtin.command: getenforce
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    when: not (playbook_skipped | default(false) | bool)
+    tags: [execute]
+
+  - name: "Set status facts for all requirements"
+    ansible.builtin.set_fact:
+      task_01_name: "Req 01 - Apply SELinux enforcing"
+      task_01_cmd: "setenforce 1"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {{ 'SKIPPED' if (playbook_skipped | default(false) | bool)
+           else ('PASS' if (result_01.skipped | default(false) and (current_selinux_mode.stdout | default('') | trim | lower) == 'enforcing')
+           else ('APPLIED' if (result_01.rc | default(-1)) == 0 else 'FAILED')) | trim }}
+      details_01: >-
+        {{ 'SELinux package not installed' if (playbook_skipped | default(false) | bool)
+           else ('Already enforcing - no change needed' if (result_01.skipped | default(false))
+           else ('Applied successfully' if (result_01.rc | default(-1)) == 0 else 'Command failed')) | trim }}
+
+      task_02_name: "Req 02 - Apply SELinux permissive"
+      task_02_cmd: "setenforce 0"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {{ 'SKIPPED' if (playbook_skipped | default(false) | bool) or (result_02.skipped | default(false))
+           else ('APPLIED' if (result_02.rc | default(-1)) == 0 else 'FAILED') | trim }}
+      details_02: >-
+        {{ 'SELinux package not installed' if (playbook_skipped | default(false) | bool)
+           else ('Skipped - desired mode is not permissive' if (result_02.skipped | default(false) and selinux_desired_mode != 'permissive')
+           else ('Already permissive - no change needed' if (result_02.skipped | default(false))
+           else ('Applied successfully' if (result_02.rc | default(-1)) == 0 else 'Command failed'))) | trim }}
+
+      task_03_name: "Req 03 - Edit /etc/selinux/config to SELINUX=enforcing"
+      task_03_cmd: "lineinfile: regexp '^SELINUX=' line 'SELINUX=enforcing'"
+      task_03_rc: "{{ result_03.rc | default(0) }}"
+      data_03: "{{ 'SELINUX=enforcing' }}"
+      status_03: >-
+        {{ 'SKIPPED' if (playbook_skipped | default(false) | bool) or (result_03.skipped | default(false))
+           else ('APPLIED' if not (result_03.failed | default(false)) else 'FAILED') | trim }}
+      details_03: >-
+        {{ 'SELinux package not installed' if (playbook_skipped | default(false) | bool)
+           else ('Skipped - desired mode is not enforcing' if (result_03.skipped | default(false))
+           else ('Config before: ' ~ (before_config | default('n/a') | trim) ~ '; after: ' ~ (after_config | default('n/a') | trim) if not (result_03.failed | default(false)) else 'Failed to set line')) | trim }}
+
+      task_04_name: "Req 04 - Edit /etc/selinux/config to SELINUX=permissive"
+      task_04_cmd: "lineinfile: regexp '^SELINUX=' line 'SELINUX=permissive'"
+      task_04_rc: "{{ result_04.rc | default(0) }}"
+      data_04: "{{ 'SELINUX=permissive' }}"
+      status_04: >-
+        {{ 'SKIPPED' if (playbook_skipped | default(false) | bool) or (result_04.skipped | default(false))
+           else ('APPLIED' if not (result_04.failed | default(false)) else 'FAILED') | trim }}
+      details_04: >-
+        {{ 'SELinux package not installed' if (playbook_skipped | default(false) | bool)
+           else ('Skipped - desired mode is not permissive' if (result_04.skipped | default(false))
+           else ('Config before: ' ~ (before_config | default('n/a') | trim) ~ '; after: ' ~ (after_config | default('n/a') | trim) if not (result_04.failed | default(false)) else 'Failed to set line')) | trim }}
+
+      task_05_name: "Req 05 - Verify SELinux mode"
+      task_05_cmd: "getenforce"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: >-
+        {{ 'SKIPPED' if (playbook_skipped | default(false) | bool)
+           else ('APPLIED' if (result_05.stdout | default('') | trim) in ['Enforcing','Permissive'] else 'FAILED') | trim }}
+      details_05: >-
+        {{ 'SELinux is not disabled' if (playbook_skipped | default(false) | bool)
+           else ('SELinux mode: ' ~ (result_05.stdout | default('') | trim) if (result_05.stdout | default('') | trim) in ['Enforcing','Permissive'] else 'SELinux is disabled or mode unknown') | trim }}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.3.1.4"
+      - "Reference: CIS Benchmark checkpoint 1.3.1.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Write remediation status for restore decision"
+    ansible.builtin.copy:
+      content: "{{ status_05 | default('UNKNOWN') }}"
+      dest: "{{ state_guard_dir }}/remediation_status"
+    failed_when: false
+    tags: [execute]
+
+  always:
+# === STATE GUARD RESTORE PHASE ===
+  - name: "State Guard Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/selinux-config.present"
+    register: _sg_restore_backup_file
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read remediation status"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/remediation_status"
+    register: _sg_restore_status_file
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Set remediation success fact"
+    ansible.builtin.set_fact:
+      _remediation_success: "{{ (_sg_restore_status_file.content | default('') | b64decode | trim) in ['PASS', 'APPLIED', 'Enforcing', 'Permissive'] }}"
+    when: _sg_restore_status_file.content is defined
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/selinux/config"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/selinux-config.present"
+      dest: "{{ selinux_config }}"
+      remote_src: true
+    when:
+    - _sg_restore_backup_file.stat.exists | default(false)
+    - not (_remediation_success | default(false))
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_backup_file.stat.exists is defined
+    failed_when: false
+    tags: [restore]

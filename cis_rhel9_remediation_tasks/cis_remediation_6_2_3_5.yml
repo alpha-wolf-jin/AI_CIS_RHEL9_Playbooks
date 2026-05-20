@@ -1,0 +1,696 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_2_3_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/rsyslog.conf.backup"
+    remote_src: true
+  when: "config_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    data_09: "Not collected yet"
+    status_09: "UNKNOWN"
+    details_09: "Not evaluated"
+    data_10: "Not collected yet"
+    status_10: "UNKNOWN"
+    details_10: "Not evaluated"
+    data_11: "Not collected yet"
+    status_11: "UNKNOWN"
+    details_11: "Not evaluated"
+    data_12: "Not collected yet"
+    status_12: "UNKNOWN"
+    details_12: "Not evaluated"
+    data_13: "Not collected yet"
+    status_13: "UNKNOWN"
+    details_13: "Not evaluated"
+    data_14: "Not collected yet"
+    status_14: "UNKNOWN"
+    details_14: "Not evaluated"
+    data_15: "Not collected yet"
+    status_15: "UNKNOWN"
+    details_15: "Not evaluated"
+    data_16: "Not collected yet"
+    status_16: "UNKNOWN"
+    details_16: "Not evaluated"
+    data_17: "Not collected yet"
+    status_17: "UNKNOWN"
+    details_17: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    task_08_name: "Not executed"
+    task_08_cmd: "N/A"
+    task_08_rc: -1
+    task_09_name: "Not executed"
+    task_09_cmd: "N/A"
+    task_09_rc: -1
+    task_10_name: "Not executed"
+    task_10_cmd: "N/A"
+    task_10_rc: -1
+    task_11_name: "Not executed"
+    task_11_cmd: "N/A"
+    task_11_rc: -1
+    task_12_name: "Not executed"
+    task_12_cmd: "N/A"
+    task_12_rc: -1
+    task_13_name: "Not executed"
+    task_13_cmd: "N/A"
+    task_13_rc: -1
+    task_14_name: "Not executed"
+    task_14_cmd: "N/A"
+    task_14_rc: -1
+    task_15_name: "Not executed"
+    task_15_cmd: "N/A"
+    task_15_rc: -1
+    task_16_name: "Not executed"
+    task_16_cmd: "N/A"
+    task_16_rc: -1
+    task_17_name: "Not executed"
+    task_17_cmd: "N/A"
+    task_17_rc: -1
+    playbook_skipped: false
+  tags: [always]
+- block:
+  - name: "Req 01 - Check if rsyslog package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if rsyslog is not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'rsyslog' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check if rsyslogd binary exists"
+    ansible.builtin.stat:
+      path: /usr/sbin/rsyslogd
+    register: rsyslogd_bin_stat
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Store prerequisite check details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check rsyslogd binary existence"
+      task_01_cmd: "stat /usr/sbin/rsyslogd"
+      task_01_rc: "{{ 0 if (rsyslogd_bin_stat.stat.exists | default(false)) else 1 }}"
+      data_01: "{{ '/usr/sbin/rsyslogd' if (rsyslogd_bin_stat.stat.exists | default(false)) else 'Not found' }}"
+      status_01: "{{ 'PASS' if (rsyslogd_bin_stat.stat.exists | default(false)) else 'FAIL' }}"
+      details_01: "{{ 'rsyslogd binary found' if (rsyslogd_bin_stat.stat.exists | default(false)) else 'rsyslogd binary not found' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 02 - Add *.emerg configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "*.emerg                                  :omusrmsg:*"
+      regexp: |
+        ^\*\.emerg\s+:omusrmsg:\*
+      insertafter: EOF
+    register: result_02
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 02 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_02_name: "Add *.emerg logging configuration"
+      task_02_cmd: "lineinfile: *.emerg :omusrmsg:*"
+      task_02_rc: "{{ 0 if not result_02.failed else 1 }}"
+      data_02: "{{ '*.emerg :omusrmsg:*' if not result_02.failed else result_02.msg | default('Error') }}"
+      status_02: "{{ 'APPLIED' if not result_02.failed else 'FAILED' }}"
+      details_02: "{{ 'Line added/verified' if not result_02.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 03 - Add auth,authpriv.* configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "auth,authpriv.*                          /var/log/secure"
+      regexp: |
+        ^auth,authpriv\.\*\s+/var/log/secure
+      insertafter: EOF
+    register: result_03
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 03 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_03_name: "Add auth,authpriv.* logging configuration"
+      task_03_cmd: "lineinfile: auth,authpriv.* /var/log/secure"
+      task_03_rc: "{{ 0 if not result_03.failed else 1 }}"
+      data_03: "{{ 'auth,authpriv.* /var/log/secure' if not result_03.failed else result_03.msg | default('Error') }}"
+      status_03: "{{ 'APPLIED' if not result_03.failed else 'FAILED' }}"
+      details_03: "{{ 'Line added/verified' if not result_03.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 04 - Add mail.* configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "mail.*                                  -/var/log/mail"
+      regexp: |
+        ^mail\.\*\s+-/var/log/mail
+      insertafter: EOF
+    register: result_04
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 04 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_04_name: "Add mail.* logging configuration"
+      task_04_cmd: "lineinfile: mail.* -/var/log/mail"
+      task_04_rc: "{{ 0 if not result_04.failed else 1 }}"
+      data_04: "{{ 'mail.* -/var/log/mail' if not result_04.failed else result_04.msg | default('Error') }}"
+      status_04: "{{ 'APPLIED' if not result_04.failed else 'FAILED' }}"
+      details_04: "{{ 'Line added/verified' if not result_04.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 05 - Add mail.info configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "mail.info                               -/var/log/mail.info"
+      regexp: |
+        ^mail\.info\s+-/var/log/mail\.info
+      insertafter: EOF
+    register: result_05
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 05 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_05_name: "Add mail.info logging configuration"
+      task_05_cmd: "lineinfile: mail.info -/var/log/mail.info"
+      task_05_rc: "{{ 0 if not result_05.failed else 1 }}"
+      data_05: "{{ 'mail.info -/var/log/mail.info' if not result_05.failed else result_05.msg | default('Error') }}"
+      status_05: "{{ 'APPLIED' if not result_05.failed else 'FAILED' }}"
+      details_05: "{{ 'Line added/verified' if not result_05.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 06 - Add mail.warning configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "mail.warning                            -/var/log/mail.warn"
+      regexp: |
+        ^mail\.warning\s+-/var/log/mail\.warn
+      insertafter: EOF
+    register: result_06
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 06 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_06_name: "Add mail.warning logging configuration"
+      task_06_cmd: "lineinfile: mail.warning -/var/log/mail.warn"
+      task_06_rc: "{{ 0 if not result_06.failed else 1 }}"
+      data_06: "{{ 'mail.warning -/var/log/mail.warn' if not result_06.failed else result_06.msg | default('Error') }}"
+      status_06: "{{ 'APPLIED' if not result_06.failed else 'FAILED' }}"
+      details_06: "{{ 'Line added/verified' if not result_06.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 07 - Add mail.err configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "mail.err                                 /var/log/mail.err"
+      regexp: |
+        ^mail\.err\s+/var/log/mail\.err
+      insertafter: EOF
+    register: result_07
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 07 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_07_name: "Add mail.err logging configuration"
+      task_07_cmd: "lineinfile: mail.err /var/log/mail.err"
+      task_07_rc: "{{ 0 if not result_07.failed else 1 }}"
+      data_07: "{{ 'mail.err /var/log/mail.err' if not result_07.failed else result_07.msg | default('Error') }}"
+      status_07: "{{ 'APPLIED' if not result_07.failed else 'FAILED' }}"
+      details_07: "{{ 'Line added/verified' if not result_07.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 08 - Add cron.* configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "cron.*                                   /var/log/cron"
+      regexp: |
+        ^cron\.\*\s+/var/log/cron
+      insertafter: EOF
+    register: result_08
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 08 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_08_name: "Add cron.* logging configuration"
+      task_08_cmd: "lineinfile: cron.* /var/log/cron"
+      task_08_rc: "{{ 0 if not result_08.failed else 1 }}"
+      data_08: "{{ 'cron.* /var/log/cron' if not result_08.failed else result_08.msg | default('Error') }}"
+      status_08: "{{ 'APPLIED' if not result_08.failed else 'FAILED' }}"
+      details_08: "{{ 'Line added/verified' if not result_08.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 09 - Add *.=warning;*.=err configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "*.=warning;*.=err                       -/var/log/warn"
+      regexp: |
+        ^\*\.=warning;\*\.=err\s+-/var/log/warn
+      insertafter: EOF
+    register: result_09
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 09 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_09_name: "Add *.=warning;*.=err logging configuration"
+      task_09_cmd: "lineinfile: *.=warning;*.=err -/var/log/warn"
+      task_09_rc: "{{ 0 if not result_09.failed else 1 }}"
+      data_09: "{{ '*.=warning;*.=err -/var/log/warn' if not result_09.failed else result_09.msg | default('Error') }}"
+      status_09: "{{ 'APPLIED' if not result_09.failed else 'FAILED' }}"
+      details_09: "{{ 'Line added/verified' if not result_09.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 10 - Add *.crit configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "*.crit                                   /var/log/warn"
+      regexp: |
+        ^\*\.crit\s+/var/log/warn
+      insertafter: EOF
+    register: result_10
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 10 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_10_name: "Add *.crit logging configuration"
+      task_10_cmd: "lineinfile: *.crit /var/log/warn"
+      task_10_rc: "{{ 0 if not result_10.failed else 1 }}"
+      data_10: "{{ '*.crit /var/log/warn' if not result_10.failed else result_10.msg | default('Error') }}"
+      status_10: "{{ 'APPLIED' if not result_10.failed else 'FAILED' }}"
+      details_10: "{{ 'Line added/verified' if not result_10.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 11 - Add *.*;mail.none;news.none configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "*.*;mail.none;news.none                 -/var/log/messages"
+      regexp: |
+        ^\*\.\*;mail\.none;news\.none\s+-/var/log/messages
+      insertafter: EOF
+    register: result_11
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 11 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_11_name: "Add *.*;mail.none;news.none logging configuration"
+      task_11_cmd: "lineinfile: *.*;mail.none;news.none -/var/log/messages"
+      task_11_rc: "{{ 0 if not result_11.failed else 1 }}"
+      data_11: "{{ '*.*;mail.none;news.none -/var/log/messages' if not result_11.failed else result_11.msg | default('Error') }}"
+      status_11: "{{ 'APPLIED' if not result_11.failed else 'FAILED' }}"
+      details_11: "{{ 'Line added/verified' if not result_11.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 12 - Add local0,local1.* configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "local0,local1.*                         -/var/log/localmessages"
+      regexp: |
+        ^local0,local1\.\*\s+-/var/log/localmessages
+      insertafter: EOF
+    register: result_12
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 12 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_12_name: "Add local0,local1.* logging configuration"
+      task_12_cmd: "lineinfile: local0,local1.* -/var/log/localmessages"
+      task_12_rc: "{{ 0 if not result_12.failed else 1 }}"
+      data_12: "{{ 'local0,local1.* -/var/log/localmessages' if not result_12.failed else result_12.msg | default('Error') }}"
+      status_12: "{{ 'APPLIED' if not result_12.failed else 'FAILED' }}"
+      details_12: "{{ 'Line added/verified' if not result_12.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 13 - Add local2,local3.* configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "local2,local3.*                         -/var/log/localmessages"
+      regexp: |
+        ^local2,local3\.\*\s+-/var/log/localmessages
+      insertafter: EOF
+    register: result_13
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 13 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_13_name: "Add local2,local3.* logging configuration"
+      task_13_cmd: "lineinfile: local2,local3.* -/var/log/localmessages"
+      task_13_rc: "{{ 0 if not result_13.failed else 1 }}"
+      data_13: "{{ 'local2,local3.* -/var/log/localmessages' if not result_13.failed else result_13.msg | default('Error') }}"
+      status_13: "{{ 'APPLIED' if not result_13.failed else 'FAILED' }}"
+      details_13: "{{ 'Line added/verified' if not result_13.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 14 - Add local4,local5.* configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "local4,local5.*                         -/var/log/localmessages"
+      regexp: |
+        ^local4,local5\.\*\s+-/var/log/localmessages
+      insertafter: EOF
+    register: result_14
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 14 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_14_name: "Add local4,local5.* logging configuration"
+      task_14_cmd: "lineinfile: local4,local5.* -/var/log/localmessages"
+      task_14_rc: "{{ 0 if not result_14.failed else 1 }}"
+      data_14: "{{ 'local4,local5.* -/var/log/localmessages' if not result_14.failed else result_14.msg | default('Error') }}"
+      status_14: "{{ 'APPLIED' if not result_14.failed else 'FAILED' }}"
+      details_14: "{{ 'Line added/verified' if not result_14.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 15 - Add local6,local7.* configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "local6,local7.*                         -/var/log/localmessages"
+      regexp: |
+        ^local6,local7\.\*\s+-/var/log/localmessages
+      insertafter: EOF
+    register: result_15
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 15 - Store configuration details"
+    ansible.builtin.set_fact:
+      task_15_name: "Add local6,local7.* logging configuration"
+      task_15_cmd: "lineinfile: local6,local7.* -/var/log/localmessages"
+      task_15_rc: "{{ 0 if not result_15.failed else 1 }}"
+      data_15: "{{ 'local6,local7.* -/var/log/localmessages' if not result_15.failed else result_15.msg | default('Error') }}"
+      status_15: "{{ 'APPLIED' if not result_15.failed else 'FAILED' }}"
+      details_15: "{{ 'Line added/verified' if not result_15.failed else 'Failed to add line' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 16 - Restart rsyslog service"
+    ansible.builtin.systemd:
+      name: rsyslog
+      state: restarted
+    register: result_16
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 16 - Store restart details"
+    ansible.builtin.set_fact:
+      task_16_name: "Restart rsyslog service"
+      task_16_cmd: "systemctl restart rsyslog"
+      task_16_rc: "{{ 0 if not result_16.failed else 1 }}"
+      data_16: "{{ 'rsyslog restarted' if not result_16.failed else result_16.msg | default('Error') }}"
+      status_16: "{{ 'APPLIED' if not result_16.failed else 'FAILED' }}"
+      details_16: "{{ 'Service restarted successfully' if not result_16.failed else 'Failed to restart service' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 17 - Verify rsyslog configuration"
+    ansible.builtin.shell: rsyslogd -N1 2>&1
+    args:
+      executable: /bin/bash
+    register: result_17
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 17 - Store verification details"
+    ansible.builtin.set_fact:
+      task_17_name: "Verify rsyslog configuration"
+      task_17_cmd: "rsyslogd -N1"
+      task_17_rc: "{{ result_17.rc | default(-1) }}"
+      data_17: "{{ result_17.stdout | default('') | trim }}"
+      status_17: "{{ 'PASS' if (result_17.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_17: "{{ 'Configuration valid' if (result_17.rc | default(-1)) == 0 else 'Configuration has errors' }}"
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.2.3.5"
+      - "Reference: CIS Benchmark checkpoint 6.2.3.5"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 08 - {{ req_08 }}:"
+      - "  Task: {{ task_08_name | default('Task not recorded') }}"
+      - "  Command: {{ task_08_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_08_rc | default(-1) }}"
+      - "  Data: {{ data_08 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_08 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 09 - {{ req_09 }}:"
+      - "  Task: {{ task_09_name | default('Task not recorded') }}"
+      - "  Command: {{ task_09_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_09_rc | default(-1) }}"
+      - "  Data: {{ data_09 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_09 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_09 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 10 - {{ req_10 }}:"
+      - "  Task: {{ task_10_name | default('Task not recorded') }}"
+      - "  Command: {{ task_10_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_10_rc | default(-1) }}"
+      - "  Data: {{ data_10 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_10 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_10 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 11 - {{ req_11 }}:"
+      - "  Task: {{ task_11_name | default('Task not recorded') }}"
+      - "  Command: {{ task_11_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_11_rc | default(-1) }}"
+      - "  Data: {{ data_11 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_11 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_11 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 12 - {{ req_12 }}:"
+      - "  Task: {{ task_12_name | default('Task not recorded') }}"
+      - "  Command: {{ task_12_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_12_rc | default(-1) }}"
+      - "  Data: {{ data_12 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_12 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_12 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 13 - {{ req_13 }}:"
+      - "  Task: {{ task_13_name | default('Task not recorded') }}"
+      - "  Command: {{ task_13_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_13_rc | default(-1) }}"
+      - "  Data: {{ data_13 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_13 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_13 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 14 - {{ req_14 }}:"
+      - "  Task: {{ task_14_name | default('Task not recorded') }}"
+      - "  Command: {{ task_14_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_14_rc | default(-1) }}"
+      - "  Data: {{ data_14 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_14 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_14 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 15 - {{ req_15 }}:"
+      - "  Task: {{ task_15_name | default('Task not recorded') }}"
+      - "  Command: {{ task_15_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_15_rc | default(-1) }}"
+      - "  Data: {{ data_15 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_15 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_15 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 16 - {{ req_16 }}:"
+      - "  Task: {{ task_16_name | default('Task not recorded') }}"
+      - "  Command: {{ task_16_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_16_rc | default(-1) }}"
+      - "  Data: {{ data_16 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_16 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_16 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 17 - {{ req_17 }}:"
+      - "  Task: {{ task_17_name | default('Task not recorded') }}"
+      - "  Command: {{ task_17_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_17_rc | default(-1) }}"
+      - "  Data: {{ data_17 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_17 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_17 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_17 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_17 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rsyslog.conf.backup"
+    register: backup_stat
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/rsyslog.conf.backup"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: "backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,17 @@
+req_01: |
+  1. Run the audit procedure for Ensure sshd Banner is configured:
+  Run the following command to verify Banner is set:
+  # sshd -T | grep -Pi -- '^banner\h+\/\H+'
+  Example: banner /etc/issue.net
+  - IF - Match set statements are used in your environment, specify the connection
+  parameters to use for the -T extended test mode and run the audit to verify
+  the setting is not incorrectly configured in a match block.
+  Example additional audit needed for a match block for the user sshuser:
+  # sshd -T -C user=sshuser | grep -Pi -- '^banner\h+\/\H+'
+  Note: If provided, any Match directives in the configuration file that would
+  apply are applied before the configuration is written to standard output.
+  Expected result: Output shows compliance status.
+req_02: |
+  2. VERIFY: Summarise compliance status for Ensure sshd Banner is configured.
+  Expected result: PASS if compliant, FAIL otherwise.
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

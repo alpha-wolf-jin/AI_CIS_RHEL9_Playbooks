@@ -1,0 +1,7 @@
+playbook_name: "cis_6_2_1_1_journald"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+service_name: "systemd-journald"
+req_01: "Apply unmask systemd-journald service using command: systemctl unmask systemd-journald.service. Expected result: service is unmasked and available."
+req_02: "Apply start systemd-journald service using command: systemctl start systemd-journald.service. Expected result: service is active and running."
+req_03: "Verify systemd-journald service is enabled and active using command: systemctl is-enabled systemd-journald.service && systemctl is-active systemd-journald.service. Expected result: both commands return 'enabled' and 'active' respectively."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

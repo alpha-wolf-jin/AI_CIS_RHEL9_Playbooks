@@ -1,0 +1,5 @@
+req_01: "Check if net-snmp package is installed using command: `rpm -q net-snmp`. Expected result: package net-snmp is not installed"
+req_02: "If net-snmp package is installed and required for dependencies, check if snmpd.service is enabled using command: `systemctl is-enabled snmpd.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If net-snmp package is installed and required for dependencies, check if snmpd.service is active using command: `systemctl is-active snmpd.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "Summarize overall compliance and store final result in cis_result"
+req_05: "Generate audit report"

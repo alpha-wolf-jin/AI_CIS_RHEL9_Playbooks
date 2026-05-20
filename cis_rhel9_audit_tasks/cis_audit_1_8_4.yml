@@ -1,0 +1,78 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_8_4.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set GDM installation status"
+  ansible.builtin.set_fact:
+    gdm_installed: "{{ ('gdm' in ansible_facts.packages) or ('gdm3' in ansible_facts.packages) }}"
+
+- name: "Req 1 - Execute GDM screen lock audit script"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ audit_script_content }}"
+    executable: /bin/bash
+  register: audit_result
+  when: gdm_installed
+  failed_when: false
+  changed_when: false
+
+- name: "Req 2 - Set per-requirement audit facts"
+  ansible.builtin.set_fact:
+    task_01_name: "Execute GDM screen lock audit script"
+    task_01_cmd: "/bin/bash with audit script via stdin"
+    task_01_rc: "{{ -1 if not gdm_installed else audit_result.rc }}"
+    data_01: "{{ 'Not executed (GDM not installed)' if not gdm_installed else (audit_result.stdout | default('No output')) }}"
+    status_01: "{{ 'SKIPPED' if not gdm_installed else ('PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'UNKNOWN')) }}"
+    details_01: "{{ 'GNOME Desktop Manager not installed, audit not applicable' if not gdm_installed else ('Audit script reported PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('Audit script reported FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'Audit result indeterminate')) }}"
+    task_02_name: "Parse audit output for compliance"
+    task_02_cmd: "set_fact evaluating stdout for PASS/FAIL"
+    task_02_rc: 0
+    data_02: "{{ 'PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'N/A') }}"
+    status_02: "{{ 'SKIPPED' if not gdm_installed else ('PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'UNKNOWN')) }}"
+    details_02: "{{ 'GNOME Desktop Manager not installed, compliance check not applicable' if not gdm_installed else ('Compliance PASS based on audit output' if ('** PASS **' in (audit_result.stdout | default(''))) else ('Compliance FAIL based on audit output' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'Unable to determine compliance')) }}"
+
+- name: "Req 2 - Set overall compliance result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_01 }}"
+    compliance_details: "{{ details_01 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.8.4"
+    - "Reference: CIS Benchmark checkpoint 1.8.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not executed') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not executed') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug msg"
+    - "  Exit code: 0"
+    - "  Data: Report printed successfully"
+    - "  Status: PASS"
+    - "  Details: Report generated with overall compliance status {{ cis_result | default('UNKNOWN') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ compliance_details | default('Not evaluated') | trim }}"
+    - "========================================================"

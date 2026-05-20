@@ -1,0 +1,183 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_4_3_2.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check if nft binary exists"
+  ansible.builtin.shell: which nft
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    nft_available: "{{ result_01.rc == 0 }}"
+    task_01_name: "Check if nft binary exists"
+    task_01_cmd: "which nft"
+    task_01_rc: "{{ result_01.rc }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'SKIPPED' | trim }}"
+    details_01: "{{ 'nft binary found at ' + result_01.stdout if result_01.rc == 0 else 'nft binary not found, nftables not in use' | trim }}"
+
+- name: "Req 02 - Check if nftables service is enabled"
+  ansible.builtin.shell: systemctl is-enabled nftables.service
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: nft_available | default(false)
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check if nftables service is enabled"
+    task_02_cmd: "systemctl is-enabled nftables.service"
+    task_02_rc: "{{ result_02.rc if result_02 is defined and not result_02.skipped | default(false) else -1 }}"
+    data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined and not result_02.skipped | default(false) else '' }}"
+    status_02: "{{ 'SKIPPED' if (result_02 is defined and result_02.skipped | default(false)) or not (nft_available | default(false)) else ('PASS' if result_02.rc == 0 and (result_02.stdout | default('') | trim) == 'enabled' else 'FAIL') | trim }}"
+
+- name: "Store requirement 02 details - Set details"
+  ansible.builtin.set_fact:
+    details_02: "{{ 'Service enabled' if status_02 == 'PASS' else ('Service not enabled' if status_02 == 'FAIL' else 'Skipped because nft not available') | trim }}"
+
+- name: "Req 03 - Check nftables established connection rules"
+  ansible.builtin.shell: systemctl is-enabled nftables.service | grep -q 'enabled' && nft list ruleset | awk '/hook input/,/}/' | grep 'ct state'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: nft_available | default(false)
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check established connection rules"
+    task_03_cmd: "systemctl is-enabled nftables.service | grep -q 'enabled' && nft list ruleset | awk '/hook input/,/}/' | grep 'ct state'"
+    task_03_rc: "{{ result_03.rc if result_03 is defined and not result_03.skipped | default(false) else -1 }}"
+    data_03: "{{ result_03.stdout | default('') | trim if result_03 is defined and not result_03.skipped | default(false) else '' }}"
+    status_03: "{{ 'SKIPPED' if (result_03 is defined and result_03.skipped | default(false)) or not (nft_available | default(false)) else ('PASS' if result_03.rc == 0 else 'FAIL') | trim }}"
+
+- name: "Store requirement 03 details - Set details"
+  ansible.builtin.set_fact:
+    details_03: "{{ 'Established connection rules found' if status_03 == 'PASS' else ('No established connection rules found or service not enabled' if status_03 == 'FAIL' else 'Skipped because nft not available') | trim }}"
+
+- name: "Req 04 - Determine overall compliance from rule output"
+  ansible.builtin.set_fact:
+    status_04: >-
+      {%- if not (nft_available | default(false)) -%}
+        SKIPPED
+      {%- elif ('ip protocol tcp ct state established accept' in data_03 | default('')) and
+              ('ip protocol udp ct state established accept' in data_03 | default('')) and
+              ('ip protocol icmp ct state established accept' in data_03 | default('')) -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+  when: nft_available | default(false)
+
+- name: "Set requirement 04 details"
+  ansible.builtin.set_fact:
+    task_04_name: "Evaluate established connection rules against site policy"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "{{ data_03 | default('') }}"
+    status_04: "{{ 'SKIPPED' if not (nft_available | default(false)) else status_04 | trim }}"
+    details_04: "{{ 'Site policy rules satisfied' if status_04 == 'PASS' else ('Missing required established connection rules' if status_04 == 'FAIL' else 'Not applicable, nftables not in use') | trim }}"
+
+- name: "Req 05 - Store final audit result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ 'SKIPPED' if not (nft_available | default(false)) else status_04 | trim }}"
+
+- name: "Store requirement 05 display details"
+  ansible.builtin.set_fact:
+    task_05_name: "Store final audit result"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "{{ cis_result | trim }}"
+    status_05: "{{ cis_result | trim }}"
+    details_05: "Overall CIS 4.3.2 compliance"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 4.3.2"
+    - "Reference: CIS Benchmark checkpoint 4.3.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

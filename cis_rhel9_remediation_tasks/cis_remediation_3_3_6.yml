@@ -1,0 +1,341 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_6.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ target_sysctl_file }}"
+  register: _cfg_stat
+  tags: [snapshot]
+- name: "Snapshot - Record whether target config file existed"
+  ansible.builtin.copy:
+    content: "{{ 'present' if _cfg_stat.stat.exists | default(false) else 'absent' }}"
+    dest: "{{ backup_dir }}/target_file_existence.marker"
+    force: true
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ target_sysctl_file }}"
+    dest: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+    remote_src: true
+  when: _cfg_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Save current net.ipv4.conf.all.secure_redirects"
+  ansible.builtin.shell:
+    cmd: "sysctl -n net.ipv4.conf.all.secure_redirects"
+  args:
+    executable: /bin/bash
+  register: _snap_all
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist all.secure_redirects value"
+  ansible.builtin.copy:
+    content: "{{ _snap_all.stdout | default('') | trim }}"
+    dest: "{{ backup_dir }}/all_secure_redirects.orig"
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Save current net.ipv4.conf.default.secure_redirects"
+  ansible.builtin.shell:
+    cmd: "sysctl -n net.ipv4.conf.default.secure_redirects"
+  args:
+    executable: /bin/bash
+  register: _snap_default
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist default.secure_redirects value"
+  ansible.builtin.copy:
+    content: "{{ _snap_default.stdout | default('') | trim }}"
+    dest: "{{ backup_dir }}/default_secure_redirects.orig"
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Check if temp remediation script exists"
+  ansible.builtin.stat:
+    path: "/tmp/cis_3_3_6_remediate.sh"
+  register: _snap_temp_script
+  tags: [snapshot]
+- name: "Snapshot - Record temp script existence (present/absent)"
+  ansible.builtin.copy:
+    content: "{{ 'present' if _snap_temp_script.stat.exists | default(false) else 'absent' }}"
+    dest: "{{ backup_dir }}/temp_script_existence.marker"
+    force: true
+  tags: [snapshot]
+
+- block:
+        # === EXECUTE (tag: execute) ===
+
+# Requirement 1: Set config file parameters and apply with script
+  - name: "Req 1 - Set secure_redirects parameters in sysctl config file"
+    ansible.builtin.lineinfile:
+      path: "{{ target_sysctl_file }}"
+      line: "{{ item.name }} = {{ item.value }}"
+      regexp: "^#?{{ item.name }}"
+      state: present
+      create: yes
+      mode: '0644'
+    loop: "{{ sysctl_params }}"
+    register: _lineinfile_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Write remediation script to /tmp"
+    ansible.builtin.copy:
+      dest: "/tmp/cis_3_3_6_remediate.sh"
+      content: |
+        #!/usr/bin/env bash
+        {
+           sysctl -w net.ipv4.conf.all.secure_redirects=0
+           sysctl -w net.ipv4.conf.default.secure_redirects=0
+           sysctl -w net.ipv4.route.flush=1
+        }
+      mode: '0700'
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_3_3_6_remediate.sh
+    args:
+      executable: /bin/bash
+    register: _script_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Clean up temporary script"
+    ansible.builtin.file:
+      path: "/tmp/cis_3_3_6_remediate.sh"
+      state: absent
+    changed_when: false
+    tags: [execute]
+
+# Requirement 2: Verify parameters
+  - name: "Req 2 - Verify secure_redirects parameters are set to 0"
+    ansible.builtin.shell: |
+      sysctl -n net.ipv4.conf.all.secure_redirects net.ipv4.conf.default.secure_redirects
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement details"
+    set_fact:
+            # Requirement 1
+      data_01: "{{ (_lineinfile_result.results | map(attribute='msg') | join('; ')) ~ ' ; script_output: ' ~ (_script_result.stdout | default('')) }}"
+      status_01: >-
+        {%- if _script_result.rc | default(1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_01: "Configuration file updated and kernel parameters applied"
+      task_01_cmd: "lineinfile + shell script"
+      task_01_rc: "{{ _script_result.rc | default(-1) }}"
+            # Requirement 2
+      data_02: "{{ _verify_result.stdout | default('') | trim }}"
+      status_02: >-
+        {%- if _verify_result.stdout_lines | length == 2 and
+              _verify_result.stdout_lines[0] == '0' and
+              _verify_result.stdout_lines[1] == '0' -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_02: "{{ 'Both parameters are 0' if (_verify_result.stdout_lines | length == 2 and _verify_result.stdout_lines[0] == '0' and _verify_result.stdout_lines[1] == '0') else 'Parameters not correctly set' }}"
+      task_02_cmd: "sysctl -n net.ipv4.conf.all.secure_redirects net.ipv4.conf.default.secure_redirects"
+      task_02_rc: "{{ _verify_result.rc | default(-1) }}"
+    tags: [execute]
+
+# Requirement 3: Store overall remediation result in cis_result
+  - name: "Set overall remediation result"
+    set_fact:
+      cis_result: "{{ status_02 | trim }}"
+    tags: [execute]
+
+# Requirement 4: Generate report
+  - name: "Req 4 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 3.3.6"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 3.3.6"
+      - ""
+      - "REQUIREMENT 01 - 1. Run the provided remediation script to fix Ensure secure icmp redirects are not accepted."
+      - "  Task: Set parameters in config file and apply via script"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "REQUIREMENT 02 - 2. VERIFY: Run audit check to confirm Ensure secure icmp redirects are not accepted is properly configured."
+      - "  Task: Verify sysctl values"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "REQUIREMENT 03 - 3. Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+      - "  Task: Store cis_result"
+      - "  Command: N/A"
+      - "  Exit code: 0"
+      - "  Data: N/A"
+      - "  Status: PASS"
+      - "  Details: cis_result set to {{ cis_result }}"
+      - ""
+      - "REQUIREMENT 04 - 4. Create a task named 'Generate remediation report' using debug msg."
+      - "  Task: Generate remediation report"
+      - "  Command: N/A"
+      - "  Exit code: 0"
+      - "  Data: N/A"
+      - "  Status: PASS"
+      - "  Details: Report displayed successfully"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_02 }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === RESTORE (tag: restore) ===
+        # NOTE: All restore tasks must discover state from disk, not from pre_tasks/block variables.
+
+  - name: "Restore - Check if config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+    register: _restore_cfg_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite config file with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+      dest: "{{ target_sysctl_file }}"
+      remote_src: true
+    when: _restore_cfg_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if existence marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/target_file_existence.marker"
+    register: _restore_marker_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/target_file_existence.marker"
+    register: _restore_marker_content
+    when: _restore_marker_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove config file if it was originally absent"
+    ansible.builtin.file:
+      path: "{{ target_sysctl_file }}"
+      state: absent
+    when:
+    - _restore_marker_stat.stat.exists | default(false)
+    - _restore_marker_content.content is defined
+    - (_restore_marker_content.content | b64decode | trim) == 'absent'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if all_secure_redirects saved value exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/all_secure_redirects.orig"
+    register: _restore_all_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved all.secure_redirects value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/all_secure_redirects.orig"
+    register: _restore_all_content
+    when: _restore_all_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply all.secure_redirects original value"
+    ansible.builtin.shell:
+      cmd: "sysctl -w net.ipv4.conf.all.secure_redirects={{ _restore_all_content.content | b64decode | trim }}"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_all_stat.stat.exists | default(false)
+    - _restore_all_content.content is defined
+    - (_restore_all_content.content | b64decode | trim) | length > 0
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if default_secure_redirects saved value exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/default_secure_redirects.orig"
+    register: _restore_default_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved default.secure_redirects value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/default_secure_redirects.orig"
+    register: _restore_default_content
+    when: _restore_default_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Apply default.secure_redirects original value"
+    ansible.builtin.shell:
+      cmd: "sysctl -w net.ipv4.conf.default.secure_redirects={{ _restore_default_content.content | b64decode | trim }}"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_default_stat.stat.exists | default(false)
+    - _restore_default_content.content is defined
+    - (_restore_default_content.content | b64decode | trim) | length > 0
+    failed_when: false
+    tags: [restore]
+
+# === Restore cleanup for temp remediation script ===
+  - name: "Restore - Check temp script existence marker"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/temp_script_existence.marker"
+    register: _restore_temp_marker_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read temp script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/temp_script_existence.marker"
+    register: _restore_temp_marker_content
+    when: _restore_temp_marker_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove temp script if it was originally absent"
+    ansible.builtin.file:
+      path: "/tmp/cis_3_3_6_remediate.sh"
+      state: absent
+    when:
+    - _restore_temp_marker_content.content is defined
+    - (_restore_temp_marker_content.content | b64decode | trim) == 'absent'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

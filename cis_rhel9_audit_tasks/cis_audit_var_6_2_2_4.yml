@@ -1,0 +1,6 @@
+cis_checkpoint: "6.2.2.4"
+req_01: "Check if systemd-journald is installed using command: `dpkg -l systemd-journald 2>/dev/null || rpm -q systemd-journald 2>/dev/null`. Expected result: package is installed (non-empty output)."
+req_02: |
+  Check if journald Storage is configured to persistent using command: `systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E \"^Storage=persistent\"`. Expected result: `Storage=persistent`
+req_03: "Summarize overall compliance: PASS if all checks pass, SKIP if systemd-journald is not installed, FAIL if systemd-journald is installed but Storage is not set to persistent."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

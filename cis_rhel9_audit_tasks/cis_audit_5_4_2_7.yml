@@ -1,0 +1,77 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_2_7.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+
+- name: "Req 01 - Run audit script to verify system account shells"
+  ansible.builtin.shell: |
+    {% raw %}
+    l_valid_shells="^($(awk -F\/ '$NF != "nologin" {print}' /etc/shells | sed -rn '/^\//{s,/,\\\/,g;p}' | paste -s -d '|' - ))$"
+    awk -v pat="$l_valid_shells" -F: '($1!~/^(root|halt|sync|shutdown|nfsnobody)$/ && ($3<'"$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)"' || $3 == 65534) && $(NF) ~ pat) {print "Service account: \"" $1 "\" has a valid shell: " $7}' /etc/passwd
+    {% endraw %}
+  args:
+    executable: /bin/bash
+  register: audit_output
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Store compliance details"
+  set_fact:
+    status_01: "{{ 'PASS' if (audit_output.stdout | default('') | trim) == '' else 'FAIL' }}"
+    details_01: "{{ 'No system accounts with valid login shell found' if (audit_output.stdout | default('') | trim) == '' else 'System accounts with valid login shell found: ' ~ (audit_output.stdout | default('') | trim) }}"
+    data_01: "{{ audit_output.stdout | default('') | trim }}"
+    task_01_name: "Req 01 - Run audit script to verify system account shells"
+    task_01_cmd: "audit script as per CIS 5.4.2.7"
+    task_01_rc: "{{ audit_output.rc | default(-1) }}"
+    status_02: "{{ 'PASS' if (audit_output.stdout | default('') | trim) == '' else 'FAIL' }}"
+    details_02: "{{ 'Compliance status: ' ~ ('PASS' if (audit_output.stdout | default('') | trim) == '' else 'FAIL') }}"
+    data_02: "{{ audit_output.stdout | default('') | trim }}"
+    task_02_name: "Req 02 - Verify compliance status for system accounts login shell"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+
+- name: "Req 03 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.4.2.7"
+    - "Reference: CIS Benchmark checkpoint 5.4.2.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ details_02 }}"
+    - "========================================================"

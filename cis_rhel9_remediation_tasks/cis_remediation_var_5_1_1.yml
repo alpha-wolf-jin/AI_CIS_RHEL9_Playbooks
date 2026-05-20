@@ -1,0 +1,75 @@
+req_01: >-
+  1. Run the provided remediation script to fix Ensure permissions on /etc/ssh/sshd_config are configured.
+  Run the following script to set ownership and permissions on /etc/ssh/sshd_config and files ending in .conf
+  in the /etc/ssh/sshd_config.d directory: Execute the COMPLETE script as-is:
+req_02: "2. VERIFY: Run audit check to confirm Ensure permissions on /etc/ssh/sshd_config are configured is properly configured. Expected result: System is compliant"
+req_03: "3. Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "4. Create a task named 'Generate remediation report' using debug msg with EXACTLY this format:"
+remediation_script: "/tmp/remediate_ssh_perms.sh"
+verify_script: "/tmp/verify_ssh_perms.sh"
+remediation_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  set -euo pipefail
+  chmod u-x,og-rwx /etc/ssh/sshd_config
+  chown root:root /etc/ssh/sshd_config
+  while IFS= read -r -d $'\0' l_file; do
+     if [ -e "$l_file" ]; then
+        chmod u-x,og-rwx "$l_file"
+        chown root:root "$l_file"
+     fi
+  done < <(find /etc/ssh/sshd_config.d -type f -name '*.conf' -print0 2>/dev/null)
+  while IFS= read -r include_line; do
+      include_path=$(echo "$include_line" | sed -e 's/^[[:space:]]*Include[[:space:]]\+//')
+      while IFS= read -r -d $'\0' inc_file; do
+          if [ -e "$inc_file" ]; then
+              chmod u-x,og-rwx "$inc_file"
+              chown root:root "$inc_file"
+          fi
+      done < <(find $(dirname "$include_path") -maxdepth 1 -type f -name "$(basename "$include_path")" -print0 2>/dev/null || true)
+  done < <(grep -iE '^\s*Include\s' /etc/ssh/sshd_config 2>/dev/null || true)
+  {% endraw %}
+verify_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  set -euo pipefail
+  failures=0
+  check_file() {
+      local f="$1"
+      if [ ! -e "$f" ]; then
+          return 0
+      fi
+      owner=$(stat -c %U "$f")
+      group=$(stat -c %G "$f")
+      perm=$(stat -c %a "$f")
+      if [ "$owner" != "root" ] || [ "$group" != "root" ]; then
+          echo "FAIL: $f owner/group not root:root"
+          failures=$((failures + 1))
+          return
+      fi
+      # Correct check: no bits outside 0600 (rw-------) allowed
+      if [ "$perm" != "600" ]; then
+          echo "FAIL: $f permissions $perm not strict (u-x,og-rwx)"
+          failures=$((failures + 1))
+      else
+          echo "PASS: $f ok"
+      fi
+  }
+  check_file /etc/ssh/sshd_config
+  while IFS= read -r -d $'\0' f; do
+      check_file "$f"
+  done < <(find /etc/ssh/sshd_config.d -type f -name '*.conf' -print0 2>/dev/null)
+  while IFS= read -r include_line; do
+      include_path=$(echo "$include_line" | sed -e 's/^[[:space:]]*Include[[:space:]]\+//')
+      while IFS= read -r -d $'\0' inc_file; do
+          check_file "$inc_file"
+      done < <(find $(dirname "$include_path") -maxdepth 1 -type f -name "$(basename "$include_path")" -print0 2>/dev/null || true)
+  done < <(grep -iE '^\s*Include\s' /etc/ssh/sshd_config 2>/dev/null || true)
+  if [ $failures -eq 0 ]; then
+      echo "OVERALL: PASS"
+      exit 0
+  else
+      echo "OVERALL: FAIL ($failures failures)"
+      exit 1
+  fi
+  {% endraw %}

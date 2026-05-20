@@ -1,0 +1,228 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_7_2_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/shadow exists"
+  ansible.builtin.stat:
+    path: /etc/shadow
+  register: _shadow_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/shadow if exists"
+  ansible.builtin.copy:
+    src: /etc/shadow
+    dest: "{{ backup_dir }}/shadow.backup"
+    remote_src: true
+  when: "_shadow_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Find accounts with empty password fields"
+    ansible.builtin.shell: |
+      {% raw %}
+      awk -F: '($2 == "") { print $1 }' /etc/shadow
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: empty_pw_accounts
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Lock accounts with empty password fields"
+    ansible.builtin.shell: |
+      {% raw %}
+      for user in $(awk -F: '($2 == "") { print $1 }' /etc/shadow); do
+        passwd -l "$user"
+      done
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: lock_result
+    failed_when: false
+    when: "empty_pw_accounts.stdout | default('') | trim != ''"
+    tags: [execute]
+
+  - name: "Req 02 - Check active sessions for empty-password accounts"
+    ansible.builtin.shell: |
+      for user in {{ empty_pw_accounts.stdout_lines | join(' ') }}; do
+        echo "=== who ===" && who | grep "$user" || echo "No active sessions"
+        echo "=== last ===" && last | head -20 | grep "$user" || echo "No recent logins"
+      done
+    args:
+      executable: /bin/bash
+    register: session_check
+    changed_when: false
+    failed_when: false
+    when: "empty_pw_accounts.stdout | default('') | trim != ''"
+    tags: [execute]
+
+  - name: "Req 03 - Report investigation details"
+    debug:
+      msg:
+      - "Manual investigation required for accounts: {{ empty_pw_accounts.stdout_lines | join(', ') }}"
+      - "Session data collected: {{ session_check.stdout | default('N/A') }}"
+    when: "empty_pw_accounts.stdout | default('') | trim != ''"
+    tags: [execute]
+
+  - name: "Req 04 - Verify no accounts have empty password fields"
+    ansible.builtin.shell: |
+      {% raw %}
+      awk -F: '($2 == "") { print $1 }' /etc/shadow
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Lock accounts with empty password fields"
+      task_01_cmd: "passwd -l <username> for each account with empty password field"
+      task_01_rc: "{{ lock_result.rc | default(-1) }}"
+      data_01: "{{ empty_pw_accounts.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (empty_pw_accounts.stdout | default('') | trim != '' and lock_result.rc | default(-1) == 0) else ('SKIP' if (empty_pw_accounts.stdout | default('') | trim == '') else 'FAIL') }}"
+      details_01: |
+        {{ 'Accounts locked: ' + (empty_pw_accounts.stdout | default('') | trim | replace('\n', ', ')) if (empty_pw_accounts.stdout | default('') | trim != '') else 'No accounts with empty passwords found - skipped' }}
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Check active sessions for empty-password accounts"
+      task_02_cmd: "for user in ...; do who | grep ... && last ...; done"
+      task_02_rc: "{{ session_check.rc | default(-1) }}"
+      data_02: "{{ session_check.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if (empty_pw_accounts.stdout | default('') | trim != '' and session_check.rc | default(-1) == 0) else ('SKIP' if (empty_pw_accounts.stdout | default('') | trim == '') else 'FAIL') }}"
+      details_02: |
+        {{ 'Active sessions checked for accounts: ' + (empty_pw_accounts.stdout | default('') | trim | replace('\n', ', ')) if (empty_pw_accounts.stdout | default('') | trim != '') else 'No accounts with empty passwords - skipped' }}
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Report investigation details"
+      task_03_cmd: "debug module - displayed manual investigation notice"
+      task_03_rc: 0
+      data_03: |
+        {{ 'Accounts requiring investigation: ' + (empty_pw_accounts.stdout | default('') | trim | replace('\n', ', ')) if (empty_pw_accounts.stdout | default('') | trim != '') else 'None' }}
+      status_03: "{{ 'PASS' if (empty_pw_accounts.stdout | default('') | trim != '') else 'SKIP' }}"
+      details_03: |
+        {{ 'Manual investigation required for accounts: ' + (empty_pw_accounts.stdout | default('') | trim | replace('\n', ', ')) if (empty_pw_accounts.stdout | default('') | trim != '') else 'No accounts with empty passwords - skipped' }}
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify no accounts have empty password fields"
+      task_04_cmd: |
+        awk -F: '($2 == \"\") { print $1 }' /etc/shadow
+      task_04_rc: "{{ verify_result.rc | default(-1) }}"
+      data_04: "{{ verify_result.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (verify_result.stdout | default('') | trim == '') else 'FAIL' }}"
+      details_04: |
+        {{ 'No accounts with empty passwords remain' if (verify_result.stdout | default('') | trim == '') else 'Accounts still with empty passwords: ' + (verify_result.stdout | default('') | trim | replace('\n', ', ')) }}
+    tags: [execute]
+
+  - name: "Req 05 - Store overall result"
+    set_fact:
+      cis_result: >-
+        {% if status_04 == 'PASS' %}PASS
+        {% elif status_04 == 'FAIL' %}FAIL
+        {% elif status_04 == 'SKIP' %}SKIP
+        {% else %}ERROR
+        {% endif %}
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Store final remediation result"
+      task_05_cmd: "set_fact cis_result based on verification status"
+      task_05_rc: 0
+      data_05: "{{ cis_result }}"
+      status_05: "PASS"
+      details_05: "cis_result stored successfully"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 7.2.2"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 7.2.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/shadow.backup"
+    register: _restore_shadow_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite /etc/shadow with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/shadow.backup"
+      dest: /etc/shadow
+      remote_src: true
+    when: "_restore_shadow_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

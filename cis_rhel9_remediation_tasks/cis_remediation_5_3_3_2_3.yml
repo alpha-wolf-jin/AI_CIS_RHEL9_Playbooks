@@ -1,0 +1,364 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_2_3.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore pwquality.conf from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/pwquality.conf.present"
+    dest: "{{ pwquality_conf }}"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore authselect.conf from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/authselect.conf.present"
+    dest: "{{ authselect_conf }}"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete pwquality drop-in from prior run"
+  ansible.builtin.file:
+    path: "{{ pwquality_target_file }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if pwquality.conf exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_conf }}"
+  register: _sg_pwq_stat
+  tags: [snapshot]
+- name: "State Guard - Backup pwquality.conf"
+  ansible.builtin.copy:
+    src: "{{ pwquality_conf }}"
+    dest: "{{ state_guard_dir }}/pwquality.conf.present"
+    remote_src: true
+  when: "_sg_pwq_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Check if authselect.conf exists"
+  ansible.builtin.stat:
+    path: "{{ authselect_conf }}"
+  register: _sg_auth_stat
+  tags: [snapshot]
+- name: "State Guard - Backup authselect.conf"
+  ansible.builtin.copy:
+    src: "{{ authselect_conf }}"
+    dest: "{{ state_guard_dir }}/authselect.conf.present"
+    remote_src: true
+  when: "_sg_auth_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Check if pwquality drop-in exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_target_file }}"
+  register: _sg_dropin_stat
+  tags: [snapshot]
+- name: "State Guard - Mark pwquality drop-in as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/50-pwcomplexity.conf.absent"
+  when: "not _sg_dropin_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === STATE GUARD — EXECUTE PHASE ===
+
+  - name: "Req 01 - Check if authselect package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set authselect installed fact"
+    ansible.builtin.set_fact:
+      authselect_installed: "{{ 'authselect' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Create pwquality.conf.d directory"
+    ansible.builtin.file:
+      path: "{{ pwquality_conf_d }}"
+      state: directory
+      mode: '0755'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set minclass = 4 in pwquality drop-in"
+    ansible.builtin.lineinfile:
+      path: "{{ pwquality_target_file }}"
+      regexp: |
+        ^\s*minclass\s*=
+      line: 'minclass = 4'
+      create: true
+      mode: '0644'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set dcredit = -1 in pwquality drop-in"
+    ansible.builtin.lineinfile:
+      path: "{{ pwquality_target_file }}"
+      regexp: |
+        ^\s*dcredit\s*=
+      line: 'dcredit = -1'
+      create: true
+      mode: '0644'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set ucredit = -1 in pwquality drop-in"
+    ansible.builtin.lineinfile:
+      path: "{{ pwquality_target_file }}"
+      regexp: |
+        ^\s*ucredit\s*=
+      line: 'ucredit = -1'
+      create: true
+      mode: '0644'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set lcredit = -1 in pwquality drop-in"
+    ansible.builtin.lineinfile:
+      path: "{{ pwquality_target_file }}"
+      regexp: |
+        ^\s*lcredit\s*=
+      line: 'lcredit = -1'
+      create: true
+      mode: '0644'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set ocredit = -1 in pwquality drop-in"
+    ansible.builtin.lineinfile:
+      path: "{{ pwquality_target_file }}"
+      regexp: |
+        ^\s*ocredit\s*=
+      line: 'ocredit = -1'
+      create: true
+      mode: '0644'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Deploy PAM remediation script"
+    ansible.builtin.copy:
+      content: |
+        #!/usr/bin/env bash
+        {
+           for l_pam_file in system-auth password-auth; do
+             l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+             sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+ minclass\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+             sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+ dcredit\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+             sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+ ucredit\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+             sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+ lcredit\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+             sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+ ocredit\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+           done
+           authselect apply-changes
+        }
+      dest: "/tmp/cis_pam_remediate.sh"
+      mode: '0700'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute PAM remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_pam_remediate.sh
+    args:
+      executable: /bin/bash
+    register: result_01
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Clean up PAM remediation script"
+    ansible.builtin.file:
+      path: "/tmp/cis_pam_remediate.sh"
+      state: absent
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify minclass in pwquality configuration"
+    ansible.builtin.shell: |
+      grep -rh '^\s*minclass\s*=\s*4' {{ pwquality_conf }} {{ pwquality_conf_d }}/ 2>/dev/null && echo "COMPLIANT" || echo "NONCOMPLIANT"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify credit parameters in pwquality configuration"
+    ansible.builtin.shell: |
+      D=$(grep -rh '^\s*dcredit\s*=\s*-1' {{ pwquality_conf }} {{ pwquality_conf_d }}/ 2>/dev/null && echo "OK" || echo "MISSING")
+      U=$(grep -rh '^\s*ucredit\s*=\s*-1' {{ pwquality_conf }} {{ pwquality_conf_d }}/ 2>/dev/null && echo "OK" || echo "MISSING")
+      L=$(grep -rh '^\s*lcredit\s*=\s*-1' {{ pwquality_conf }} {{ pwquality_conf_d }}/ 2>/dev/null && echo "OK" || echo "MISSING")
+      O=$(grep -rh '^\s*ocredit\s*=\s*-1' {{ pwquality_conf }} {{ pwquality_conf_d }}/ 2>/dev/null && echo "OK" || echo "MISSING")
+      echo "dcredit=$D ucredit=$U lcredit=$L ocredit=$O"
+      if [ "$D" = "OK" ] && [ "$U" = "OK" ] && [ "$L" = "OK" ] && [ "$O" = "OK" ]; then
+        echo "COMPLIANT"
+      else
+        echo "NONCOMPLIANT"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02b
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify PAM pwquality has no duplicate parameters"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 {{ authselect_conf }} 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        if grep -E '\s+(minclass|dcredit|ucredit|lcredit|ocredit)\s*=' "/etc/authselect/$l_pam_profile/system-auth" "/etc/authselect/$l_pam_profile/password-auth" 2>/dev/null; then
+          echo "FOUND_IN_PAM"
+        else
+          echo "NOT_FOUND_IN_PAM"
+        fi
+      else
+        echo "NO_CUSTOM_PROFILE"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02c
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.3.2.3"
+      - "========================================================"
+      - ""
+      - "Reference: CIS Benchmark checkpoint 5.3.3.2.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Execute PAM remediation script and configure pwquality"
+      - "  Command: /bin/bash /tmp/cis_pam_remediate.sh"
+      - "  Exit code: {{ result_01.rc | default(-1) }}"
+      - "  Data: {{ result_01.stdout | default('') | trim }}"
+      - "  Status: {{ 'APPLIED' if (result_01.rc | default(-1)) == 0 else 'FAILED' }}"
+      - "  Details: {{ 'Script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Script execution failed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify minclass = 4 in pwquality"
+      - "  Command: grep -rh '^\\s*minclass\\s*=\\s*4' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/"
+      - "  Exit code: {{ result_02.rc | default(-1) }}"
+      - "  Data: {{ result_02.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if 'COMPLIANT' in (result_02.stdout | default('')) else 'FAIL' }}"
+      - "  Details: {{ 'minclass=4 confirmed' if 'COMPLIANT' in (result_02.stdout | default('')) else 'minclass=4 not found' }}"
+      - ""
+      - "  Task: Verify credit parameters in pwquality"
+      - "  Command: grep credit parameters"
+      - "  Exit code: {{ result_02b.rc | default(-1) }}"
+      - "  Data: {{ result_02b.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if 'COMPLIANT' in (result_02b.stdout | default('')) else 'FAIL' }}"
+      - "  Details: {{ 'All credit parameters set to -1' if 'COMPLIANT' in (result_02b.stdout | default('')) else 'Some credit parameters missing' }}"
+      - ""
+      - "  Task: Verify PAM has no duplicate pwquality parameters"
+      - "  Command: grep PAM authselect files"
+      - "  Exit code: {{ result_02c.rc | default(-1) }}"
+      - "  Data: {{ result_02c.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if 'NOT_FOUND_IN_PAM' in (result_02c.stdout | default('')) else 'FAIL' }}"
+      - "  Details: {{ 'No duplicate parameters in PAM' if 'NOT_FOUND_IN_PAM' in (result_02c.stdout | default('')) else 'Duplicate parameters found or no custom profile' }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ 'APPLIED' if (result_01.rc | default(-1)) == 0 else 'FAILED' }}"
+      - "  Details: {{ 'All remediation steps completed' if (result_01.rc | default(-1)) == 0 else 'Remediation encountered errors' }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if pwquality.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/pwquality.conf.present"
+    register: _sg_restore_pwq
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore pwquality.conf"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/pwquality.conf.present"
+      dest: "{{ pwquality_conf }}"
+      remote_src: true
+    when: "_sg_restore_pwq.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if authselect.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/authselect.conf.present"
+    register: _sg_restore_auth
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore authselect.conf"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/authselect.conf.present"
+      dest: "{{ authselect_conf }}"
+      remote_src: true
+    when: "_sg_restore_auth.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/50-pwcomplexity.conf.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete pwquality drop-in"
+    ansible.builtin.file:
+      path: "{{ pwquality_target_file }}"
+      state: absent
+    when: "_sg_restore_absent.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,6 @@
+playbook_name: "cis_5_4_3_1"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Ensure the system has a text editor installed (e.g., sed) using command: `which sed`. Expected result: path to sed binary."
+req_02: "Remove any lines containing 'nologin' from /etc/shells using command: `sudo sed -i '/nologin/d' /etc/shells`. Expected result: no output, file modified."
+req_03: "Verify that no lines containing 'nologin' remain in /etc/shells using command: `grep -i nologin /etc/shells`. Expected result: no output (empty)."
+shells_file: "/etc/shells"

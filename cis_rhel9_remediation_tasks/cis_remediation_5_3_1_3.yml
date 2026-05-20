@@ -1,0 +1,194 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- block:
+# Requirement 1 - Prerequisite check for dnf
+  - name: "Req 01 - Check if dnf package manager is available"
+    ansible.builtin.shell: which dnf
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if dnf package manager is available"
+      task_01_cmd: "which dnf"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'dnf found at: ' + (result_01.stdout | default('') | trim) if (result_01.rc | default(-1)) == 0 else 'dnf not found' }}"
+    tags: [execute]
+
+# Requirement 2 - Install libpwquality
+  - name: "Req 02 - Install libpwquality package"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: present
+    register: result_02
+    failed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Install libpwquality package"
+      task_02_cmd: "dnf install -y {{ package_name }}"
+      task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
+      data_02: "{{ result_02.msg | default('') | trim if result_02 is defined else 'Skipped - dnf not available' }}"
+      status_02: "{{ 'SKIPPED' if result_02 is not defined or result_02.skipped | default(false) else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_02: "{{ 'Skipped - dnf not available' if result_02 is not defined or result_02.skipped | default(false) else ('Package installed successfully' if (result_02.rc | default(-1)) == 0 else 'Installation failed') }}"
+    tags: [execute]
+
+# Requirement 3 - Upgrade libpwquality if version < 1.4.4-8
+  - name: "Req 03 - Check current libpwquality version"
+    ansible.builtin.shell: rpm -q --qf '%{version}-%{release}' {{ package_name }} 2>/dev/null || echo 'not_installed'
+    args:
+      executable: /bin/bash
+    register: current_version
+    failed_when: false
+    changed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Req 03 - Upgrade libpwquality to latest version"
+    ansible.builtin.dnf:
+      name: "{{ package_name }}"
+      state: latest
+    register: result_03
+    failed_when: false
+    when:
+    - "result_01.rc | default(-1) == 0"
+    - "current_version.stdout | default('not_installed') | trim != 'not_installed'"
+    - "current_version.stdout | default('0') | trim is version(min_version, '<')"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Upgrade libpwquality to latest version"
+      task_03_cmd: "dnf upgrade -y {{ package_name }}"
+      task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined else -1 }}"
+      data_03: "{{ result_03.msg | default('') | trim if result_03 is defined else 'Skipped' }}"
+      status_03: "{{ 'SKIPPED' if result_03 is not defined or result_03.skipped | default(false) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_03: "{{ 'Skipped - version already meets minimum or dnf not available' if result_03 is not defined or result_03.skipped | default(false) else ('Upgraded successfully' if (result_03.rc | default(-1)) == 0 else 'Upgrade failed') }}"
+    tags: [execute]
+
+# Requirement 4 - Verify libpwquality version
+  - name: "Req 04 - Verify libpwquality version"
+    ansible.builtin.shell: rpm -q --qf '%{version}-%{release}' {{ package_name }}
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify libpwquality version"
+      task_04_cmd: "rpm -q --qf '%{version}-%{release}' {{ package_name }}"
+      task_04_rc: "{{ result_04.rc | default(-1) if result_04 is defined else -1 }}"
+      data_04: "{{ result_04.stdout | default('') | trim if result_04 is defined else 'Skipped' }}"
+      status_04: "{{ 'SKIPPED' if result_04 is not defined or result_04.skipped | default(false) else ('PASS' if (result_04.stdout | default('0') | trim is version(min_version, '>=')) else 'FAIL') }}"
+      details_04: "{{ 'Skipped - dnf not available' if result_04 is not defined or result_04.skipped | default(false) else ('Version ' + (result_04.stdout | default('') | trim) + ' meets minimum ' + min_version if (result_04.stdout | default('0') | trim is version(min_version, '>=')) else 'Version ' + (result_04.stdout | default('') | trim) + ' is below minimum ' + min_version) }}"
+    tags: [execute]
+
+# Requirement 5 - Store the final remediation result variable
+  - name: "Set overall remediation result"
+    set_fact:
+      cis_result: "{{ status_04 | default('UNKNOWN') }}"
+    tags: [execute]
+
+# Generate remediation report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.1.3"
+      - "        Reference: CIS Benchmark checkpoint 5.3.1.3"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

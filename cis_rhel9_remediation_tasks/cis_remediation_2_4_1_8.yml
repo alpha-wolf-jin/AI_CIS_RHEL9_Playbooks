@@ -1,0 +1,338 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_4_1_8.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/cron.allow exists"
+  ansible.builtin.stat:
+    path: /etc/cron.allow
+  register: _sg_allow_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/cron.allow if present"
+  ansible.builtin.copy:
+    src: /etc/cron.allow
+    dest: "{{ backup_dir }}/cron.allow"
+    remote_src: true
+  when: _sg_allow_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark /etc/cron.allow absence if missing"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/cron.allow.absent"
+  when: not _sg_allow_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/cron.deny exists"
+  ansible.builtin.stat:
+    path: /etc/cron.deny
+  register: _sg_deny_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/cron.deny if present"
+  ansible.builtin.copy:
+    src: /etc/cron.deny
+    dest: "{{ backup_dir }}/cron.deny"
+    remote_src: true
+  when: _sg_deny_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark /etc/cron.deny absence if missing"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/cron.deny.absent"
+  when: not _sg_deny_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /tmp/cron_allow_remediate.sh exists"
+  ansible.builtin.stat:
+    path: /tmp/cron_allow_remediate.sh
+  register: _sg_temp_script
+  tags: [snapshot]
+- name: "Snapshot - Mark /tmp/cron_allow_remediate.sh absence if missing"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/cron_allow_remediate.sh.absent"
+  when: not _sg_temp_script.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set cron installed fact"
+    ansible.builtin.set_fact:
+      cron_installed: "{{ 'cronie' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Copy cron.allow remediation script"
+    ansible.builtin.copy:
+      dest: "/tmp/cron_allow_remediate.sh"
+      content: "{{ cron_allow_script_content }}"
+      mode: '0700'
+    when: cron_installed
+    tags: [execute]
+
+  - name: "Execute cron.allow remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/cron_allow_remediate.sh
+    args:
+      executable: /bin/bash
+    register: result_allow_script
+    when: cron_installed
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Remove temporary script"
+    ansible.builtin.file:
+      path: "/tmp/cron_allow_remediate.sh"
+      state: absent
+    changed_when: false
+    tags: [execute]
+
+  - name: "Check /etc/cron.deny existence"
+    ansible.builtin.stat:
+      path: /etc/cron.deny
+    register: deny_stat
+    when: cron_installed
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set ownership and permissions on /etc/cron.deny"
+    ansible.builtin.file:
+      path: /etc/cron.deny
+      owner: root
+      group: root
+      mode: '0640'
+    when:
+    - cron_installed
+    - deny_stat.stat.exists
+    register: deny_perm
+    failed_when: false
+    tags: [execute]
+
+# Store requirement 01 details in two steps to avoid circular references
+  - name: "Store requirement 01 details - part 1"
+    ansible.builtin.set_fact:
+      task_01_name: "Remediate /etc/cron.allow and /etc/cron.deny"
+      task_01_cmd: "1) script: cron_allow_remediate.sh  2) file: cron.deny owner/group/mode"
+      task_01_rc: >-
+        {% set rc_allow = result_allow_script.rc | default(-1) %}
+        {% set rc_deny = 1 if (deny_stat is defined and deny_stat.stat.exists and deny_perm is defined and deny_perm.failed | default(false)) else 0 %}
+        {% set final_rc = 0 if not cron_installed else (0 if rc_allow == 0 and rc_deny == 0 else 1) %}
+        {{ final_rc }}
+      data_01: >-
+        {{ (result_allow_script.stdout | default('') | trim) + '\n' + (deny_perm.stdout | default('') | trim) | trim }}
+    tags: [execute]
+
+  - name: "Store requirement 01 details - part 2"
+    ansible.builtin.set_fact:
+      status_01: >-
+        {{ 'SKIP' if not cron_installed else ('PASS' if task_01_rc | int == 0 else 'FAIL') }}
+      details_01: >-
+        {{ 'Cron package not installed' if not cron_installed else ('Remediation applied successfully' if task_01_rc | int == 0 else 'Remediation could not be applied') }}
+    tags: [execute]
+
+# --- Requirement 02: VERIFY ---
+  - name: "Verify /etc/cron.allow attributes"
+    ansible.builtin.stat:
+      path: /etc/cron.allow
+    register: verify_allow_stat
+    when: cron_installed
+    failed_when: false
+    tags: [execute]
+
+  - name: "Verify /etc/cron.deny attributes"
+    ansible.builtin.stat:
+      path: /etc/cron.deny
+    register: verify_deny_stat
+    when: cron_installed
+    failed_when: false
+    tags: [execute]
+
+# Store requirement 02 details in two steps to avoid circular references
+  - name: "Store requirement 02 details - part 1"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify cron.allow and cron.deny ownership and permissions"
+      task_02_cmd: "stat /etc/cron.allow; stat /etc/cron.deny"
+      task_02_rc: >-
+        {% if not cron_installed %}
+        {% set rc = 0 %}
+        {% else %}
+          {% set allow_mode = verify_allow_stat.stat.mode | default('0000') | int(base=8) %}
+          {% set allow_owner = verify_allow_stat.stat.pw_name | default('') %}
+          {% set allow_group = verify_allow_stat.stat.gr_name | default('') %}
+          {% set allow_ok = verify_allow_stat.stat.exists and
+                            allow_owner == 'root' and
+                            allow_group == 'root' and
+                            allow_mode <= 416 %}
+          {% set deny_exists = verify_deny_stat.stat.exists %}
+          {% set deny_ok = true %}
+          {% if deny_exists %}
+            {% set deny_mode = verify_deny_stat.stat.mode | default('0000') | int(base=8) %}
+            {% set deny_owner = verify_deny_stat.stat.pw_name | default('') %}
+            {% set deny_group = verify_deny_stat.stat.gr_name | default('') %}
+            {% set deny_ok = deny_owner == 'root' and
+                            deny_group == 'root' and
+                            deny_mode <= 416 %}
+          {% endif %}
+          {% set rc = 0 if allow_ok and deny_ok else 1 %}
+        {% endif %}
+        {{ rc }}
+      data_02: >-
+        {{ ('cron.allow: exists=' + (verify_allow_stat.stat.exists | default(false) | string) + ', owner=' + (verify_allow_stat.stat.pw_name | default('N/A')) + ', group=' + (verify_allow_stat.stat.gr_name | default('N/A')) + ', mode=' + (verify_allow_stat.stat.mode | default('N/A') | string)) }}
+        {{ ('cron.deny: exists=' + (verify_deny_stat.stat.exists | default(false) | string) + ', owner=' + (verify_deny_stat.stat.pw_name | default('N/A')) + ', group=' + (verify_deny_stat.stat.gr_name | default('N/A')) + ', mode=' + (verify_deny_stat.stat.mode | default('N/A') | string)) }}
+    tags: [execute]
+
+  - name: "Store requirement 02 details - part 2"
+    ansible.builtin.set_fact:
+      status_02: >-
+        {%- if not cron_installed -%}
+        SKIP
+        {%- elif task_02_rc | int == 0 -%}
+        PASS
+        {%- else -%}
+        FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if not cron_installed -%}
+        Cron package not installed; verification skipped
+        {%- elif task_02_rc | int == 0 -%}
+        System compliant: cron.allow and cron.deny have correct ownership and permissions
+        {%- else -%}
+        System NOT compliant: ownership or permissions are incorrect
+        {%- endif -%}
+    tags: [execute]
+
+# --- Requirement 03: set cis_result ---
+  - name: "Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+# --- Requirement 04: report ---
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.4.1.8"
+      - "Reference: CIS Benchmark checkpoint 2.4.1.8"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store final remediation result"
+      - "  Command: set_fact: cis_result = status_02"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result | default('ERROR') | trim }}"
+      - "  Status: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: Overall result derived from verification"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# --- RESTORE PHASE ---
+  - name: "Restore - Check if /etc/cron.allow backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cron.allow"
+    register: _sg_restore_allow
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Revert /etc/cron.allow from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/cron.allow"
+      dest: /etc/cron.allow
+      remote_src: true
+    when: _sg_restore_allow.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if /etc/cron.allow was originally absent"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cron.allow.absent"
+    register: _sg_restore_allow_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove /etc/cron.allow (originally absent)"
+    ansible.builtin.file:
+      path: /etc/cron.allow
+      state: absent
+    when: _sg_restore_allow_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if /etc/cron.deny backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cron.deny"
+    register: _sg_restore_deny
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Revert /etc/cron.deny from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/cron.deny"
+      dest: /etc/cron.deny
+      remote_src: true
+    when: _sg_restore_deny.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if /etc/cron.deny was originally absent"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cron.deny.absent"
+    register: _sg_restore_deny_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove /etc/cron.deny (originally absent)"
+    ansible.builtin.file:
+      path: /etc/cron.deny
+      state: absent
+    when: _sg_restore_deny_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if temp script was originally absent"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cron_allow_remediate.sh.absent"
+    register: _sg_restore_temp_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove temp script (created during execution)"
+    ansible.builtin.file:
+      path: "/tmp/cron_allow_remediate.sh"
+      state: absent
+    when: _sg_restore_temp_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

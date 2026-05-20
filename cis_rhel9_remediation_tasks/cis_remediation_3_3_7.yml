@@ -1,0 +1,246 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_7.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if sysctl config file exists"
+  ansible.builtin.stat:
+    path: "{{ sysctl_conf_file }}"
+  register: _pre_sysctl_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup sysctl config file if exists"
+  ansible.builtin.copy:
+    src: "{{ sysctl_conf_file }}"
+    dest: "{{ backup_dir }}/sysctl_conf.present"
+    remote_src: true
+    force: false
+  when: _pre_sysctl_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Mark config file as absent if it does not exist"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/sysctl_conf.absent"
+    force: false
+  when: not _pre_sysctl_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Save original net.ipv4.conf.all.rp_filter runtime value"
+  ansible.builtin.shell: "sysctl -n net.ipv4.conf.all.rp_filter"
+  args:
+    executable: /bin/bash
+  register: _orig_rp_all
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist original net.ipv4.conf.all.rp_filter to file"
+  ansible.builtin.copy:
+    content: "{{ _orig_rp_all.stdout | default('') | trim }}"
+    dest: "{{ backup_dir }}/orig_rp_filter_all"
+    mode: '0600'
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Save original net.ipv4.conf.default.rp_filter runtime value"
+  ansible.builtin.shell: "sysctl -n net.ipv4.conf.default.rp_filter"
+  args:
+    executable: /bin/bash
+  register: _orig_rp_default
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist original net.ipv4.conf.default.rp_filter to file"
+  ansible.builtin.copy:
+    content: "{{ _orig_rp_default.stdout | default('') | trim }}"
+    dest: "{{ backup_dir }}/orig_rp_filter_default"
+    mode: '0600'
+    force: false
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE (tag: execute) ===
+  - name: "Req 01 - Set net.ipv4.conf.all.rp_filter = 1"
+    ansible.builtin.lineinfile:
+      path: "{{ sysctl_conf_file }}"
+      line: "net.ipv4.conf.all.rp_filter = 1"
+      regexp: |
+        ^#?net\.ipv4\.conf\.all\.rp_filter
+      state: present
+      create: true
+      mode: '0644'
+    register: _line_1
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set net.ipv4.conf.default.rp_filter = 1"
+    ansible.builtin.lineinfile:
+      path: "{{ sysctl_conf_file }}"
+      line: "net.ipv4.conf.default.rp_filter = 1"
+      regexp: |
+        ^#?net\.ipv4\.conf\.default\.rp_filter
+      state: present
+      create: true
+      mode: '0644'
+    register: _line_2
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Apply kernel parameters using provided script"
+    ansible.builtin.shell: |
+      #!/usr/bin/env bash
+      {
+         sysctl -w net.ipv4.conf.all.rp_filter=1
+         sysctl -w net.ipv4.conf.default.rp_filter=1
+         sysctl -w net.ipv4.route.flush=1
+      }
+    args:
+      executable: /bin/bash
+    register: _script_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify reverse path filtering settings"
+    ansible.builtin.shell: |
+      echo "net.ipv4.conf.all.rp_filter=$(sysctl -n net.ipv4.conf.all.rp_filter)"
+      echo "net.ipv4.conf.default.rp_filter=$(sysctl -n net.ipv4.conf.default.rp_filter)"
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Set cis_result"
+    set_fact:
+      cis_result: >-
+        {%- if _verify_result.rc == 0 and
+              'net.ipv4.conf.all.rp_filter=1' in _verify_result.stdout and
+              'net.ipv4.conf.default.rp_filter=1' in _verify_result.stdout -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 3.3.7"
+      - "Reference: CIS Benchmark checkpoint 3.3.7"
+      - ""
+      - "REQUIREMENT 1 - {{ req_01 }}"
+      - "  Task: Apply kernel parameters using provided script"
+      - "  Command: See sysctl conf and shell script"
+      - "  Exit code: {{ _script_result.rc | default(-1) }}"
+      - "  Data: {{ _script_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if _script_result.rc | default(-1) == 0 else 'FAIL' }}"
+      - "  Details: Parameters written to {{ sysctl_conf_file }} and applied"
+      - ""
+      - "REQUIREMENT 2 - {{ req_02 }}"
+      - "  Task: Verify settings"
+      - "  Command: sysctl commands (see above)"
+      - "  Exit code: {{ _verify_result.rc | default(-1) }}"
+      - "  Data: {{ _verify_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if (_verify_result.rc | default(-1) == 0 and ('net.ipv4.conf.all.rp_filter=1' in _verify_result.stdout | default('')) and ('net.ipv4.conf.default.rp_filter=1' in _verify_result.stdout | default(''))) else 'FAIL' }}"
+      - "  Details: System is compliant if values are 1"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: Reverse path filtering enabled"
+    tags: [execute]
+
+  always:
+        # === RESTORE PHASE (tag: restore) ===
+        # All state re‑discovered from disk; no reference to pre_tasks/execute variables.
+
+  - name: "Restore - Check if sysctl config file backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sysctl_conf.present"
+    register: _restore_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sysctl_conf.absent"
+    register: _restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if original all.rp_filter value saved"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/orig_rp_filter_all"
+    register: _restore_orig_all_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if original default.rp_filter value saved"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/orig_rp_filter_default"
+    register: _restore_orig_default_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Revert config file (existed case)"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/sysctl_conf.present"
+      dest: "{{ sysctl_conf_file }}"
+      remote_src: true
+    when: _restore_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove sysctl config file (absent case)"
+    ansible.builtin.file:
+      path: "{{ sysctl_conf_file }}"
+      state: absent
+    when: _restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved original net.ipv4.conf.all.rp_filter"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/orig_rp_filter_all"
+    register: _restore_orig_all
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved original net.ipv4.conf.default.rp_filter"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/orig_rp_filter_default"
+    register: _restore_orig_default
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Revert kernel parameters to originals"
+    ansible.builtin.shell: |
+      sysctl -w net.ipv4.conf.all.rp_filter={{ _restore_orig_all.content | b64decode | trim }}
+      sysctl -w net.ipv4.conf.default.rp_filter={{ _restore_orig_default.content | b64decode | trim }}
+      sysctl -w net.ipv4.route.flush=1
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_orig_all_stat.stat.exists | default(false)
+    - _restore_orig_default_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Revert kernel parameters to originals when file was absent"
+    ansible.builtin.shell: |
+      sysctl -w net.ipv4.conf.all.rp_filter={{ _restore_orig_all.content | b64decode | trim }}
+      sysctl -w net.ipv4.conf.default.rp_filter={{ _restore_orig_default.content | b64decode | trim }}
+      sysctl -w net.ipv4.route.flush=1
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_absent.stat.exists | default(false)
+    - _restore_orig_all_stat.stat.exists | default(false)
+    - _restore_orig_default_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

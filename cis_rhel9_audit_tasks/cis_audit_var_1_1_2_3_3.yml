@@ -1,0 +1,5 @@
+mount_point: "/home"
+req_01: "Check if /home is a separate partition using command: `findmnt -kn /home`. Expected result: output should show a mount point for /home."
+req_02: "Check if the nosuid option is set on /home partition using command: `findmnt -kn /home | grep -v nosuid`. Expected result: no output should be returned."
+req_03: "Summarize overall compliance: if the /home partition exists and the nosuid option is set, the system is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

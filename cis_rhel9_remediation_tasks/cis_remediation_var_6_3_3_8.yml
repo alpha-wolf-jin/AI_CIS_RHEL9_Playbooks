@@ -1,0 +1,5 @@
+playbook_name: "cis_6_3_3_8"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_rules_file: "/etc/audit/rules.d/50-identity.rules"
+req_01: "Apply remediation for: Ensure events that modify user/group information are collected. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure events that modify user/group information are collected is properly configured. Expected result: Compliant"

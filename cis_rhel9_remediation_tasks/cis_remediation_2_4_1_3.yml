@@ -1,0 +1,292 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_4_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if {{ target_dir }} exists"
+  ansible.builtin.stat:
+    path: "{{ target_dir }}"
+  register: _snap_target_stat
+  tags: [snapshot]
+- name: "Snapshot - Save original attributes of {{ target_dir }}"
+  ansible.builtin.copy:
+    content: "{{ _snap_target_stat.stat.pw_name | default('root') }}:{{ _snap_target_stat.stat.gr_name | default('root') }} {{ _snap_target_stat.stat.mode | default('0755') }}"
+    dest: "{{ backup_dir }}/cron_hourly_attrs.txt"
+  when: _snap_target_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+# === EXECUTE ===
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+
+  - name: "Req 01 - Check if cron is installed"
+    ansible.builtin.shell: |
+      if command -v cron >/dev/null 2>&1; then echo 'cron installed'; else echo 'cron not installed'; fi
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if cron is installed"
+      task_01_cmd: "if command -v cron >/dev/null 2>&1; then echo 'cron installed'; else echo 'cron not installed'; fi"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {%- set out = result_01.stdout | default('') | trim -%}
+        {{ 'PASS' if out == 'cron installed' else 'SKIP' }}
+      details_01: >-
+        {%- set out = result_01.stdout | default('') | trim -%}
+        {{ 'cron is installed' if out == 'cron installed' else 'cron is not installed' }}
+
+  - name: "Set cron_installed flag"
+    set_fact:
+      cron_installed: "{{ result_01.stdout | default('') | trim == 'cron installed' }}"
+
+  - name: "Check if {{ target_dir }} exists"
+    ansible.builtin.stat:
+      path: "{{ target_dir }}"
+    register: dir_stat
+    tags: [execute]
+
+  - name: "Req 02 - Set ownership on /etc/cron.hourly to root:root"
+    ansible.builtin.shell: "chown root:root {{ target_dir }}/"
+    args:
+      executable: /bin/bash
+    when:
+    - cron_installed | default(false) | bool
+    - dir_stat.stat.exists | default(false)
+    register: result_02
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Set ownership on /etc/cron.hourly"
+      task_02_cmd: "chown root:root /etc/cron.hourly/"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ 'ownership changed' if (result_02.changed | default(false)) else '' }}"
+      status_02: >-
+        {%- if cron_installed | default(false) | bool and dir_stat.stat.exists | default(false) -%}
+          {{ 'PASS' if (result_02.rc | default(-1) == 0) else 'FAIL' }}
+        {%- else -%}
+          SKIP
+        {%- endif %}
+      details_02: >-
+        {%- if cron_installed | default(false) | bool and dir_stat.stat.exists | default(false) -%}
+          {{ 'ownership set to root:root' if (result_02.rc | default(-1) == 0) else 'failed to set ownership' }}
+        {%- else -%}
+          skipped: cron not installed or directory missing
+        {%- endif %}
+
+  - name: "Req 03 - Set permissions on /etc/cron.hourly to og-rwx"
+    ansible.builtin.shell: "chmod og-rwx {{ target_dir }}/"
+    args:
+      executable: /bin/bash
+    when:
+    - cron_installed | default(false) | bool
+    - dir_stat.stat.exists | default(false)
+    register: result_03
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Set permissions on /etc/cron.hourly"
+      task_03_cmd: "chmod og-rwx /etc/cron.hourly/"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ 'permissions changed' if (result_03.changed | default(false)) else '' }}"
+      status_03: >-
+        {%- if cron_installed | default(false) | bool and dir_stat.stat.exists | default(false) -%}
+          {{ 'PASS' if (result_03.rc | default(-1) == 0) else 'FAIL' }}
+        {%- else -%}
+          SKIP
+        {%- endif %}
+      details_03: >-
+        {%- if cron_installed | default(false) | bool and dir_stat.stat.exists | default(false) -%}
+          {{ 'permissions set to og-rwx' if (result_03.rc | default(-1) == 0) else 'failed to set permissions' }}
+        {%- else -%}
+          skipped: cron not installed or directory missing
+        {%- endif %}
+
+  - name: "Req 04 - Verify ownership and permissions on /etc/cron.hourly"
+    ansible.builtin.shell: "stat -c '%U:%G %A' {{ target_dir }}/"
+    args:
+      executable: /bin/bash
+    register: result_04
+    when:
+    - cron_installed | default(false) | bool
+    - dir_stat.stat.exists | default(false)
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify ownership and permissions"
+      task_04_cmd: "stat -c '%U:%G %A' /etc/cron.hourly/"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: >-
+        {%- set out = result_04.stdout | default('') | trim -%}
+        {%- if cron_installed | default(false) | bool and dir_stat.stat.exists | default(false) and result_04 is defined -%}
+          {{ 'PASS' if out == 'root:root drwx------' else 'FAIL' }}
+        {%- else -%}
+          SKIP
+        {%- endif %}
+      details_04: >-
+        {%- set out = result_04.stdout | default('') | trim -%}
+        {%- if cron_installed | default(false) | bool and dir_stat.stat.exists | default(false) and result_04 is defined -%}
+          {{ 'ownership and permissions are correct' if out == 'root:root drwx------' else 'ownership/permissions not as expected: ' + out }}
+        {%- else -%}
+          skipped: cron not installed or directory missing
+        {%- endif %}
+
+  - name: "Req 05 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Store final remediation result"
+      task_05_cmd: "set_fact"
+      task_05_rc: "0"
+      data_05: "{{ cis_result }}"
+      status_05: "{{ cis_result }}"
+      details_05: "overall remediation status: {{ cis_result }}"
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.4.1.3"
+      - "Reference: CIS Benchmark checkpoint 2.4.1.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === RESTORE ===
+  - name: "Restore - Check if backup attributes file exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cron_hourly_attrs.txt"
+    register: _restore_attr_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original attributes"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/cron_hourly_attrs.txt"
+    register: _restore_attrs_slurp
+    when: _restore_attr_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Parse original owner and group"
+    set_fact:
+      _orig_owner: "{{ ((_restore_attrs_slurp.content | b64decode | trim).split(' ')[0] | default('')).split(':')[0] | default('root') }}"
+      _orig_group: "{{ ((_restore_attrs_slurp.content | b64decode | trim).split(' ')[0] | default('')).split(':')[1] | default('root') }}"
+      _orig_mode: "{{ (_restore_attrs_slurp.content | b64decode | trim).split(' ')[1] | default('0755') }}"
+    when: _restore_attr_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Revert ownership and permissions on {{ target_dir }}"
+    ansible.builtin.file:
+      path: "{{ target_dir }}"
+      owner: "{{ _orig_owner }}"
+      group: "{{ _orig_group }}"
+      mode: "{{ _orig_mode }}"
+    when:
+    - _restore_attr_stat.stat.exists | default(false)
+    - _orig_owner is defined
+    - _orig_group is defined
+    - _orig_mode is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_attr_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

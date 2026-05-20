@@ -1,0 +1,312 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_11.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    auditd_installed: false
+
+- name: "Req 01 - Check if auditd package is installed"
+  ansible.builtin.shell: dpkg -l auditd || rpm -q audit
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check if auditd package is installed"
+    task_01_cmd: "dpkg -l auditd || rpm -q audit"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if (result_01.rc | default(-1) == 0) else 'FAIL') | trim }}"
+    details_01: "{{ ('Completed successfully' if result_01.rc | default(-1) == 0 else 'Failed to execute') | trim }}"
+    auditd_installed: "{{ result_01.rc == 0 }}"
+
+- name: "Req 02-04 - Check on-disk audit rules for session initiation files"
+  ansible.builtin.shell:
+    cmd: |
+      awk '/^ *-w/ &&(/\/var\/run\/utmp/ ||/\/var\/log\/wtmp/ ||/\/var\/log\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+  args:
+    executable: /bin/bash
+  register: result_ondisk
+  failed_when: false
+  changed_when: false
+  when: auditd_installed | bool
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check on-disk audit rules for /var/run/utmp"
+    task_02_cmd: |
+      awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_02_rc: "{{ (result_ondisk | default(dict(rc=-1))).rc }}"
+    data_02: "{{ (result_ondisk | default(dict(stdout=''))).stdout | trim }}"
+    status_02: >-
+      {{ 
+        'SKIPPED' if not auditd_installed else
+        ('PASS' if '-w /var/run/utmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'FAIL')
+        | trim
+      }}
+    details_02: >-
+      {{ 
+        'Not applicable - auditd not installed' if not auditd_installed else
+        ('Found' if '-w /var/run/utmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'Missing')
+        | trim
+      }}
+  when: true
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Req 03 - Check on-disk audit rules for /var/log/wtmp"
+    task_03_cmd: |
+      awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_03_rc: "{{ (result_ondisk | default(dict(rc=-1))).rc }}"
+    data_03: "{{ (result_ondisk | default(dict(stdout=''))).stdout | trim }}"
+    status_03: >-
+      {{ 
+        'SKIPPED' if not auditd_installed else
+        ('PASS' if '-w /var/log/wtmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'FAIL')
+        | trim
+      }}
+    details_03: >-
+      {{ 
+        'Not applicable - auditd not installed' if not auditd_installed else
+        ('Found' if '-w /var/log/wtmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'Missing')
+        | trim
+      }}
+  when: true
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Req 04 - Check on-disk audit rules for /var/log/btmp"
+    task_04_cmd: |
+      awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_04_rc: "{{ (result_ondisk | default(dict(rc=-1))).rc }}"
+    data_04: "{{ (result_ondisk | default(dict(stdout=''))).stdout | trim }}"
+    status_04: >-
+      {{ 
+        'SKIPPED' if not auditd_installed else
+        ('PASS' if '-w /var/log/btmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'FAIL')
+        | trim
+      }}
+    details_04: >-
+      {{ 
+        'Not applicable - auditd not installed' if not auditd_installed else
+        ('Found' if '-w /var/log/btmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'Missing')
+        | trim
+      }}
+  when: true
+
+- name: "Req 05-07 - Check running audit rules for session initiation files"
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      auditctl -l | awk '/^ *-w/ &&(/\/var\/run\/utmp/ ||/\/var\/log\/wtmp/ ||/\/var\/log\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_running
+  failed_when: false
+  changed_when: false
+  when: auditd_installed | bool
+
+- name: "Store requirement 05 details"
+  set_fact:
+    task_05_name: "Req 05 - Check running audit rules for /var/run/utmp"
+    task_05_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_05_rc: "{{ (result_running | default(dict(rc=-1))).rc }}"
+    data_05: "{{ (result_running | default(dict(stdout=''))).stdout | trim }}"
+    status_05: >-
+      {{ 
+        'SKIPPED' if not auditd_installed else
+        ('PASS' if '-w /var/run/utmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'FAIL')
+        | trim
+      }}
+    details_05: >-
+      {{ 
+        'Not applicable - auditd not installed' if not auditd_installed else
+        ('Found' if '-w /var/run/utmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'Missing')
+        | trim
+      }}
+  when: true
+
+- name: "Store requirement 06 details"
+  set_fact:
+    task_06_name: "Req 06 - Check running audit rules for /var/log/wtmp"
+    task_06_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_06_rc: "{{ (result_running | default(dict(rc=-1))).rc }}"
+    data_06: "{{ (result_running | default(dict(stdout=''))).stdout | trim }}"
+    status_06: >-
+      {{ 
+        'SKIPPED' if not auditd_installed else
+        ('PASS' if '-w /var/log/wtmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'FAIL')
+        | trim
+      }}
+    details_06: >-
+      {{ 
+        'Not applicable - auditd not installed' if not auditd_installed else
+        ('Found' if '-w /var/log/wtmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'Missing')
+        | trim
+      }}
+  when: true
+
+- name: "Store requirement 07 details"
+  set_fact:
+    task_07_name: "Req 07 - Check running audit rules for /var/log/btmp"
+    task_07_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_07_rc: "{{ (result_running | default(dict(rc=-1))).rc }}"
+    data_07: "{{ (result_running | default(dict(stdout=''))).stdout | trim }}"
+    status_07: >-
+      {{ 
+        'SKIPPED' if not auditd_installed else
+        ('PASS' if '-w /var/log/btmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'FAIL')
+        | trim
+      }}
+    details_07: >-
+      {{ 
+        'Not applicable - auditd not installed' if not auditd_installed else
+        ('Found' if '-w /var/log/btmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'Missing')
+        | trim
+      }}
+  when: true
+
+- name: "Req 08 - Summarize overall compliance status"
+  set_fact:
+    task_08_name: "Req 08 - Evaluate overall compliance"
+    task_08_cmd: "N/A"
+    task_08_rc: 0
+    data_08: "All checks evaluated"
+    status_08: >-
+      {{ 
+        ('PASS' if 
+          status_01 == 'PASS' and 
+          status_02 == 'PASS' and 
+          status_03 == 'PASS' and 
+          status_04 == 'PASS' and 
+          status_05 == 'PASS' and 
+          status_06 == 'PASS' and 
+          status_07 == 'PASS' 
+        else 'FAIL') | trim 
+      }}
+    details_08: >-
+      {{ 
+        ('All requirements met' if 
+          status_01 == 'PASS' and 
+          status_02 == 'PASS' and 
+          status_03 == 'PASS' and 
+          status_04 == 'PASS' and 
+          status_05 == 'PASS' and 
+          status_06 == 'PASS' and 
+          status_07 == 'PASS' 
+        else 'One or more requirements failed') | trim 
+      }}
+
+- name: "Store cis_result for external use"
+  set_fact:
+    cis_result: "{{ status_08 }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.11"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.11"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_08 | default('Not evaluated') | trim }}"
+    - "========================================================"

@@ -1,0 +1,13 @@
+playbook_name: "cis_5_4_1_2"
+checkpoint_id: "cis_5_4_1_2"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+config_file: "/etc/login.defs"
+shadow_file: "/etc/shadow"
+min_days_value: "1"
+req_01: "Apply prerequisite check for required tools using command: `which chage awk`. Expected result: paths to chage and awk are returned."
+req_02: "Apply PASS_MIN_DAYS configuration in /etc/login.defs using command: `sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS 1/' /etc/login.defs`. Expected result: PASS_MIN_DAYS is set to a value greater than 0."
+req_03: |
+  Apply minimum password days for all users with a password set using command: `awk -F: '($2~/^\\$.+\\$/) {if($4 < 1) system (\"chage --mindays 1 \" $1)}' /etc/shadow`. Expected result: all applicable users have minimum password days set to 1.
+req_04: |
+  Verify minimum password days configuration using command: `grep ^PASS_MIN_DAYS /etc/login.defs && awk -F: '($2~/^\\$.+\\$/) {print $1\":\"$4}' /etc/shadow`. Expected result: PASS_MIN_DAYS is greater than 0 and all users with passwords have mindays >= 1.

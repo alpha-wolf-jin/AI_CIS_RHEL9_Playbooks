@@ -1,0 +1,113 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_2_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if telnet is installed"
+    ansible.builtin.shell: rpm -q telnet
+    args:
+      executable: /bin/bash
+    register: telnet_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove telnet package"
+    ansible.builtin.dnf:
+      name: telnet
+      state: absent
+    register: removal_result
+    failed_when: false
+    when: telnet_check.rc == 0
+    tags: [execute]
+
+  - name: "Req 01 - Store removal details"
+    set_fact:
+      task_01_name: "Remove telnet package"
+      task_01_cmd: "dnf remove -y telnet"
+      task_01_rc: "{{ removal_result.rc | default(-1) }}"
+      data_01: "{{ removal_result.stdout | default('') }}"
+      status_01: "{{ 'SKIP' if telnet_check.rc != 0 else ('PASS' if removal_result.rc | default(1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'Telnet not installed - no removal needed' if telnet_check.rc != 0 else ('Removal completed successfully' if removal_result.rc | default(1) == 0 else 'Removal failed') | trim }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify telnet is not installed"
+    ansible.builtin.shell: rpm -q telnet
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Store verification details"
+    set_fact:
+      task_02_name: "Verify telnet is not installed"
+      task_02_cmd: "rpm -q telnet"
+      task_02_rc: "{{ verify_result.rc }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if verify_result.rc != 0 else 'FAIL' | trim }}"
+      details_02: "{{ 'Package telnet is not installed' if verify_result.rc != 0 else 'Package telnet is still installed' | trim }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store final result"
+      task_03_cmd: "N/A"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "{{ status_02 | default('ERROR') | trim }}"
+      details_03: "Final result is {{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.2.4"
+      - "Reference: CIS Benchmark checkpoint 2.2.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

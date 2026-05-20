@@ -1,0 +1,135 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_4_3.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set auditd installation status"
+  ansible.builtin.set_fact:
+    auditd_installed: "{{ 'audit' in ansible_facts.packages or 'auditd' in ansible_facts.packages }}"
+
+- name: "Req 01 - Run audit script"
+  ansible.builtin.shell: /bin/bash
+  args:
+    stdin: "{{ audit_script_content }}"
+    executable: /bin/bash
+  register: audit_result
+  failed_when: false
+  changed_when: false
+  when: "auditd_installed | bool"
+
+- name: "Req 02 - Determine compliance status and preliminary results"
+  ansible.builtin.set_fact:
+    compliance_status: >-
+      {% if not (auditd_installed | bool) %}NOT_APPLICABLE
+      {% elif '** PASS **' in audit_result.stdout | default('') %}PASS
+      {% elif '** FAIL **' in audit_result.stdout | default('') %}FAIL
+      {% else %}UNKNOWN
+      {% endif %}
+    compliance_details: >-
+      {% if not (auditd_installed | bool) %}auditd is not installed
+      {% elif '** PASS **' in audit_result.stdout | default('') %}All audit log files have correct owner
+      {% elif '** FAIL **' in audit_result.stdout | default('') %}One or more audit log files have incorrect owner
+      {% else %}Unable to determine compliance status
+      {% endif %}
+    task_01_name: "Req 01 - Run audit script"
+    task_01_cmd: "/bin/bash with inline audit script"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: >-
+      {% if not (auditd_installed | bool) %}NOT_APPLICABLE
+      {% elif audit_result.rc | default(-1) == 0 %}PASS
+      {% else %}FAIL
+      {% endif %}
+    details_01: >-
+      {% if not (auditd_installed | bool) %}auditd is not installed, script not executed
+      {% elif audit_result.rc | default(-1) == 0 %}Script executed successfully
+      {% else %}Script execution failed (rc={{ audit_result.rc | default(-1) }})
+      {% endif %}
+    status_02: >-
+      {% if not (auditd_installed | bool) %}NOT_APPLICABLE
+      {% elif '** PASS **' in audit_result.stdout | default('') %}PASS
+      {% elif '** FAIL **' in audit_result.stdout | default('') %}FAIL
+      {% else %}UNKNOWN
+      {% endif %}
+    details_02: >-
+      {% if not (auditd_installed | bool) %}auditd is not installed
+      {% elif '** PASS **' in audit_result.stdout | default('') %}All audit log files have correct owner
+      {% elif '** FAIL **' in audit_result.stdout | default('') %}One or more audit log files have incorrect owner
+      {% else %}Unable to determine compliance status
+      {% endif %}
+    task_02_name: "Req 02 - Determine compliance status"
+    task_02_cmd: "N/A (set_fact)"
+    task_02_rc: "0"
+
+- name: "Req 02 - Populate report data using compliance status"
+  ansible.builtin.set_fact:
+    data_02: "{{ compliance_status | default('') | trim }} - {{ compliance_details | default('') | trim }}"
+    task_03_name: "Req 03 - Store final audit result as cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: "0"
+    data_03: "{{ compliance_status | default('Not available') | trim }}"
+    status_03: "{{ compliance_status | default('UNKNOWN') | trim }}"
+    details_03: >-
+      {% if not (auditd_installed | bool) %}auditd is not installed
+      {% elif '** PASS **' in audit_result.stdout | default('') %}cis_result set to PASS
+      {% elif '** FAIL **' in audit_result.stdout | default('') %}cis_result set to FAIL
+      {% else %}cis_result set to UNKNOWN
+      {% endif %}
+    task_04_name: "Req 04 - Generate audit report"
+    task_04_cmd: "debug msg"
+    task_04_rc: "0"
+    data_04: "See report output"
+    status_04: "PASS"
+    details_04: "Audit report generated successfully"
+
+- name: "Req 03 - Store final audit result as cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ compliance_status | default('UNKNOWN') | trim }}"
+
+- name: "Req 04 - Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.4.3"
+    - "Reference: CIS Benchmark checkpoint 6.3.4.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name }}"
+    - "  Command: {{ task_04_cmd }}"
+    - "  Exit code: {{ task_04_rc }}"
+    - "  Data: {{ data_04 }}"
+    - "  Status: {{ status_04 }}"
+    - "  Details: {{ details_04 }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ details_02 }}"
+    - "========================================================"

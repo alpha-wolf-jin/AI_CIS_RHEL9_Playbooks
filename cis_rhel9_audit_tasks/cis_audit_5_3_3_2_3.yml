@@ -1,0 +1,190 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_3_2_3.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Initialize audit variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: "N/A"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_05_name: "Store final audit result"
+    task_05_cmd: "set_fact"
+    task_05_rc: "N/A"
+    cis_result: "UNKNOWN"
+
+- name: "Set statuses to SKIPPED when pwquality package not installed"
+  ansible.builtin.set_fact:
+    data_01: ""
+    status_01: "SKIPPED"
+    details_01: "Not applicable: libpwquality package not installed"
+    task_01_name: "Check pwquality configuration files existence"
+    task_01_cmd: "ls /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null || true"
+    task_01_rc: -1
+    data_02: ""
+    status_02: "SKIPPED"
+    details_02: "Not applicable: libpwquality package not installed"
+    task_02_name: "Check password complexity settings in config files"
+    task_02_cmd: |
+      grep -Psi -- '^\\h*(minclass|[dulo]credit)\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf
+    task_02_rc: -1
+    data_03: ""
+    status_03: "SKIPPED"
+    details_03: "Not applicable: libpwquality package not installed"
+    task_03_name: "Check for weak password complexity in PAM files"
+    task_03_cmd: |
+      grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?(minclass=[0-3]|[dulo]credit=[^-]\\d*)\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth
+    task_03_rc: -1
+    data_04: ""
+    status_04: "SKIPPED"
+    details_04: "Not applicable: libpwquality package not installed"
+    data_05: ""
+    status_05: "SKIPPED"
+    details_05: "Not applicable: libpwquality package not installed"
+    cis_result: "SKIPPED"
+  when: "'libpwquality' not in ansible_facts.packages"
+
+- name: "Req 01 - Check if pwquality configuration files exist"
+  ansible.builtin.shell: |
+    ls /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  when: "'libpwquality' in ansible_facts.packages"
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check pwquality configuration files existence"
+    task_01_cmd: "ls /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null || true"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (result_01.stdout | default('') | trim) | length > 0 else 'FAIL' }}"
+    details_01: "{{ 'Configuration files found' if (result_01.stdout | default('') | trim) | length > 0 else 'No configuration files found' }}"
+  when: "'libpwquality' in ansible_facts.packages"
+
+- name: "Req 02 - Check password complexity settings in pwquality configuration files"
+  ansible.builtin.shell: |
+    grep -Psi -- '^\h*(minclass|[dulo]credit)\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  when: "'libpwquality' in ansible_facts.packages"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check password complexity settings in config files"
+    task_02_cmd: |
+      grep -Psi -- '^\\h*(minclass|[dulo]credit)\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if (result_02.stdout | default('') | trim) | length > 0 and ( (result_02.stdout | default('') | regex_search('minclass=([4-9]|[1-9][0-9]|[1-9][0-9][0-9]+)')) or (result_02.stdout | default('') | regex_search('[dulo]credit=-\\d+')) ) else 'FAIL' }}"
+    details_02: "{{ 'Compliant complexity settings found' if (result_02.stdout | default('') | trim) | length > 0 and ( (result_02.stdout | default('') | regex_search('minclass=([4-9]|[1-9][0-9]|[1-9][0-9][0-9]+)')) or (result_02.stdout | default('') | regex_search('[dulo]credit=-\\d+')) ) else 'No compliant complexity settings found' }}"
+  when: "'libpwquality' in ansible_facts.packages"
+
+- name: "Req 03 - Check for weak password complexity in PAM configuration files"
+  ansible.builtin.shell: |
+    grep -Psi -- '^\h*password\h+(requisite|required|sufficient)\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?(minclass=[0-3]|[dulo]credit=[^-]\d*)\b' /etc/pam.d/system-auth /etc/pam.d/password-auth
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  when: "'libpwquality' in ansible_facts.packages"
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check for weak password complexity in PAM files"
+    task_03_cmd: |
+      grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?(minclass=[0-3]|[dulo]credit=[^-]\\d*)\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if (result_03.stdout | default('') | trim) | length == 0 else 'FAIL' }}"
+    details_03: "{{ 'No weak password complexity parameters found in PAM' if (result_03.stdout | default('') | trim) | length == 0 else 'Weak parameters found in PAM configuration' }}"
+  when: "'libpwquality' in ansible_facts.packages"
+
+- name: "Req 04 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    status_04: "{{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS') else 'FAIL' }}"
+    details_04: "{{ 'All checks passed' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS') else 'One or more checks failed' }}"
+    status_05: "{{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS') else 'FAIL' }}"
+    details_05: "{{ 'All checks passed' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS') else 'One or more checks failed' }}"
+    cis_result: "{{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS') else 'FAIL' }}"
+  when: "'libpwquality' in ansible_facts.packages"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.3.2.3"
+    - "Reference: CIS Benchmark checkpoint 5.3.3.2.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}"
+    - "  Task: {{ task_04_name | default('Summarize overall compliance') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default('N/A') }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}"
+    - "  Task: {{ task_05_name | default('Store final audit result') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default('N/A') }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"

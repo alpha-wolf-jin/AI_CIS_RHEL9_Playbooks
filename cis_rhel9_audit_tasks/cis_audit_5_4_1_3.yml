@@ -1,0 +1,167 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_1_3.yml
+
+- name: "Req 01 - Check if /etc/login.defs exists"
+  ansible.builtin.stat:
+    path: /etc/login.defs
+  register: file_stat
+
+- name: "Req 02 - Check if /etc/shadow exists"
+  ansible.builtin.stat:
+    path: /etc/shadow
+  register: shadow_stat
+
+- name: "Req 03 - Check PASS_WARN_AGE parameter in /etc/login.defs"
+  ansible.builtin.shell: |
+    line=$(grep -Pi -- '^\h*PASS_WARN_AGE\h+\d+\b' /etc/login.defs 2>/dev/null)
+    if [ -z "$line" ]; then
+      echo "PASS_WARN_AGE not found"
+      exit 1
+    fi
+    echo "$line"
+    warn_age=$(echo "$line" | grep -Po '\d+$')
+    if [ "$warn_age" -ge 7 ]; then
+      exit 0
+    else
+      echo "PASS_WARN_AGE value $warn_age is less than 7"
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "file_stat.stat.exists | default(false)"
+
+- name: "Req 04 - Check all users have PASS_WARN_AGE of 7 or more in /etc/shadow"
+  ansible.builtin.shell: |
+    output=$(awk -F: '($2~/^\$.+\$/) {if($6 < 7)print "User: " $1 " PASS_WARN_AGE: " $6}' /etc/shadow 2>/dev/null)
+    if [ -n "$output" ]; then
+      echo "$output"
+      exit 1
+    else
+      exit 0
+    fi
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: "shadow_stat.stat.exists | default(false)"
+
+- name: "Store audit details for requirements 1-5"
+  ansible.builtin.set_fact:
+    task_01_name: "Req 01 - Check if /etc/login.defs exists"
+    task_01_cmd: "stat /etc/login.defs"
+    task_01_rc: "{{ 0 if file_stat.stat.exists else 1 }}"
+    data_01: "{{ 'File exists' if file_stat.stat.exists else 'File does not exist' }}"
+    status_01: "{{ 'PASS' if file_stat.stat.exists else 'FAIL' }}"
+    details_01: "{{ 'File /etc/login.defs exists' if file_stat.stat.exists else 'File /etc/login.defs not found' }}"
+
+    task_02_name: "Req 02 - Check if /etc/shadow exists"
+    task_02_cmd: "stat /etc/shadow"
+    task_02_rc: "{{ 0 if shadow_stat.stat.exists else 1 }}"
+    data_02: "{{ 'File exists' if shadow_stat.stat.exists else 'File does not exist' }}"
+    status_02: "{{ 'PASS' if shadow_stat.stat.exists else 'SKIP' }}"
+    details_02: "{{ '/etc/shadow exists' if shadow_stat.stat.exists else '/etc/shadow not found' }}"
+
+    task_03_name: "Req 03 - Check PASS_WARN_AGE parameter in /etc/login.defs"
+    task_03_cmd: |
+      grep -Pi -- '^\h*PASS_WARN_AGE\h+\d+\b' /etc/login.defs
+    task_03_rc: "{{ result_03.rc | default(-1) if file_stat.stat.exists else -1 }}"
+    data_03: "{{ result_03.stdout | default('') | trim if file_stat.stat.exists else 'Skipped (file missing)' }}"
+    status_03: "{{ ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') if file_stat.stat.exists else 'FAIL' }}"
+    details_03: "{{ ('PASS_WARN_AGE configured >= 7' if result_03.rc | default(-1) == 0 else 'PASS_WARN_AGE missing or < 7') if file_stat.stat.exists else 'File missing' }}"
+
+    task_04_name: "Req 04 - Check all users have PASS_WARN_AGE >= 7 in /etc/shadow"
+    task_04_cmd: |
+      awk -F: '($2~/^\$.+\$/) {if($6 < 7)print "User: " $1 " PASS_WARN_AGE: " $6}' /etc/shadow
+    task_04_rc: "{{ result_04.rc | default(-1) if shadow_stat.stat.exists else -1 }}"
+    data_04: "{{ result_04.stdout | default('') | trim if shadow_stat.stat.exists else 'Skipped (shadow missing)' }}"
+    status_04: "{{ ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL') if shadow_stat.stat.exists else 'FAIL' }}"
+    details_04: "{{ ('No users with PASS_WARN_AGE < 7' if result_04.rc | default(-1) == 0 else 'Users found with PASS_WARN_AGE < 7: ' ~ (result_04.stdout | default(''))) if shadow_stat.stat.exists else 'Shadow file missing' }}"
+
+    task_05_name: "Req 05 - Overall compliance summary"
+    task_05_cmd: "N/A"
+    task_05_rc: "N/A"
+    data_05: "N/A"
+    status_05: >-
+      {{ 'SKIP' if not (file_stat.stat.exists and shadow_stat.stat.exists)
+         else ('PASS' if (result_03.rc | default(-1) == 0) and (result_04.rc | default(-1) == 0)
+         else 'FAIL') }}
+    details_05: >-
+      {{ 'SKIP – one or more required files missing' if not (file_stat.stat.exists and shadow_stat.stat.exists)
+         else ('Overall compliance met' if (result_03.rc | default(-1) == 0) and (result_04.rc | default(-1) == 0)
+         else 'One or more requirements not met') }}
+
+- name: "Store requirement 06 details using overall compliance status"
+  ansible.builtin.set_fact:
+    task_06_name: "Req 06 - Store final audit result"
+    task_06_cmd: "set_fact cis_result={{ status_05 }}"
+    task_06_rc: "N/A"
+    data_06: "{{ status_05 }}"
+    status_06: "{{ status_05 }}"
+    details_06: "{{ details_05 }}"
+
+- name: "Store final cis_result from overall compliance status"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_05 | default('UNKNOWN') }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg: |-
+      AUDIT REPORT — CIS 5.4.1.3
+      Reference: CIS Benchmark checkpoint 5.4.1.3
+
+      REQUIREMENT 01 - {{ req_01 }}:
+        Task: {{ task_01_name | default('Not recorded') }}
+        Command: {{ task_01_cmd | default('N/A') }}
+        Exit code: {{ task_01_rc | default(-1) }}
+        Data: {{ data_01 | default('') | trim }}
+        Status: {{ status_01 | default('UNKNOWN') | trim }}
+        Details: {{ details_01 | default('') | trim }}
+
+      REQUIREMENT 02 - {{ req_02 }}:
+        Task: {{ task_02_name | default('Not recorded') }}
+        Command: {{ task_02_cmd | default('N/A') }}
+        Exit code: {{ task_02_rc | default(-1) }}
+        Data: {{ data_02 | default('') | trim }}
+        Status: {{ status_02 | default('UNKNOWN') | trim }}
+        Details: {{ details_02 | default('') | trim }}
+
+      REQUIREMENT 03 - {{ req_03 }}:
+        Task: {{ task_03_name | default('Not recorded') }}
+        Command: {{ task_03_cmd | default('N/A') }}
+        Exit code: {{ task_03_rc | default(-1) }}
+        Data: {{ data_03 | default('') | trim }}
+        Status: {{ status_03 | default('UNKNOWN') | trim }}
+        Details: {{ details_03 | default('') | trim }}
+
+      REQUIREMENT 04 - {{ req_04 }}:
+        Task: {{ task_04_name | default('Not recorded') }}
+        Command: {{ task_04_cmd | default('N/A') }}
+        Exit code: {{ task_04_rc | default(-1) }}
+        Data: {{ data_04 | default('') | trim }}
+        Status: {{ status_04 | default('UNKNOWN') | trim }}
+        Details: {{ details_04 | default('') | trim }}
+
+      REQUIREMENT 05 - {{ req_05 }}:
+        Task: {{ task_05_name | default('Not recorded') }}
+        Command: {{ task_05_cmd | default('N/A') }}
+        Exit code: {{ task_05_rc | default(-1) }}
+        Data: {{ data_05 | default('') | trim }}
+        Status: {{ status_05 | default('UNKNOWN') | trim }}
+        Details: {{ details_05 | default('Not evaluated') | trim }}
+
+      REQUIREMENT 06 - {{ req_06 }}:
+        Task: {{ task_06_name | default('Not recorded') }}
+        Command: {{ task_06_cmd | default('N/A') }}
+        Exit code: {{ task_06_rc | default(-1) }}
+        Data: {{ data_06 | default('') | trim }}
+        Status: {{ status_06 | default('UNKNOWN') | trim }}
+        Details: {{ details_06 | default('Not evaluated') | trim }}
+
+      OVERALL COMPLIANCE:
+        Result: {{ cis_result | default('UNKNOWN') | trim }}
+        Details: {{ details_05 | default('Not evaluated') | trim }}

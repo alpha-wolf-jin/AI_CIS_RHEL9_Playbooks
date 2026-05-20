@@ -1,0 +1,6 @@
+req_01: "Apply prerequisite check for dnf package manager using command: `which dnf`. Expected result: path to dnf binary."
+req_02: "Apply uninstall setroubleshoot using command: `dnf remove -y setroubleshoot`. Expected result: package setroubleshoot is removed."
+req_03: "Verify setroubleshoot is not installed using command: `rpm -q setroubleshoot`. Expected result: package setroubleshoot is not installed."
+playbook_name: "cis_1_3_1_8"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/setroubleshoot/setroubleshoot.conf"

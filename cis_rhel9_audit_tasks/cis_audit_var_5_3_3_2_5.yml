@@ -1,0 +1,7 @@
+req_01: "Check if pam_pwquality is installed using command: `rpm -q pam_pwquality 2>/dev/null || dpkg -l pam_pwquality 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check maxsequence setting in /etc/security/pwquality.conf and /etc/security/pwquality.conf.d/*.conf using command: `grep -Psi -- '^\\h*maxsequence\\h*=\\h*[1-3]\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf`. Expected result: output shows maxsequence set to a value between 1 and 3 (not 0) and conforming to local site policy.
+req_03: |
+  Check that maxsequence is not set to 0 or a value greater than 3 in PAM configuration files using command: `grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?maxsequence\\h*=\\h*(0|[4-9]|[1-9][0-9]+)\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: no output (nothing returned).
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if pam_pwquality is not installed, FAIL if the feature exists but is misconfigured."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

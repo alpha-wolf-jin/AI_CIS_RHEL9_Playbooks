@@ -1,0 +1,308 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_5_2.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/fstab from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/fstab.present"
+    dest: "/etc/fstab"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore mount options for /var/tmp from prior state"
+  ansible.builtin.shell: |
+    opts=$(cat "{{ state_guard_dir }}/var_tmp_mount.state" 2>/dev/null)
+    if [ -n "$opts" ]; then
+      mount -o remount,"$opts" /var/tmp
+    fi
+  args:
+    executable: /bin/bash
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/fstab exists"
+  ansible.builtin.stat:
+    path: "/etc/fstab"
+  register: _sg_fstab_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/fstab"
+  ansible.builtin.copy:
+    src: "/etc/fstab"
+    dest: "{{ state_guard_dir }}/fstab.present"
+    remote_src: true
+  when: _sg_fstab_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Check if /var/tmp is a mount point"
+  ansible.builtin.shell: mountpoint -q /var/tmp
+  args:
+    executable: /bin/bash
+  register: _sg_var_tmp_mountpoint
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Save current mount options for /var/tmp"
+  ansible.builtin.shell: findmnt -n -o OPTIONS /var/tmp > "{{ state_guard_dir }}/var_tmp_mount.state"
+  args:
+    executable: /bin/bash
+  when: _sg_var_tmp_mountpoint.rc == 0
+  tags: [snapshot]
+- name: "State Guard - Mark /var/tmp mount absent if not a mount point"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/var_tmp_mount.absent"
+  when: _sg_var_tmp_mountpoint.rc != 0
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if /var/tmp is a separate partition"
+    ansible.builtin.shell: mount | grep -E '\s/var/tmp\s'
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set partition_exists flag"
+    ansible.builtin.set_fact:
+      partition_exists: "{{ result_01.rc == 0 and (result_01.stdout | default('') | trim | length > 0) }}"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Req 01 - Check if /var/tmp is a separate partition"
+      task_01_cmd: |
+        mount | grep -E '\\s/var/tmp\\s'
+      task_01_rc: "{{ result_01['rc'] | default(-1) }}"
+      data_01: "{{ result_01['stdout'] | default('') | trim }}"
+      status_01: "{{ 'PASS' if partition_exists else 'SKIPPED' }}"
+      details_01: "{{ 'Partition /var/tmp exists and is separate' if partition_exists else 'No separate /var/tmp partition, remediation skipped' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Capture current /var/tmp fstab entry before modification"
+    ansible.builtin.shell: grep -E '/var/tmp\s' /etc/fstab || true
+    args:
+      executable: /bin/bash
+    register: fstab_before_line
+    when: partition_exists
+    tags: [execute]
+
+  - name: "Req 02 - Check if nodev option already set in /etc/fstab for /var/tmp"
+    ansible.builtin.shell: awk '$2 == "/var/tmp" {print $4}' /etc/fstab | grep -qw nodev
+    args:
+      executable: /bin/bash
+    register: nodev_fstab_check
+    failed_when: false
+    when: partition_exists
+    tags: [execute]
+
+  - name: "Req 02 - Apply nodev option to /var/tmp in /etc/fstab"
+    ansible.builtin.lineinfile:
+      path: /etc/fstab
+      regexp: |
+        ^(\S+\s+/var/tmp\s+\S+\s+)(?!.*\bnodev\b)(\S+)(\s+.*)$
+      line: |
+        \1\2,nodev\3
+      backrefs: true
+    register: result_02
+    failed_when: false
+    when:
+    - partition_exists
+    - nodev_fstab_check['rc'] | default(1) != 0
+    tags: [execute]
+
+  - name: "Req 02 - Capture /var/tmp fstab entry after modification"
+    ansible.builtin.shell: grep -E '/var/tmp\s' /etc/fstab || true
+    args:
+      executable: /bin/bash
+    register: fstab_after_line
+    when: partition_exists
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Req 02 - Apply nodev option to /var/tmp in /etc/fstab"
+      task_02_cmd: "lineinfile: add nodev to /var/tmp mount options in /etc/fstab"
+      task_02_rc: "{{ result_02['rc'] | default(0) }}"
+      data_02: "Before: {{ fstab_before_line['stdout'] | default('') | trim }} | After: {{ fstab_after_line['stdout'] | default('') | trim }}"
+      status_02: >-
+        {%- if not partition_exists %}SKIPPED
+        {%- elif nodev_fstab_check['rc'] | default(1) == 0 %}PASS
+        {%- elif result_02['changed'] | default(false) %}APPLIED
+        {%- else %}FAIL{%- endif %}
+      details_02: >-
+        {%- if not partition_exists %}Skipped: no separate /var/tmp partition
+        {%- elif nodev_fstab_check['rc'] | default(1) == 0 %}nodev already present, no change needed
+        {%- elif result_02['changed'] | default(false) %}nodev option added successfully
+        {%- else %}Failed to apply nodev option{%- endif %}
+    tags: [execute]
+
+  - name: "Req 03 - Remount /var/tmp"
+    ansible.builtin.shell: mount -o remount /var/tmp
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: partition_exists
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Req 03 - Remount /var/tmp"
+      task_03_cmd: "mount -o remount /var/tmp"
+      task_03_rc: "{{ result_03['rc'] | default(-1) }}"
+      data_03: "{{ result_03['stderr'] | default('') | trim }}"
+      status_03: "{{ 'PASS' if partition_exists and (result_03['rc'] | default(-1)) == 0 else ('SKIPPED' if not partition_exists else 'FAIL') }}"
+      details_03: "{{ 'Remounted /var/tmp successfully' if partition_exists and (result_03['rc'] | default(-1)) == 0 else ('Skipped: no separate /var/tmp partition' if not partition_exists else 'Remount failed') }}"
+    tags: [execute]
+
+  - name: "Req 04 - Verify nodev option active on /var/tmp"
+    ansible.builtin.shell: mount | grep -E '\s/var/tmp\s' | grep -o 'nodev'
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: partition_exists
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Req 04 - Verify nodev option active on /var/tmp"
+      task_04_cmd: |
+        mount | grep -E '\\s/var/tmp\\s' | grep -o 'nodev'
+      task_04_rc: "{{ result_04['rc'] | default(-1) }}"
+      data_04: "{{ result_04['stdout'] | default('') | trim }}"
+      status_04: "{{ 'PASS' if partition_exists and (result_04['rc'] | default(-1)) == 0 else ('SKIPPED' if not partition_exists else 'FAIL') }}"
+      details_04: "{{ 'nodev option is active' if partition_exists and (result_04['rc'] | default(-1)) == 0 else ('Skipped: no separate /var/tmp partition' if not partition_exists else 'nodev not found') }}"
+    tags: [execute]
+
+  - name: "Set overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_04 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 1.1.2.5.2"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.5.2"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if fstab backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/fstab.present"
+    register: _sg_restore_fstab
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/fstab from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/fstab.present"
+      dest: "/etc/fstab"
+      remote_src: true
+    when: _sg_restore_fstab.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for saved mount options state"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/var_tmp_mount.state"
+    register: _sg_restore_mount_state
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved mount options"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/var_tmp_mount.state"
+    register: _sg_restore_mount_data
+    when: _sg_restore_mount_state.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remount /var/tmp with original options"
+    ansible.builtin.shell: "mount -o remount,{{ _sg_restore_mount_data.content | b64decode | trim }} /var/tmp"
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_mount_data is not failed
+    - _sg_restore_mount_data.content is defined
+    - _sg_restore_mount_state.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint directory"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

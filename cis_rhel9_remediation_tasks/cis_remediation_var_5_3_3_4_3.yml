@@ -1,0 +1,6 @@
+playbook_name: "cis_5_3_3_4_3_pam_unix_strong_hashing"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "1. Run the provided remediation script to fix Ensure pam_unix includes a strong password hashing algorithm"
+req_02: "2. VERIFY: Run audit check to confirm Ensure pam_unix includes a strong password hashing algorithm is properly configured. Expected result: System is compliant"
+req_03: "3. Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "4. Create a task named 'Generate remediation report' using debug msg with EXACTLY this format: REMEDIATION REPORT ..."

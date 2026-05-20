@@ -1,0 +1,7 @@
+req_01: "Check if the target system has /etc/passwd file present using command: `test -f /etc/passwd`. Expected result: exit code 0 (file exists)."
+req_02: |
+  Check that root user's primary GID is 0 using command: `awk -F: '($1==\"root\") {print $1\":\"$4}' /etc/passwd`. Expected result: root:0
+req_03: |
+  Check that no other user (excluding sync, shutdown, halt, operator) has GID 0 as their primary GID using command: `awk -F: '($1 !~ /^(sync|shutdown|halt|operator)/ && $4==\"0\") {print $1\":\"$4}' /etc/passwd`. Expected result: root:0
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/passwd does not exist, FAIL if root's GID is not 0 or any other user (excluding the listed ones) has GID 0."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

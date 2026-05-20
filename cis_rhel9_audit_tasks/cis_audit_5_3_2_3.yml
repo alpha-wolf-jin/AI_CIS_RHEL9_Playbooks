@@ -1,0 +1,185 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_2_3.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    not_applicable: false
+
+# Requirement 1 — use stat to robustly detect the module file
+- name: "Req 01 - Check if pam_pwquality module file exists"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+  - /lib/security/pam_pwquality.so
+  - /lib64/security/pam_pwquality.so
+  register: stat_results_01
+  failed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if pam_pwquality module file exists"
+    task_01_cmd: "stat /lib/security/pam_pwquality.so /lib64/security/pam_pwquality.so"
+    task_01_rc: "{{ 0 if (stat_results_01.results | selectattr('stat.exists') | list | length) > 0 else 1 }}"
+    data_01: "{{ stat_results_01.results | selectattr('stat.exists') | map(attribute='item') | list | join(', ') | default('') }}"
+    status_01: "{{ 'PASS' if (stat_results_01.results | selectattr('stat.exists') | list | length) > 0 else 'FAIL' }}"
+    details_01: "{{ 'pam_pwquality module file found' if (stat_results_01.results | selectattr('stat.exists') | list | length) > 0 else 'pam_pwquality module file not found' }}"
+    not_applicable: "{{ (stat_results_01.results | selectattr('stat.exists') | list | length) == 0 }}"
+
+# Requirement 2
+- name: "Req 02 - Check if pam_pwquality is enabled in password-auth"
+  shell: grep -P -- '\bpam_pwquality\.so\b' /etc/pam.d/password-auth
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  when: "not not_applicable"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check if pam_pwquality is enabled in password-auth"
+    task_02_cmd: |
+      grep -P -- '\\bpam_pwquality\\.so\\b' /etc/pam.d/password-auth
+    task_02_rc: "{% if result_02.skipped is defined and result_02.skipped %}-1{% else %}{{ result_02.rc | default(-1) }}{% endif %}"
+    data_02: "{% if result_02.skipped is defined and result_02.skipped %}N/A (skipped){% else %}{{ result_02.stdout | default('') | trim }}{% endif %}"
+    status_02: "{% if result_02.skipped is defined and result_02.skipped %}SKIPPED{% elif result_02.rc | default(-1) == 0 %}PASS{% else %}FAIL{% endif %}"
+    details_02: "{% if result_02.skipped is defined and result_02.skipped %}Skipped because pam_pwquality module is not installed{% elif result_02.rc | default(-1) == 0 %}pam_pwquality is enabled in password-auth{% else %}pam_pwquality is not enabled in password-auth{% endif %}"
+  when: "true"
+
+# Requirement 3
+- name: "Req 03 - Check if pam_pwquality is enabled in system-auth"
+  shell: grep -P -- '\bpam_pwquality\.so\b' /etc/pam.d/system-auth
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  when: "not not_applicable"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check if pam_pwquality is enabled in system-auth"
+    task_03_cmd: |
+      grep -P -- '\\bpam_pwquality\\.so\\b' /etc/pam.d/system-auth
+    task_03_rc: "{% if result_03.skipped is defined and result_03.skipped %}-1{% else %}{{ result_03.rc | default(-1) }}{% endif %}"
+    data_03: "{% if result_03.skipped is defined and result_03.skipped %}N/A (skipped){% else %}{{ result_03.stdout | default('') | trim }}{% endif %}"
+    status_03: "{% if result_03.skipped is defined and result_03.skipped %}SKIPPED{% elif result_03.rc | default(-1) == 0 %}PASS{% else %}FAIL{% endif %}"
+    details_03: "{% if result_03.skipped is defined and result_03.skipped %}Skipped because pam_pwquality module is not installed{% elif result_03.rc | default(-1) == 0 %}pam_pwquality is enabled in system-auth{% else %}pam_pwquality is not enabled in system-auth{% endif %}"
+  when: "true"
+
+# Requirement 4 — Summarize overall compliance (use SKIP instead of NOT_APPLICABLE)
+- name: "Req 04 - Summarize overall compliance"
+  set_fact:
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "Overall compliance status"
+    status_04: >-
+      {%- if not_applicable -%}
+      SKIP
+      {%- elif status_02 == 'PASS' and status_03 == 'PASS' -%}
+      PASS
+      {%- else -%}
+      FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if not_applicable -%}
+      pam_pwquality module is not installed, checkpoint not applicable
+      {%- elif status_02 == 'PASS' and status_03 == 'PASS' -%}
+      pam_pwquality is enabled in both password-auth and system-auth
+      {%- else -%}
+      pam_pwquality is not fully enabled: password-auth {% if status_02 == 'PASS' %}OK{% else %}NOT OK{% endif %}, system-auth {% if status_03 == 'PASS' %}OK{% else %}NOT OK{% endif %}
+      {%- endif -%}
+
+# Requirement 5 — Store final result in cis_result, update report variables
+- name: "Req 05 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_04 }}"
+    task_05_name: "Store final audit result in cis_result"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "Final compliance status: {{ status_04 | trim }}"
+    status_05: "PASS"
+    details_05: "cis_result variable set to {{ status_04 | trim }}"
+
+# Final report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.2.3"
+    - "Reference: CIS Benchmark checkpoint 5.3.2.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

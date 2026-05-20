@@ -1,0 +1,351 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_4_4.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore authselect profile files from prior checkpoint"
+  ansible.builtin.shell: |
+    if [ -f "{{ state_guard_dir }}/password-auth.present" ]; then
+      cp "{{ state_guard_dir }}/password-auth.present" "$(cat {{ state_guard_dir }}/password-auth.path)"
+    fi
+    if [ -f "{{ state_guard_dir }}/system-auth.present" ]; then
+      cp "{{ state_guard_dir }}/system-auth.present" "$(cat {{ state_guard_dir }}/system-auth.path)"
+    fi
+  args:
+    executable: /bin/bash
+  when: "_sg_flag.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Apply authselect changes after restore"
+  ansible.builtin.shell: authselect apply-changes 2>&1
+  args:
+    executable: /bin/bash
+  when: "_sg_flag.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Determine authselect profile path"
+  ansible.builtin.shell: |
+    l_pam_profile="$(head -1 {{ authselect_conf }})"
+    if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+      echo "/etc/authselect/$l_pam_profile"
+    else
+      echo "/usr/share/authselect/default/$l_pam_profile"
+    fi
+  args:
+    executable: /bin/bash
+  register: _sg_profile_path
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Backup password-auth"
+  ansible.builtin.copy:
+    src: "{{ _sg_profile_path.stdout }}/password-auth"
+    dest: "{{ state_guard_dir }}/password-auth.present"
+    remote_src: true
+  when:
+  - "_sg_profile_path.stdout | default('') | trim != ''"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Save password-auth path"
+  ansible.builtin.copy:
+    content: "{{ _sg_profile_path.stdout }}/password-auth"
+    dest: "{{ state_guard_dir }}/password-auth.path"
+  when:
+  - "_sg_profile_path.stdout | default('') | trim != ''"
+  tags: [snapshot]
+- name: "State Guard - Backup system-auth"
+  ansible.builtin.copy:
+    src: "{{ _sg_profile_path.stdout }}/system-auth"
+    dest: "{{ state_guard_dir }}/system-auth.present"
+    remote_src: true
+  when:
+  - "_sg_profile_path.stdout | default('') | trim != ''"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Save system-auth path"
+  ansible.builtin.copy:
+    content: "{{ _sg_profile_path.stdout }}/system-auth"
+    dest: "{{ state_guard_dir }}/system-auth.path"
+  when:
+  - "_sg_profile_path.stdout | default('') | trim != ''"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === STATE GUARD — EXECUTE PHASE ===
+
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check if authselect is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set authselect installed fact"
+    ansible.builtin.set_fact:
+      authselect_installed: "{{ 'authselect' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Audit check for use_authtok in pam_unix password lines"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 {{ authselect_conf }})"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      grep -P -- '^\h*password\h+(requisite|required|sufficient)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b' "$l_pam_profile_path"/password-auth "$l_pam_profile_path"/system-auth
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | default(false)"
+    tags: [execute]
+
+  - name: "Req 01 - Apply use_authtok remediation script"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 {{ authselect_conf }})"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      for l_authselect_file in "$l_pam_profile_path"/password-auth "$l_pam_profile_path"/system-auth; do
+        if grep -Pq '^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b' "$l_authselect_file"; then
+          echo "- \"use_authtok\" is already set in $l_authselect_file"
+        else
+          echo "- \"use_authtok\" is not set in $l_authselect_file. Updating template"
+          sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_unix\.so\s+.*)$/& use_authtok/g' "$l_authselect_file"
+        fi
+      done
+    args:
+      executable: /bin/bash
+    register: remediate_result
+    failed_when: false
+    when:
+    - "not playbook_skipped | default(false)"
+    - "audit_result.stdout | default('') | trim == ''"
+    tags: [execute]
+
+  - name: "Req 01 - Apply authselect changes"
+    ansible.builtin.shell: authselect apply-changes 2>&1
+    args:
+      executable: /bin/bash
+    register: apply_result
+    failed_when: false
+    when:
+    - "not playbook_skipped | default(false)"
+    - "audit_result.stdout | default('') | trim == ''"
+    tags: [execute]
+
+  - name: "Req 01 - Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Remediate use_authtok in pam_unix password lines"
+      task_01_cmd: |
+        sed -ri 's/(^\\s*password\\s+(requisite|required|sufficient)\\s+pam_unix\\.so\\s+.*)$/& use_authtok/g' + authselect apply-changes
+      task_01_rc: "{{ remediate_result.rc | default(-1) }}"
+      data_01: "{{ remediate_result.stdout | default('') | trim }}"
+      status_01: "{{ ('SKIPPED' if playbook_skipped | default(false) else ('PASS' if (audit_result.stdout | default('') | trim != '' or (audit_result.stdout | default('') | trim == '' and remediate_result.rc | default(-1) == 0)) else 'FAILED')) | trim }}"
+      details_01: "{{ ('authselect not installed' if playbook_skipped | default(false) else ('use_authtok already present' if audit_result.stdout | default('') | trim != '' else ('Remediation applied successfully' if remediate_result.rc | default(-1) == 0 else 'Remediation failed'))) | trim }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify use_authtok is present in pam_unix password lines"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 {{ authselect_conf }})"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      grep -P -- '^\h*password\h+(requisite|required|sufficient)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b' "$l_pam_profile_path"/password-auth "$l_pam_profile_path"/system-auth
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | default(false)"
+    tags: [execute]
+
+  - name: "Req 02 - Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify use_authtok in pam_unix password lines"
+      task_02_cmd: |
+        grep -P -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_unix\\.so\\h+([^#\\n\\r]+\\h+)?use_authtok\\b' password-auth system-auth
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ ('SKIPPED' if playbook_skipped | default(false) else ('PASS' if verify_result.stdout | default('') | trim != '' else 'FAIL')) | trim }}"
+      details_02: "{{ ('authselect not installed' if playbook_skipped | default(false) else ('use_authtok confirmed present' if verify_result.stdout | default('') | trim != '' else 'use_authtok NOT found')) | trim }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store final remediation result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "{{ status_02 | default('ERROR') | trim }}"
+      details_03: "Derived from requirement 02 status"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.3.4.4"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.4.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if password-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/password-auth.present"
+    register: _sg_restore_pw_auth
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read password-auth path"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/password-auth.path"
+    register: _sg_restore_pw_path
+    failed_when: false
+    when: "_sg_restore_pw_auth.stat.exists | default(false)"
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore password-auth from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/password-auth.present"
+      dest: "{{ _sg_restore_pw_path.content | b64decode | trim }}"
+      remote_src: true
+    when:
+    - "_sg_restore_pw_auth.stat.exists | default(false)"
+    - "_sg_restore_pw_path is not failed"
+    - "_sg_restore_pw_path.content is defined"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if system-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/system-auth.present"
+    register: _sg_restore_sys_auth
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read system-auth path"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/system-auth.path"
+    register: _sg_restore_sys_path
+    failed_when: false
+    when: "_sg_restore_sys_auth.stat.exists | default(false)"
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore system-auth from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/system-auth.present"
+      dest: "{{ _sg_restore_sys_path.content | b64decode | trim }}"
+      remote_src: true
+    when:
+    - "_sg_restore_sys_auth.stat.exists | default(false)"
+    - "_sg_restore_sys_path is not failed"
+    - "_sg_restore_sys_path.content is defined"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Apply authselect changes after restore"
+    ansible.builtin.shell: authselect apply-changes 2>&1
+    args:
+      executable: /bin/bash
+    when:
+    - "_sg_restore_pw_auth.stat.exists | default(false) or _sg_restore_sys_auth.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

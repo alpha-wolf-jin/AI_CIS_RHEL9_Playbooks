@@ -1,0 +1,576 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_8.yml
+
+- name: "Initialize default variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    data_09: "Not collected yet"
+    status_09: "UNKNOWN"
+    details_09: "Not evaluated"
+    data_10: "Not collected yet"
+    status_10: "UNKNOWN"
+    details_10: "Not evaluated"
+    data_11: "Not collected yet"
+    status_11: "UNKNOWN"
+    details_11: "Not evaluated"
+    data_12: "Not collected yet"
+    status_12: "UNKNOWN"
+    details_12: "Not evaluated"
+    data_13: "Not collected yet"
+    status_13: "UNKNOWN"
+    details_13: "Not evaluated"
+    data_14: "Not collected yet"
+    status_14: "UNKNOWN"
+    details_14: "Not evaluated"
+    data_15: "Not collected yet"
+    status_15: "UNKNOWN"
+    details_15: "Not evaluated"
+    data_16: "Not collected yet"
+    status_16: "UNKNOWN"
+    details_16: "Not evaluated"
+    data_17: "Not collected yet"
+    status_17: "UNKNOWN"
+    details_17: "Not evaluated"
+    data_18: "Not collected yet"
+    status_18: "UNKNOWN"
+    details_18: "Not evaluated"
+    data_19: "Not collected yet"
+    status_19: "UNKNOWN"
+    details_19: "Not evaluated"
+
+# Requirement 1: Check if auditd is installed
+- name: "Req 01 - Check if auditd package is installed"
+  shell: dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if auditd is installed"
+    task_01_cmd: "dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+    details_01: "{{ 'auditd package is installed' if result_01.rc | default(-1) == 0 else 'auditd package NOT installed' }}"
+    auditd_installed: "{{ result_01.rc | default(-1) == 0 }}"
+
+# On-disk audit rules check (shared awk)
+- name: "Req 02-09 - Collect on-disk audit rules"
+  shell: |
+    awk '/^ *-w/ &&(/\/etc\/group/ ||/\/etc\/passwd/ ||/\/etc\/gshadow/ ||/\/etc\/shadow/ ||/\/etc\/security\/opasswd/ ||/\/etc\/nsswitch.conf/ ||/\/etc\/pam.conf/ ||/\/etc\/pam.d/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+  args:
+    executable: /bin/bash
+  register: disk_output
+  when: "auditd_installed | default(false) | bool"
+  failed_when: false
+  changed_when: false
+
+# Running rules check (shared auditctl | awk)
+- name: "Req 10-17 - Collect running audit rules"
+  shell: |
+    auditctl -l | awk '/^ *-w/ &&(/\/etc\/group/ ||/\/etc\/passwd/ ||/\/etc\/gshadow/ ||/\/etc\/shadow/ ||/\/etc\/security\/opasswd/ ||/\/etc\/nsswitch.conf/ ||/\/etc\/pam.conf/ ||/\/etc\/pam.d/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: running_output
+  when: "auditd_installed | default(false) | bool"
+  failed_when: false
+  changed_when: false
+
+# Requirements 2-9: Evaluate each on-disk file
+- name: "Req 02 - Evaluate on-disk rule for /etc/group"
+  set_fact:
+    task_02_name: "Check on-disk audit rules for /etc/group"
+    task_02_cmd: "awk ... (see playbook)"
+    task_02_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_02: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_02: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/group -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/group -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 03 - Evaluate on-disk rule for /etc/passwd"
+  set_fact:
+    task_03_name: "Check on-disk audit rules for /etc/passwd"
+    task_03_cmd: "awk ... (see playbook)"
+    task_03_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_03: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_03: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/passwd -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/passwd -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 04 - Evaluate on-disk rule for /etc/gshadow"
+  set_fact:
+    task_04_name: "Check on-disk audit rules for /etc/gshadow"
+    task_04_cmd: "awk ... (see playbook)"
+    task_04_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_04: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_04: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/gshadow -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/gshadow -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 05 - Evaluate on-disk rule for /etc/shadow"
+  set_fact:
+    task_05_name: "Check on-disk audit rules for /etc/shadow"
+    task_05_cmd: "awk ... (see playbook)"
+    task_05_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_05: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_05: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/shadow -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_05: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/shadow -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 06 - Evaluate on-disk rule for /etc/security/opasswd"
+  set_fact:
+    task_06_name: "Check on-disk audit rules for /etc/security/opasswd"
+    task_06_cmd: "awk ... (see playbook)"
+    task_06_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_06: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_06: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/security/opasswd -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_06: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/security/opasswd -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 07 - Evaluate on-disk rule for /etc/nsswitch.conf"
+  set_fact:
+    task_07_name: "Check on-disk audit rules for /etc/nsswitch.conf"
+    task_07_cmd: "awk ... (see playbook)"
+    task_07_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_07: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_07: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/nsswitch.conf -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_07: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/nsswitch.conf -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 08 - Evaluate on-disk rule for /etc/pam.conf"
+  set_fact:
+    task_08_name: "Check on-disk audit rules for /etc/pam.conf"
+    task_08_cmd: "awk ... (see playbook)"
+    task_08_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_08: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_08: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/pam.conf -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_08: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/pam.conf -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 09 - Evaluate on-disk rule for /etc/pam.d"
+  set_fact:
+    task_09_name: "Check on-disk audit rules for /etc/pam.d"
+    task_09_cmd: "awk ... (see playbook)"
+    task_09_rc: "{{ disk_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_09: "{{ disk_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_09: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/pam.d -p wa -k identity' in (disk_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_09: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/pam.d -p wa -k identity' in (disk_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+# Requirements 10-17: Evaluate each running rule
+- name: "Req 10 - Evaluate running rule for /etc/group"
+  set_fact:
+    task_10_name: "Check running audit rules for /etc/group"
+    task_10_cmd: "auditctl -l | awk ... (see playbook)"
+    task_10_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_10: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_10: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/group -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_10: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/group -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 11 - Evaluate running rule for /etc/passwd"
+  set_fact:
+    task_11_name: "Check running audit rules for /etc/passwd"
+    task_11_cmd: "auditctl -l | awk ... (see playbook)"
+    task_11_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_11: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_11: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/passwd -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_11: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/passwd -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 12 - Evaluate running rule for /etc/gshadow"
+  set_fact:
+    task_12_name: "Check running audit rules for /etc/gshadow"
+    task_12_cmd: "auditctl -l | awk ... (see playbook)"
+    task_12_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_12: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_12: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/gshadow -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_12: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/gshadow -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 13 - Evaluate running rule for /etc/shadow"
+  set_fact:
+    task_13_name: "Check running audit rules for /etc/shadow"
+    task_13_cmd: "auditctl -l | awk ... (see playbook)"
+    task_13_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_13: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_13: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/shadow -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_13: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/shadow -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 14 - Evaluate running rule for /etc/security/opasswd"
+  set_fact:
+    task_14_name: "Check running audit rules for /etc/security/opasswd"
+    task_14_cmd: "auditctl -l | awk ... (see playbook)"
+    task_14_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_14: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_14: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/security/opasswd -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_14: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/security/opasswd -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 15 - Evaluate running rule for /etc/nsswitch.conf"
+  set_fact:
+    task_15_name: "Check running audit rules for /etc/nsswitch.conf"
+    task_15_cmd: "auditctl -l | awk ... (see playbook)"
+    task_15_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_15: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_15: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/nsswitch.conf -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_15: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/nsswitch.conf -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 16 - Evaluate running rule for /etc/pam.conf"
+  set_fact:
+    task_16_name: "Check running audit rules for /etc/pam.conf"
+    task_16_cmd: "auditctl -l | awk ... (see playbook)"
+    task_16_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_16: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_16: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/pam.conf -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_16: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/pam.conf -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+- name: "Req 17 - Evaluate running rule for /etc/pam.d"
+  set_fact:
+    task_17_name: "Check running audit rules for /etc/pam.d"
+    task_17_cmd: "auditctl -l | awk ... (see playbook)"
+    task_17_rc: "{{ running_output.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
+    data_17: "{{ running_output.stdout | default('') | trim if auditd_installed | default(false) | bool else 'N/A' }}"
+    status_17: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif '-w /etc/pam.d -p wa -k identity' in (running_output.stdout | default('')) -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+    details_17: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}auditd not installed — NOT_APPLICABLE
+      {%- elif '-w /etc/pam.d -p wa -k identity' in (running_output.stdout | default('')) -%}Rule present
+      {%- else -%}Rule missing
+      {%- endif -%}
+
+# Summarize overall compliance (Req 18)
+- name: "Req 18 - Summarize overall compliance status"
+  set_fact:
+    compliance_status: >-
+      {%- if not (auditd_installed | default(false) | bool) -%}NOT_APPLICABLE
+      {%- elif status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' and status_06 == 'PASS' and status_07 == 'PASS' and status_08 == 'PASS' and status_09 == 'PASS' and status_10 == 'PASS' and status_11 == 'PASS' and status_12 == 'PASS' and status_13 == 'PASS' and status_14 == 'PASS' and status_15 == 'PASS' and status_16 == 'PASS' and status_17 == 'PASS' -%}PASS
+      {%- else -%}FAIL
+      {%- endif -%}
+- name: "Store requirement 18 details"
+  set_fact:
+    task_18_name: "Summarize overall compliance"
+    task_18_cmd: "set_fact logic (see playbook)"
+    task_18_rc: "0"
+    data_18: "{{ compliance_status }}"
+    status_18: "{{ compliance_status }}"
+    details_18: "Overall result derived from individual checks"
+
+# Store cis_result (Req 19)
+- name: "Req 19 - Store final audit result as cis_result"
+  set_fact:
+    cis_result: "{{ compliance_status | default('UNKNOWN') | trim }}"
+- name: "Store requirement 19 details"
+  set_fact:
+    task_19_name: "Store final audit result as cis_result"
+    task_19_cmd: "set_fact cis_result = compliance_status"
+    task_19_rc: "0"
+    data_19: "{{ cis_result }}"
+    status_19: "PASS"
+    details_19: "Final compliance status stored as {{ cis_result }}"
+
+# Generate audit report (Req 20)
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.8"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.8"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: {{ task_09_name | default('Not recorded') }}"
+    - "  Command: {{ task_09_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_09_rc | default(-1) }}"
+    - "  Data: {{ data_09 | default('') | trim }}"
+    - "  Status: {{ status_09 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_09 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 10 - {{ req_10 }}:"
+    - "  Task: {{ task_10_name | default('Not recorded') }}"
+    - "  Command: {{ task_10_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_10_rc | default(-1) }}"
+    - "  Data: {{ data_10 | default('') | trim }}"
+    - "  Status: {{ status_10 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_10 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 11 - {{ req_11 }}:"
+    - "  Task: {{ task_11_name | default('Not recorded') }}"
+    - "  Command: {{ task_11_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_11_rc | default(-1) }}"
+    - "  Data: {{ data_11 | default('') | trim }}"
+    - "  Status: {{ status_11 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_11 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 12 - {{ req_12 }}:"
+    - "  Task: {{ task_12_name | default('Not recorded') }}"
+    - "  Command: {{ task_12_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_12_rc | default(-1) }}"
+    - "  Data: {{ data_12 | default('') | trim }}"
+    - "  Status: {{ status_12 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_12 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 13 - {{ req_13 }}:"
+    - "  Task: {{ task_13_name | default('Not recorded') }}"
+    - "  Command: {{ task_13_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_13_rc | default(-1) }}"
+    - "  Data: {{ data_13 | default('') | trim }}"
+    - "  Status: {{ status_13 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_13 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 14 - {{ req_14 }}:"
+    - "  Task: {{ task_14_name | default('Not recorded') }}"
+    - "  Command: {{ task_14_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_14_rc | default(-1) }}"
+    - "  Data: {{ data_14 | default('') | trim }}"
+    - "  Status: {{ status_14 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_14 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 15 - {{ req_15 }}:"
+    - "  Task: {{ task_15_name | default('Not recorded') }}"
+    - "  Command: {{ task_15_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_15_rc | default(-1) }}"
+    - "  Data: {{ data_15 | default('') | trim }}"
+    - "  Status: {{ status_15 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_15 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 16 - {{ req_16 }}:"
+    - "  Task: {{ task_16_name | default('Not recorded') }}"
+    - "  Command: {{ task_16_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_16_rc | default(-1) }}"
+    - "  Data: {{ data_16 | default('') | trim }}"
+    - "  Status: {{ status_16 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_16 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 17 - {{ req_17 }}:"
+    - "  Task: {{ task_17_name | default('Not recorded') }}"
+    - "  Command: {{ task_17_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_17_rc | default(-1) }}"
+    - "  Data: {{ data_17 | default('') | trim }}"
+    - "  Status: {{ status_17 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_17 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 18 - {{ req_18 }}:"
+    - "  Task: {{ task_18_name | default('Not recorded') }}"
+    - "  Command: {{ task_18_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_18_rc | default(-1) }}"
+    - "  Data: {{ data_18 | default('') | trim }}"
+    - "  Status: {{ status_18 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_18 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 19 - {{ req_19 }}:"
+    - "  Task: {{ task_19_name | default('Not recorded') }}"
+    - "  Command: {{ task_19_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_19_rc | default(-1) }}"
+    - "  Data: {{ data_19 | default('') | trim }}"
+    - "  Status: {{ status_19 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_19 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_19 | default('Not evaluated') | trim }}"
+    - "========================================================"

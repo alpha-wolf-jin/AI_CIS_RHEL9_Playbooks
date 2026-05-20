@@ -1,0 +1,173 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_4_1_8.yml
+
+- name: "Req 01 - Check if cron is installed"
+  shell: "which crontab || dpkg -l cron || rpm -q cron"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+
+- name: "Set cron_installed fact"
+  set_fact:
+    cron_installed: "{{ result_01.rc == 0 }}"
+
+- name: "Req 02 - Check /etc/cron.allow exists"
+  shell: "[ -e /etc/cron.allow ] && echo 'exists'"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  when: cron_installed
+
+- name: "Req 03 - Check /etc/cron.allow mode"
+  shell: "stat -Lc '%a' /etc/cron.allow"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  when: cron_installed
+
+- name: "Req 04 - Check /etc/cron.allow owner"
+  shell: "stat -Lc '%U' /etc/cron.allow"
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  when: cron_installed
+
+- name: "Req 05 - Check /etc/cron.allow group owner"
+  shell: "stat -Lc '%G' /etc/cron.allow"
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  when: cron_installed
+
+- name: "Req 06 - Check /etc/cron.deny"
+  shell: "[ -e /etc/cron.deny ] && stat -Lc 'Access: (%a/%A) Owner: (%U) Group: (%G)' /etc/cron.deny || echo 'does not exist'"
+  args:
+    executable: /bin/bash
+  register: result_06
+  failed_when: false
+  when: cron_installed
+
+- name: "Set audit data and compliance status"
+  set_fact:
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ (result_01.rc | default(-1) == 0) | ternary('PASS', 'FAIL') }}"
+    details_01: "{{ 'Cron is installed' if result_01.rc | default(-1) == 0 else 'Cron is not installed' }}"
+
+    status_02: "{{ 'NOT_APPLICABLE' if not cron_installed else ('PASS' if (result_02.rc | default(-1) == 0 and (result_02.stdout | default('') | trim) == 'exists') else 'FAIL') }}"
+    data_02: "{{ result_02.stdout | default('') | trim if cron_installed else '' }}"
+    details_02: "{{ 'Not applicable - cron not installed' if not cron_installed else ('File exists' if (result_02.stdout | default('') | trim) == 'exists' and result_02.rc | default(-1) == 0 else 'File does not exist') }}"
+
+    status_03: "{{ 'NOT_APPLICABLE' if not cron_installed else ('PASS' if (result_03.rc | default(-1) == 0 and (result_03.stdout | default('') | trim | int) <= 640) else 'FAIL') }}"
+    data_03: "{{ result_03.stdout | default('') | trim if cron_installed else '' }}"
+    details_03: "{{ 'Not applicable' if not cron_installed else ('Mode: ' + (result_03.stdout | default('') | trim) if result_03.rc | default(-1) == 0 else 'Check failed') }}"
+
+    status_04: "{{ 'NOT_APPLICABLE' if not cron_installed else ('PASS' if (result_04.rc | default(-1) == 0 and (result_04.stdout | default('') | trim) == 'root') else 'FAIL') }}"
+    data_04: "{{ result_04.stdout | default('') | trim if cron_installed else '' }}"
+    details_04: "{{ 'Not applicable' if not cron_installed else ('Owner: ' + (result_04.stdout | default('') | trim) if result_04.rc | default(-1) == 0 else 'Check failed') }}"
+
+    status_05: "{{ 'NOT_APPLICABLE' if not cron_installed else ('PASS' if (result_05.rc | default(-1) == 0 and (result_05.stdout | default('') | trim) == 'root') else 'FAIL') }}"
+    data_05: "{{ result_05.stdout | default('') | trim if cron_installed else '' }}"
+    details_05: "{{ 'Not applicable' if not cron_installed else ('Group: ' + (result_05.stdout | default('') | trim) if result_05.rc | default(-1) == 0 else 'Check failed') }}"
+
+    status_06: "{{ 'NOT_APPLICABLE' if not cron_installed else ('PASS' if (result_06.rc | default(-1) == 0 and ((result_06.stdout | default('') | trim) == 'does not exist' or (result_06.stdout | default('') | trim) == 'Access: (640/-rw-r-----) Owner: (root) Group: (root)')) else 'FAIL') }}"
+    data_06: "{{ result_06.stdout | default('') | trim if cron_installed else '' }}"
+    details_06: "{{ 'Not applicable' if not cron_installed else ((result_06.stdout | default('') | trim) if result_06.rc | default(-1) == 0 else 'Check failed') }}"
+
+- name: "Req 07 - Summarize overall compliance status (set status)"
+  set_fact:
+    status_07: "{{ 'NOT_APPLICABLE' if not cron_installed else ('PASS' if (status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' and status_06 == 'PASS') else 'FAIL') }}"
+
+- name: "Req 07 - Summarize overall compliance details"
+  set_fact:
+    details_07: "{{ 'All checks passed for crontab restriction' if status_07 == 'PASS' else ('Some checks failed' if status_07 == 'FAIL' else 'Cron not installed, audit not applicable') }}"
+
+- name: "Req 08 - Store final result in cis_result"
+  set_fact:
+    cis_result: "{{ status_07 | trim }}"
+
+- name: "Store requirement 08 details"
+  set_fact:
+    task_08_name: "Req 08 - Store final result in cis_result"
+    task_08_cmd: "set_fact: cis_result='{{ status_07 }}'"
+    task_08_rc: 0
+    data_08: "{{ cis_result | default('') | trim }}"
+    status_08: "PASS"
+    details_08: "{{ 'cis_result set to ' + cis_result | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.4.1.8"
+    - "Reference: CIS Benchmark checkpoint 2.4.1.8"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Req 01 - Check if cron is installed"
+    - "  Command: which crontab || dpkg -l cron || rpm -q cron"
+    - "  Exit code: {{ result_01.rc | default(-1) }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Req 02 - Check /etc/cron.allow exists"
+    - "  Command: [ -e /etc/cron.allow ] && echo 'exists'"
+    - "  Exit code: {{ (result_02.rc | default('N/A')) if not cron_installed else (result_02.rc | default(-1)) }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Req 03 - Check /etc/cron.allow mode"
+    - "  Command: stat -Lc '%a' /etc/cron.allow"
+    - "  Exit code: {{ (result_03.rc | default('N/A')) if not cron_installed else (result_03.rc | default(-1)) }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Req 04 - Check /etc/cron.allow owner"
+    - "  Command: stat -Lc '%U' /etc/cron.allow"
+    - "  Exit code: {{ (result_04.rc | default('N/A')) if not cron_installed else (result_04.rc | default(-1)) }}"
+    - "  Data: {{ data_04 }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: Req 05 - Check /etc/cron.allow group owner"
+    - "  Command: stat -Lc '%G' /etc/cron.allow"
+    - "  Exit code: {{ (result_05.rc | default('N/A')) if not cron_installed else (result_05.rc | default(-1)) }}"
+    - "  Data: {{ data_05 }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: Req 06 - Check /etc/cron.deny"
+    - "  Command: [ -e /etc/cron.deny ] && stat -Lc 'Access: (%a/%A) Owner: (%U) Group: (%G)' /etc/cron.deny || echo 'does not exist'"
+    - "  Exit code: {{ (result_06.rc | default('N/A')) if not cron_installed else (result_06.rc | default(-1)) }}"
+    - "  Data: {{ data_06 }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: Req 07 - Summarize overall compliance status"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: {{ status_07 }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name }}"
+    - "  Command: {{ task_08_cmd }}"
+    - "  Exit code: {{ task_08_rc }}"
+    - "  Data: {{ data_08 }}"
+    - "  Status: {{ status_08 | default('ERROR') | trim }}"
+    - "  Details: {{ details_08 }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"

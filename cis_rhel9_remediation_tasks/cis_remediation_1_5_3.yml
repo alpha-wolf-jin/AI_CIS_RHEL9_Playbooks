@@ -1,0 +1,226 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_5_3.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore config file from prior checkpoint (if backup exists)"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/60-coredump.present"
+    dest: "{{ config_file }}"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check for absent marker in prior checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/60-coredump.absent"
+  register: _sg_absent_marker
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete config file if originally absent"
+  ansible.builtin.file:
+    path: "{{ config_file }}"
+    state: absent
+  when:
+  - _sg_flag.stat.exists
+  - _sg_absent_marker.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _sg_config_stat
+  tags: [snapshot]
+- name: "State Guard - Backup config file (present)"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ state_guard_dir }}/60-coredump.present"
+    remote_src: true
+  when: _sg_config_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark config file as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/60-coredump.absent"
+  when: not _sg_config_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 1 - Check if systemd-coredump is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Set fact if systemd-coredump not installed"
+    ansible.builtin.set_fact:
+      coredump_installed: "{{ 'systemd-coredump' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'systemd-coredump' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 1 - Ensure ProcessSizeMax=0 in coredump config"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: '^ProcessSizeMax='
+      line: "ProcessSizeMax=0"
+      create: yes
+    register: lineinfile_result
+    failed_when: false
+    when: not (playbook_skipped | default(false) | bool)
+    tags: [execute]
+
+  - name: "Req 1 - Set lineinfile facts when skipped"
+    ansible.builtin.set_fact:
+      task_01_name: "Ensure ProcessSizeMax=0 in coredump config"
+      task_01_cmd: "Skipped - systemd-coredump not installed"
+      lineinfile_rc: -1
+      lineinfile_stdout: ""
+      lineinfile_status: "SKIPPED"
+      lineinfile_details: "Skipped - systemd-coredump not installed"
+    when: playbook_skipped | default(false) | bool
+    tags: [execute]
+
+  - name: "Req 1 - Set lineinfile facts from execution result"
+    ansible.builtin.set_fact:
+      task_01_name: "Ensure ProcessSizeMax=0 in coredump config"
+      task_01_cmd: "lineinfile path={{ config_file }} regexp='^ProcessSizeMax=' line='ProcessSizeMax=0'"
+      lineinfile_rc: "{{ lineinfile_result.rc }}"
+      lineinfile_stdout: "{{ lineinfile_result.msg | default('') }}"
+      lineinfile_status: "{{ 'APPLIED' if lineinfile_result.rc == 0 else 'FAILED' }}"
+      lineinfile_details: "{{ 'Config line ensured' if lineinfile_result.rc == 0 else 'Failed to ensure config line' }}"
+    when: not (playbook_skipped | default(false) | bool) and lineinfile_result is defined
+    tags: [execute]
+
+  - name: "Req 2 - Verify ProcessSizeMax=0 is set"
+    ansible.builtin.shell: |
+      grep -q '^ProcessSizeMax=0' "{{ config_file }}" 2>/dev/null && echo "COMPLIANT" || echo "NON_COMPLIANT"
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    when: not (playbook_skipped | default(false) | bool)
+    tags: [execute]
+
+  - name: "Req 2 - Set verification facts"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify coredump ProcessSizeMax=0"
+      task_02_cmd: "grep -q '^ProcessSizeMax=0' {{ config_file }}"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: >-
+        {{ 'System compliant - ProcessSizeMax=0 found' if verify_result.rc | default(-1) == 0 else 'System non-compliant - ProcessSizeMax=0 not found' }}
+    when: not (playbook_skipped | default(false) | bool) and verify_result is defined
+    tags: [execute]
+
+  - name: "Req 2 - Set verification facts when skipped"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify coredump ProcessSizeMax=0"
+      task_02_cmd: "Skipped - systemd-coredump not installed"
+      task_02_rc: -1
+      data_02: "N/A"
+      status_02: "SKIPPED"
+      details_02: "Skipped - systemd-coredump not installed"
+    when: playbook_skipped | default(false) | bool
+    tags: [execute]
+
+  - name: "Req 3 - Set final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Req 3 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.5.3"
+      - "Reference: CIS Benchmark checkpoint 1.5.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_1 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ lineinfile_rc | default(-1) }}"
+      - "  Data: {{ lineinfile_stdout | default('') | trim }}"
+      - "  Status: {{ lineinfile_status | default('UNKNOWN') }}"
+      - "  Details: {{ lineinfile_details | default('Not evaluated') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_2 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if config backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/60-coredump.present"
+    register: _sg_restore_config
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore config file from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/60-coredump.present"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: _sg_restore_config.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/60-coredump.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete config file if originally absent"
+    ansible.builtin.file:
+      path: "{{ config_file }}"
+      state: absent
+    when: _sg_restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint directory"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

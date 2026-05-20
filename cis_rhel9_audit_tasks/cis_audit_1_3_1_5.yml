@@ -1,0 +1,162 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_3_1_5.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    selinux_installed: false
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+- name: "Req 01 - Check if SELinux tools are installed"
+  shell: which getenforce
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    selinux_installed: "{{ (result_01.rc == 0 and result_01.stdout | default('') | trim | length > 0) }}"
+    task_01_name: "Check if SELinux tools are installed"
+    task_01_cmd: "which getenforce"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if (result_01.rc == 0 and result_01.stdout | default('') | trim | length > 0) else 'FAIL') }}"
+    details_01: "{{ ('SELinux tools installed: ' + result_01.stdout | default('') | trim if (result_01.rc == 0 and result_01.stdout | default('') | trim | length > 0) else 'getenforce not found') }}"
+
+- name: "Req 02 - Check current SELinux enforcement mode"
+  command: getenforce
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "selinux_installed | default(false) | bool"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check current SELinux enforcement mode"
+    task_02_cmd: "getenforce"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if (result_02.stdout | default('') | trim) == 'Enforcing' else 'FAIL') }}"
+    details_02: "{{ ('Current SELinux mode is ' + result_02.stdout | default('') | trim if result_02.rc == 0 else 'Failed to execute getenforce') }}"
+  when: "selinux_installed | default(false) | bool"
+
+- name: "Req 03 - Check configured SELinux mode in config file"
+  shell: "grep -i SELINUX=enforcing /etc/selinux/config"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "selinux_installed | default(false) | bool"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check configured SELinux mode in config file"
+    task_03_cmd: "grep -i SELINUX=enforcing /etc/selinux/config"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ ('PASS' if (result_03.stdout | default('') | trim) == 'SELINUX=enforcing' else 'FAIL') }}"
+    details_03: "{{ ('Config file has SELINUX=enforcing' if (result_03.stdout | default('') | trim) == 'SELINUX=enforcing' else 'Config file does not have SELINUX=enforcing or error') }}"
+  when: "selinux_installed | default(false) | bool"
+
+- name: "Req 04 - Mark not applicable statuses if SELinux not installed"
+  set_fact:
+    status_02: "{{ 'NOT_APPLICABLE' if not (selinux_installed | default(false) | bool) else status_02 }}"
+    details_02: "{{ 'SELinux tools not found — check is not applicable' if not (selinux_installed | default(false) | bool) else details_02 }}"
+    data_02: "{{ '' if not (selinux_installed | default(false) | bool) else data_02 }}"
+    task_02_name: "{{ 'Check current SELinux enforcement mode' if not (selinux_installed | default(false) | bool) else task_02_name }}"
+    task_02_cmd: "{{ 'getenforce' if not (selinux_installed | default(false) | bool) else task_02_cmd }}"
+    task_02_rc: "{{ -1 if not (selinux_installed | default(false) | bool) else task_02_rc }}"
+    status_03: "{{ 'NOT_APPLICABLE' if not (selinux_installed | default(false) | bool) else status_03 }}"
+    details_03: "{{ 'SELinux tools not found — check is not applicable' if not (selinux_installed | default(false) | bool) else details_03 }}"
+    data_03: "{{ '' if not (selinux_installed | default(false) | bool) else data_03 }}"
+    task_03_name: "{{ 'Check configured SELinux mode in config file' if not (selinux_installed | default(false) | bool) else task_03_name }}"
+    task_03_cmd: "{{ 'grep -i SELINUX=enforcing /etc/selinux/config' if not (selinux_installed | default(false) | bool) else task_03_cmd }}"
+    task_03_rc: "{{ -1 if not (selinux_installed | default(false) | bool) else task_03_rc }}"
+
+- name: "Req 04 - Summarize overall compliance"
+  set_fact:
+    status_04: >-
+      {% if not (selinux_installed | default(false) | bool) %}
+        NOT_APPLICABLE
+      {% elif status_02 == 'PASS' and status_03 == 'PASS' %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+    details_04: >-
+      {% if not (selinux_installed | default(false) | bool) %}
+        SELinux is not installed; audit not applicable
+      {% elif status_02 == 'PASS' and status_03 == 'PASS' %}
+        SELinux is enforcing both currently and in configuration
+      {% else %}
+        SELinux is not fully enforcing
+      {% endif %}
+    data_04: "Overall compliance status"
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: "0"
+
+- name: "Store cis_result for final report"
+  set_fact:
+    cis_result: "{{ status_04 | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.3.1.5"
+    - "Reference: CIS Benchmark checkpoint 1.3.1.5"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

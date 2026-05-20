@@ -1,0 +1,6 @@
+req_01: "Check if SELinux is installed using command: `rpm -q selinux-policy-targeted`. Expected result: package version is returned."
+req_02: "Check the current SELinux mode using command: `getenforce`. Expected result: Enforcing or Permissive."
+req_03: |
+  Check the configured SELinux mode in /etc/selinux/config using command: `grep -Ei '^\\s*SELINUX=(enforcing|permissive)' /etc/selinux/config`. Expected result: SELINUX=enforcing or SELINUX=permissive.
+req_04: "Summarize overall compliance: SELinux mode is not disabled and is set to enforcing or permissive in both current and configured states."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

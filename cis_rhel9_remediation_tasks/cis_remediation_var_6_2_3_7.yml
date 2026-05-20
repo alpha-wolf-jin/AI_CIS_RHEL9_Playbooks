@@ -1,0 +1,25 @@
+playbook_name: "cis_remediation_6_2_3_7"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+rsyslog_conf: "/etc/rsyslog.conf"
+rsyslog_d_dir: "/etc/rsyslog.d"
+req_01: "Apply prerequisite check for rsyslog installation using command: `which rsyslogd`. Expected result: path to rsyslogd binary."
+req_02: |
+  Apply removal of advanced format remote receive configuration from /etc/rsyslog.conf using command: `sed -i '/^module(load=\"imtcp\")/d' /etc/rsyslog.conf`. Expected result: no output, line removed if present.
+req_03: |
+  Apply removal of advanced format input line from /etc/rsyslog.conf using command: `sed -i '/^input(type=\"imtcp\" port=\"514\")/d' /etc/rsyslog.conf`. Expected result: no output, line removed if present.
+req_04: |
+  Apply removal of deprecated legacy format $ModLoad imtcp from /etc/rsyslog.conf using command: `sed -i '/^\\$ModLoad imtcp/d' /etc/rsyslog.conf`. Expected result: no output, line removed if present.
+req_05: |
+  Apply removal of deprecated legacy format $InputTCPServerRun from /etc/rsyslog.conf using command: `sed -i '/^\\$InputTCPServerRun/d' /etc/rsyslog.conf`. Expected result: no output, line removed if present.
+req_06: |
+  Apply removal of advanced format remote receive configuration from all files in /etc/rsyslog.d/ using command: `sed -i '/^module(load=\"imtcp\")/d' /etc/rsyslog.d/*.conf`. Expected result: no output, lines removed if present.
+req_07: |
+  Apply removal of advanced format input line from all files in /etc/rsyslog.d/ using command: `sed -i '/^input(type=\"imtcp\" port=\"514\")/d' /etc/rsyslog.d/*.conf`. Expected result: no output, lines removed if present.
+req_08: |
+  Apply removal of deprecated legacy format $ModLoad imtcp from all files in /etc/rsyslog.d/ using command: `sed -i '/^\\$ModLoad imtcp/d' /etc/rsyslog.d/*.conf`. Expected result: no output, lines removed if present.
+req_09: |
+  Apply removal of deprecated legacy format $InputTCPServerRun from all files in /etc/rsyslog.d/ using command: `sed -i '/^\\$InputTCPServerRun/d' /etc/rsyslog.d/*.conf`. Expected result: no output, lines removed if present.
+req_10: "Apply restart of rsyslog service using command: `systemctl restart rsyslog`. Expected result: service restarts without error."
+req_11: |
+  Verify no remote receiving configuration remains using command: `grep -rE 'module\\(load=\"imtcp\"\\)|input\\(type=\"imtcp\" port=\"514\"\\)|\\$ModLoad imtcp|\\$InputTCPServerRun' /etc/rsyslog.conf /etc/rsyslog.d/*.conf`. Expected result: no output (empty).
+req_12: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

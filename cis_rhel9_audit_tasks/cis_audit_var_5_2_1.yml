@@ -1,0 +1,3 @@
+req_01: "Check if sudo is installed using command: `dnf list sudo`. Expected result: The output should include a line starting with 'Installed Packages' followed by a line containing 'sudo.x86_64' with a version number."
+req_02: "Summarize overall compliance: PASS if sudo is installed (the command output shows 'Installed Packages' with sudo.x86_64), SKIP if the package manager is not available or the command cannot be executed, FAIL if sudo is not installed (only 'Available Packages' is shown or no sudo package is listed)."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,207 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_2_2_2.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+    # ------------------------------------------------------------------
+    # 1. Check if systemd-journald is installed (prerequisite)
+# ------------------------------------------------------------------
+- name: "Check if systemd-journald service is installed"
+  ansible.builtin.shell: |
+    systemctl show systemd-journald -p LoadState --value 2>/dev/null || echo 'not-found'
+  args:
+    executable: /bin/bash
+  register: prereq_check
+  failed_when: false
+  changed_when: false
+
+- name: "Set prerequisite fact"
+  ansible.builtin.set_fact:
+    prereq_met: "{{ prereq_check.stdout | trim == 'loaded' }}"
+
+    # ------------------------------------------------------------------
+    # Requirement 1
+# ------------------------------------------------------------------
+- name: "Req 01 - Check if journald is active"
+  ansible.builtin.shell: systemctl is-active systemd-journald
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: "prereq_met | bool"
+
+- name: "Store Req 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if journald is active"
+    task_01_cmd: "systemctl is-active systemd-journald"
+    task_01_rc: "{{ result_01.rc if result_01 is defined else -1 }}"
+    data_01: "{{ (result_01.stdout if result_01 is defined else '') | trim }}"
+    status_01: >-
+      {{ 'PASS' if (prereq_met | bool) and (result_01 is defined) and (result_01.stdout | default('') | trim == 'active')
+         else 'SKIP' }}
+    details_01: >-
+      {{ 'Service is active' if (prereq_met | bool) and (result_01 is defined) and (result_01.stdout | default('') | trim == 'active')
+         else 'Service is not active' if (prereq_met | bool) and (result_01 is defined)
+         else 'Prerequisite not met: systemd-journald not installed' }}
+
+- name: "Set journald active fact"
+  ansible.builtin.set_fact:
+    journald_active: "{{ (prereq_met | bool) and (result_01 is defined) and (result_01.stdout | default('') | trim == 'active') }}"
+
+    # ------------------------------------------------------------------
+    # Requirement 2
+# ------------------------------------------------------------------
+- name: "Req 02 - Check ForwardToSyslog configuration"
+  ansible.builtin.shell: |
+    systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E '^ForwardToSyslog=no'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: journald_active | default(false)
+
+- name: "Store Req 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check ForwardToSyslog configuration"
+    task_02_cmd: "systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E '^ForwardToSyslog=no'"
+    task_02_rc: "{{ result_02.rc if result_02 is defined else -1 }}"
+    data_02: "{{ (result_02.stdout if result_02 is defined else '') | trim }}"
+    status_02: "{{ ('PASS' if (journald_active | default(false)) and (result_02 is defined) and (result_02.rc | default(-1) == 0) else 'SKIP' if not (journald_active | default(false)) else 'FAIL') | trim }}"
+    details_02: >-
+      {{ 'ForwardToSyslog is disabled' if (journald_active | default(false)) and (result_02 is defined) and (result_02.rc | default(-1) == 0)
+         else 'ForwardToSyslog is enabled or not configured correctly' if (journald_active | default(false)) and (result_02 is defined)
+         else 'Skipped because journald is not active' }}
+
+    # ------------------------------------------------------------------
+    # Requirement 3 – overall compliance
+# ------------------------------------------------------------------
+- name: "Req 03 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_03_name: "Summarize overall compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: "{{ 0 if (status_01 | trim == 'PASS') and (status_02 | trim == 'PASS') else 1 }}"
+    data_03: >-
+      {{ 'Compliant' if (status_01 | trim == 'PASS') and (status_02 | trim == 'PASS')
+         else 'Non-compliant' if (status_01 | trim == 'PASS') and (status_02 | trim == 'FAIL')
+         else 'Not applicable' }}
+    status_03: "{{ ('PASS' if (status_01 | trim == 'PASS') and (status_02 | trim == 'PASS') else 'FAIL' if (status_01 | trim == 'PASS') and (status_02 | trim == 'FAIL') else 'SKIP') | trim }}"
+    details_03: >-
+      {{ 'All checks passed; system is compliant' if (status_01 | trim == 'PASS') and (status_02 | trim == 'PASS')
+         else 'One or more checks failed; system is non-compliant' if (status_01 | trim == 'PASS') and (status_02 | trim == 'FAIL')
+         else 'Journald is not active; audit not applicable' }}
+
+    # ------------------------------------------------------------------
+    # Requirement 4 – store final cis_result
+# ------------------------------------------------------------------
+- name: "Req 04 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 | trim }}"
+    task_04_name: "Store final audit result in cis_result"
+    task_04_cmd: "set_fact: cis_result = status_03"
+    task_04_rc: 0
+    data_04: "{{ status_03 | trim }}"
+    status_04: "PASS"
+    details_04: "cis_result variable set to {{ status_03 | trim }}"
+
+    # ------------------------------------------------------------------
+    # Requirement 5 – report generation preparation
+# ------------------------------------------------------------------
+- name: "Set requirement 05 details"
+  ansible.builtin.set_fact:
+    task_05_name: "Generate audit report"
+    task_05_cmd: "debug msg"
+    task_05_rc: 0
+    data_05: ""
+    status_05: "PASS"
+    details_05: "Audit report generated"
+
+    # ------------------------------------------------------------------
+    # FINAL REPORT
+# ------------------------------------------------------------------
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.2.2.2"
+    - "Reference: CIS Benchmark checkpoint 6.2.2.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"

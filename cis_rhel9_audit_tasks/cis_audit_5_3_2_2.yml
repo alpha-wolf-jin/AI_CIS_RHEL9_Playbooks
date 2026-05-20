@@ -1,0 +1,271 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_2_2.yml
+
+- name: "Req 01 - Check if pam_faillock module file exists on the system"
+  ansible.builtin.shell:
+    cmd: "find /lib/security /lib64/security /usr/lib/security /usr/lib64/security -name 'pam_faillock.so' 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+# Requirement 12 – prerequisite gate (FIXED: use stdout content, not return code)
+- name: "Req 12 - Determine if audit is applicable (pam_faillock module present)"
+  ansible.builtin.set_fact:
+    module_available: "{{ result_01.stdout | trim | length > 0 }}"
+
+# Requirements 2–7 – grep checks, skipped when module absent
+- name: "Req 02 - Check pam_faillock enabled in password-auth for auth preauth"
+  ansible.builtin.shell:
+    cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'preauth silent'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "module_available | bool"
+
+- name: "Req 03 - Check pam_faillock enabled in password-auth for auth authfail"
+  ansible.builtin.shell:
+    cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'authfail'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "module_available | bool"
+
+- name: "Req 04 - Check pam_faillock enabled in password-auth for account"
+  ansible.builtin.shell:
+    cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'account'
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: "module_available | bool"
+
+- name: "Req 05 - Check pam_faillock enabled in system-auth for auth preauth"
+  ansible.builtin.shell:
+    cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'preauth silent'
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: "module_available | bool"
+
+- name: "Req 06 - Check pam_faillock enabled in system-auth for auth authfail"
+  ansible.builtin.shell:
+    cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'authfail'
+  args:
+    executable: /bin/bash
+  register: result_06
+  failed_when: false
+  changed_when: false
+  when: "module_available | bool"
+
+- name: "Req 07 - Check pam_faillock enabled in system-auth for account"
+  ansible.builtin.shell:
+    cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'account'
+  args:
+    executable: /bin/bash
+  register: result_07
+  failed_when: false
+  changed_when: false
+  when: "module_available | bool"
+
+# Requirement 08 – compute overall compliance (split to avoid circular reference)
+- name: "Req 08 - Compute overall compliance status"
+  ansible.builtin.set_fact:
+    cis_result: >-
+      {%- if not module_available | bool -%}
+        SKIP
+      {%- elif (result_02.rc | default(1)) == 0 and (result_03.rc | default(1)) == 0 and (result_04.rc | default(1)) == 0 and (result_05.rc | default(1)) == 0 and (result_06.rc | default(1)) == 0 and (result_07.rc | default(1)) == 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+
+# Requirement 09 – store final audit result and all report variables
+- name: "Req 09 - Store final audit result and report details"
+  ansible.builtin.set_fact:
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if module_available | bool else 'SKIP' }}"
+    details_01: "{{ 'Module file found' if module_available | bool else 'SKIP: Module file not found – audit not applicable' }}"
+    task_01_name: "Req 01 - Check pam_faillock module file"
+    task_01_cmd: "find /lib/security /lib64/security /usr/lib/security /usr/lib64/security -name 'pam_faillock.so' 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+
+    data_02: "{{ result_02.stdout | default('') | trim if module_available | bool else '' }}"
+    status_02: "{{ 'SKIP' if not module_available | bool else ('PASS' if result_02.rc | default(1) == 0 else 'FAIL') }}"
+    details_02: "{{ 'SKIP: module missing' if not module_available | bool else ('Auth preauth line present' if result_02.rc | default(1) == 0 else 'Auth preauth line missing') }}"
+    task_02_name: "Req 02 - Check password-auth preauth"
+    task_02_cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'preauth silent'
+    task_02_rc: "{{ result_02.rc | default(-1) if module_available | bool else -1 }}"
+
+    data_03: "{{ result_03.stdout | default('') | trim if module_available | bool else '' }}"
+    status_03: "{{ 'SKIP' if not module_available | bool else ('PASS' if result_03.rc | default(1) == 0 else 'FAIL') }}"
+    details_03: "{{ 'SKIP: module missing' if not module_available | bool else ('Auth authfail line present' if result_03.rc | default(1) == 0 else 'Auth authfail line missing') }}"
+    task_03_name: "Req 03 - Check password-auth authfail"
+    task_03_cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'authfail'
+    task_03_rc: "{{ result_03.rc | default(-1) if module_available | bool else -1 }}"
+
+    data_04: "{{ result_04.stdout | default('') | trim if module_available | bool else '' }}"
+    status_04: "{{ 'SKIP' if not module_available | bool else ('PASS' if result_04.rc | default(1) == 0 else 'FAIL') }}"
+    details_04: "{{ 'SKIP: module missing' if not module_available | bool else ('Account line present' if result_04.rc | default(1) == 0 else 'Account line missing') }}"
+    task_04_name: "Req 04 - Check password-auth account"
+    task_04_cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'account'
+    task_04_rc: "{{ result_04.rc | default(-1) if module_available | bool else -1 }}"
+
+    data_05: "{{ result_05.stdout | default('') | trim if module_available | bool else '' }}"
+    status_05: "{{ 'SKIP' if not module_available | bool else ('PASS' if result_05.rc | default(1) == 0 else 'FAIL') }}"
+    details_05: "{{ 'SKIP: module missing' if not module_available | bool else ('Auth preauth line present' if result_05.rc | default(1) == 0 else 'Auth preauth line missing') }}"
+    task_05_name: "Req 05 - Check system-auth preauth"
+    task_05_cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'preauth silent'
+    task_05_rc: "{{ result_05.rc | default(-1) if module_available | bool else -1 }}"
+
+    data_06: "{{ result_06.stdout | default('') | trim if module_available | bool else '' }}"
+    status_06: "{{ 'SKIP' if not module_available | bool else ('PASS' if result_06.rc | default(1) == 0 else 'FAIL') }}"
+    details_06: "{{ 'SKIP: module missing' if not module_available | bool else ('Auth authfail line present' if result_06.rc | default(1) == 0 else 'Auth authfail line missing') }}"
+    task_06_name: "Req 06 - Check system-auth authfail"
+    task_06_cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'authfail'
+    task_06_rc: "{{ result_06.rc | default(-1) if module_available | bool else -1 }}"
+
+    data_07: "{{ result_07.stdout | default('') | trim if module_available | bool else '' }}"
+    status_07: "{{ 'SKIP' if not module_available | bool else ('PASS' if result_07.rc | default(1) == 0 else 'FAIL') }}"
+    details_07: "{{ 'SKIP: module missing' if not module_available | bool else ('Account line present' if result_07.rc | default(1) == 0 else 'Account line missing') }}"
+    task_07_name: "Req 07 - Check system-auth account"
+    task_07_cmd: |
+      grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'account'
+    task_07_rc: "{{ result_07.rc | default(-1) if module_available | bool else -1 }}"
+
+    status_08: "{{ (cis_result | trim) if cis_result | default('UNKNOWN') | trim in ['PASS','FAIL','SKIP'] else 'UNKNOWN' }}"
+    details_08: >-
+      {%- if not module_available | bool -%}
+        SKIP: pam_faillock module not installed.
+      {%- elif cis_result == 'PASS' -%}
+        All checks passed.
+      {%- else -%}
+        Some checks failed.
+      {%- endif -%}
+    task_08_name: "Req 08 - Summarize overall compliance"
+    task_08_cmd: "set_fact evaluation"
+    task_08_rc: 0
+    data_08: "{{ cis_result | default('UNKNOWN') | trim }}"
+
+    task_09_name: "Req 09 - Store final audit result"
+    task_09_cmd: "set_fact cis_result"
+    task_09_rc: 0
+    data_09: "{{ cis_result | default('UNKNOWN') | trim }}"
+    status_09: "PASS"
+    details_09: "Overall audit result stored"
+
+    task_12_name: "Req 12 - Prerequisite check (module presence)"
+    task_12_cmd: "set_fact module_available"
+    task_12_rc: 0
+    data_12: "{{ 'pam_faillock module present' if module_available | bool else 'pam_faillock module absent' }}"
+    status_12: "{{ 'PASS' if module_available | bool else 'SKIP' }}"
+    details_12: "{{ 'Audit applicable – module found' if module_available | bool else 'Audit not applicable – module missing' }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.2.2"
+    - "Reference: CIS Benchmark checkpoint 5.3.2.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: {{ task_09_name | default('Not recorded') }}"
+    - "  Command: {{ task_09_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_09_rc | default(-1) }}"
+    - "  Data: {{ data_09 | default('') | trim }}"
+    - "  Status: {{ status_09 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_09 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 12 - {{ req_12 }}:"
+    - "  Task: {{ task_12_name | default('Not recorded') }}"
+    - "  Command: {{ task_12_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_12_rc | default(-1) }}"
+    - "  Data: {{ data_12 | default('') | trim }}"
+    - "  Status: {{ status_12 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_12 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"

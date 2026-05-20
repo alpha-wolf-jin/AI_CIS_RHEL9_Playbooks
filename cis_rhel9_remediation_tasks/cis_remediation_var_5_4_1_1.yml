@@ -1,0 +1,11 @@
+playbook_name: "cis_5_4_1_1_password_expiration"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check: ensure `chage` and `awk` are available using command: `which chage awk`. Expected result: paths to both executables are returned."
+req_02: "Apply PASS_MAX_DAYS setting in /etc/login.defs using command: `sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS 365/' /etc/login.defs`. Expected result: the line PASS_MAX_DAYS 365 is present in /etc/login.defs."
+req_03: |
+  Apply user password maximum age for all users with a password set using command: `awk -F: '($2~/^\\$.+\\$/) {if($5 > 365 || $5 < 1) system (\"chage --maxdays 365 \" $1)}' /etc/shadow`. Expected result: all applicable users have their password maximum age set to 365 days.
+req_04: |
+  Apply last change date for users with unset last change field using command: `awk -F: '($2~/^\\$.+\\$/) {if($3 == \"\" || $3 == 0) system (\"chage -d \\\"$(date +%Y-%m-%d)\\\" \" $1)}' /etc/shadow`. Expected result: all users with unset last change date have it set to today's date.
+req_05: "Verify PASS_MAX_DAYS in /etc/login.defs using command: `grep ^PASS_MAX_DAYS /etc/login.defs`. Expected result: output shows PASS_MAX_DAYS 365."
+req_06: |
+  Verify user password maximum age for all users using command: `awk -F: '($2~/^\\$.+\\$/) {print $1, $5}' /etc/shadow`. Expected result: all users with a password set have a maximum age field (column 5) of 365 or less, and greater than 0.

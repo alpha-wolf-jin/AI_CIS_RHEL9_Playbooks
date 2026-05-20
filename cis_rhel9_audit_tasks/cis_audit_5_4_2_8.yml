@@ -1,0 +1,171 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_2_8.yml
+
+- name: "Create backup directory for snapshot markers"
+  ansible.builtin.file:
+    path: /var/log/ai-playbooks-backup
+    state: directory
+    mode: '0755'
+
+- name: "Snapshot - check if audit script exists before creation"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_pre_stat
+
+- name: "Snapshot - create marker if script did not pre-exist"
+  ansible.builtin.file:
+    path: /var/log/ai-playbooks-backup/audit_script_not_existed
+    state: touch
+  when: not script_pre_stat.stat.exists
+
+- name: "Check if passwd command is available"
+  ansible.builtin.shell: which passwd
+  args:
+    executable: /bin/bash
+  register: passwd_check
+  failed_when: false
+  changed_when: false
+
+- name: "Set passwd availability flag"
+  ansible.builtin.set_fact:
+    passwd_available: "{{ passwd_check.rc == 0 }}"
+
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: passwd_available
+    changed_when: false
+
+  - name: "Req 1 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    when: passwd_available
+    failed_when: false
+    changed_when: false
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute CIS 5.4.2.8 audit script"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if not passwd_available else ('PASS' if audit_result.rc | default(-1) == 0 else 'FAIL') }}"
+      details_01: "{{ 'passwd command not found' if not passwd_available else ('Script executed successfully' if audit_result.rc | default(-1) == 0 else 'Script execution failed with rc=' + (audit_result.rc | default(-1) | string)) }}"
+
+  - name: "Evaluate compliance status (Req 02)"
+    ansible.builtin.set_fact:
+      status_02: "{{ 'SKIPPED' if not passwd_available else ('PASS' if (audit_result.stdout | default('') | trim) == '' else 'FAIL') }}"
+      details_02: "{{ 'passwd not available' if not passwd_available else ('No unlocked accounts without valid login shell' if (audit_result.stdout | default('') | trim) == '' else 'Unlocked accounts without valid login shell found: ' + (audit_result.stdout | default('') | trim)) }}"
+
+  - name: "Req 3 - Store final audit result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+      status_03: "PASS"
+      details_03: "Overall compliance status stored in cis_result"
+      task_03_name: "Set cis_result fact"
+      task_03_cmd: "set_fact module"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+  - name: "Pre-set requirement 04 status"
+    ansible.builtin.set_fact:
+      status_04: "PASS"
+      details_04: "Audit report generated successfully"
+      task_04_name: "Generate audit report"
+      task_04_cmd: "debug module"
+      task_04_rc: 0
+      data_04: "N/A"
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 5.4.2.8"
+      - "Reference: CIS Benchmark checkpoint 5.4.2.8"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Compliance evaluation"
+      - "  Command: Based on audit script output"
+      - "  Exit code: N/A"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+
+  always:
+  - name: "Restore - check if audit script marker exists"
+    ansible.builtin.stat:
+      path: /var/log/ai-playbooks-backup/audit_script_not_existed
+    register: marker_stat
+    failed_when: false
+
+  - name: "Restore - remove audit script if it did not pre-exist"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: marker_stat.stat.exists
+    failed_when: false
+    changed_when: false
+
+  - name: "Restore - remove snapshot marker"
+    ansible.builtin.file:
+      path: /var/log/ai-playbooks-backup/audit_script_not_existed
+      state: absent

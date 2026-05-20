@@ -1,0 +1,138 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_13.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Req 01 - Check if rsync-daemon package is installed"
+  shell: rpm -q rsync-daemon
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if rsync-daemon package is installed"
+    task_01_cmd: "rpm -q rsync-daemon"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) != 0 else 'FAIL') | trim }}"
+    details_01: "{{ 'Package not installed (compliant)' if result_01.rc | default(-1) != 0 else 'Package installed (non-compliant)' | trim }}"
+
+- name: "Req 02 - Check if rsyncd socket and service are enabled"
+  shell: systemctl is-enabled rsyncd.socket rsyncd.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check if rsyncd socket and service are enabled"
+    task_02_cmd: "systemctl is-enabled rsyncd.socket rsyncd.service 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL') | trim }}"
+    details_02: "{{ 'No enabled services found (compliant)' if (result_02.stdout | default('') | trim) == '' else 'Enabled services detected (non-compliant)' | trim }}"
+
+- name: "Req 03 - Check if rsyncd socket and service are active"
+  shell: systemctl is-active rsyncd.socket rsyncd.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check if rsyncd socket and service are active"
+    task_03_cmd: "systemctl is-active rsyncd.socket rsyncd.service 2>/dev/null | grep '^active'"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ ('PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL') | trim }}"
+    details_03: "{{ 'No active services found (compliant)' if (result_03.stdout | default('') | trim) == '' else 'Active services detected (non-compliant)' | trim }}"
+
+- name: "Req 04 - Compute overall compliance status"
+  set_fact:
+    status_04: "{{ 'PASS' if (status_01 | default('') | trim == 'PASS') or ((status_02 | default('') | trim == 'PASS') and (status_03 | default('') | trim == 'PASS')) else 'FAIL' | trim }}"
+    details_04: "{{ 'Compliant: rsync services are not in use' if (status_01 | default('') | trim == 'PASS') or ((status_02 | default('') | trim == 'PASS') and (status_03 | default('') | trim == 'PASS')) else 'Non-compliant: rsync services are in use or enabled' | trim }}"
+    data_04: "See previous requirements"
+    task_04_name: "Compute overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Store cis_result variable (requirement 5)"
+  set_fact:
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.13"
+    - "Reference: CIS Benchmark checkpoint 2.1.13"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

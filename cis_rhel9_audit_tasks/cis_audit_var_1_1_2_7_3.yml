@@ -1,0 +1,6 @@
+mount_point: "/var/log/audit"
+mount_option: "nosuid"
+req_01: "1. Check if a separate partition exists for /var/log/audit using command: `findmnt -kn /var/log/audit`. Expected result: output should not be empty (partition exists)."
+req_02: "2. Check if the nosuid option is set on /var/log/audit partition using command: `findmnt -kn /var/log/audit | grep -v nosuid`. Expected result: no output (nosuid is set)."
+req_03: "3. Summarize overall compliance: if both checks pass, the requirement is compliant; otherwise, it is non-compliant."
+req_04: "4. Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

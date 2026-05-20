@@ -1,0 +1,6 @@
+req_01: "Check if authselect is installed using command: `rpm -q authselect`. Expected result: package is installed and version is displayed."
+req_02: "Check the installed version of authselect using command: `rpm -q authselect`. Expected result: version is authselect-1.2.6-2 or greater (e.g., authselect-1.2.6-2.el9.x86_64)."
+req_03: "Summarize overall compliance: PASS if authselect is installed and version is 1.2.6-2 or greater; SKIP if authselect is not installed; FAIL if authselect is installed but version is below 1.2.6-2."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+package_name: "authselect"
+min_version: "1.2.6-2"

@@ -1,0 +1,7 @@
+playbook_name: "cis_7_2_7"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for group management tools using command: `which groupadd groupmod groupdel`. Expected result: paths to groupadd, groupmod, groupdel are returned."
+req_02: "Apply identification of duplicate group names using command: `awk -F: '{print $1}' /etc/group | sort | uniq -d`. Expected result: list of duplicate group names (if any)."
+req_03: "Apply renaming of duplicate groups to unique names using command: `groupmod -n <new_unique_name> <old_duplicate_name>`. Expected result: group renamed successfully with no errors."
+req_04: "Apply verification that no duplicate group names exist using command: `awk -F: '{print $1}' /etc/group | sort | uniq -d`. Expected result: no output (empty list)."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

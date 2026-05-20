@@ -1,0 +1,12 @@
+req_01: "Check if audit tools are installed using command: `ls /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules 2>/dev/null`. Expected result: All listed files exist."
+req_02: |
+  Check group owner of audit tools using command: `stat -Lc \"%n %G\" /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules | awk '$2 != \"root\" {print}'`. Expected result: No output (all files are owned by group root).
+req_03: "Summarize overall compliance status: All audit tools are present and owned by group root."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+audit_tools_paths:
+  - /sbin/auditctl
+  - /sbin/aureport
+  - /sbin/ausearch
+  - /sbin/autrace
+  - /sbin/auditd
+  - /sbin/augenrules

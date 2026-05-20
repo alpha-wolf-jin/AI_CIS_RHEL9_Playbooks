@@ -1,0 +1,207 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_2_5.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set pam installed fact"
+  ansible.builtin.set_fact:
+    pam_installed: "{{ 'pam' in ansible_facts.packages }}"
+
+# Check existence of PAM configuration files
+- name: "Check existence of PAM configuration files"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+  - /etc/pam.d/password-auth
+  - /etc/pam.d/system-auth
+  register: stat_results
+  failed_when: false
+  changed_when: false
+
+- name: "Set file existence facts"
+  ansible.builtin.set_fact:
+    passwd_auth_exists: "{{ stat_results.results | selectattr('item','equalto','/etc/pam.d/password-auth') | map(attribute='stat.exists') | first | default(false) }}"
+    system_auth_exists: "{{ stat_results.results | selectattr('item','equalto','/etc/pam.d/system-auth') | map(attribute='stat.exists') | first | default(false) }}"
+
+# Requirement 01 — Check pam_unix.so in password-auth
+- name: "Req 01 - Check pam_unix in password-auth"
+  ansible.builtin.shell: grep -P -- '\bpam_unix\.so\b' /etc/pam.d/password-auth
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: "pam_installed | bool and passwd_auth_exists | bool"
+
+- name: "Set requirement 01 status"
+  ansible.builtin.set_fact:
+    status_01: >-
+      {%- if not (pam_installed | default(false)) -%}
+        SKIPPED
+      {%- elif not (passwd_auth_exists | default(false)) -%}
+        SKIPPED
+      {%- elif result_01.stdout | default('') | regex_findall('auth.*pam_unix\\.so') | length > 0
+            and result_01.stdout | default('') | regex_findall('account.*pam_unix\\.so') | length > 0
+            and result_01.stdout | default('') | regex_findall('password.*pam_unix\\.so') | length > 0
+            and result_01.stdout | default('') | regex_findall('session.*pam_unix\\.so') | length > 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+
+- name: "Set requirement 01 data and task info"
+  ansible.builtin.set_fact:
+    data_01: "{{ result_01.stdout | default('') | trim if (pam_installed | default(false) and passwd_auth_exists | default(false)) else '' }}"
+    task_01_name: "Check pam_unix.so in /etc/pam.d/password-auth"
+    task_01_cmd: |
+      grep -P -- '\\bpam_unix\\.so\\b' /etc/pam.d/password-auth
+    task_01_rc: "{{ result_01.rc | default(-1) if (pam_installed | default(false) and passwd_auth_exists | default(false)) else -1 }}"
+
+- name: "Set requirement 01 details"
+  ansible.builtin.set_fact:
+    details_01: >-
+      {%- if not (pam_installed | default(false)) -%}
+        PAM package is not installed
+      {%- elif not (passwd_auth_exists | default(false)) -%}
+        File /etc/pam.d/password-auth does not exist
+      {%- elif status_01 == 'PASS' -%}
+        All required pam_unix.so lines present
+      {%- else -%}
+        Missing one or more required pam_unix.so lines
+      {%- endif %}
+
+# Requirement 02 — Check pam_unix.so in system-auth
+- name: "Req 02 - Check pam_unix in system-auth"
+  ansible.builtin.shell: grep -P -- '\bpam_unix\.so\b' /etc/pam.d/system-auth
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "pam_installed | bool and system_auth_exists | bool"
+
+- name: "Set requirement 02 status"
+  ansible.builtin.set_fact:
+    status_02: >-
+      {%- if not (pam_installed | default(false)) -%}
+        SKIPPED
+      {%- elif not (system_auth_exists | default(false)) -%}
+        SKIPPED
+      {%- elif result_02.stdout | default('') | regex_findall('auth.*pam_unix\\.so') | length > 0
+            and result_02.stdout | default('') | regex_findall('account.*pam_unix\\.so') | length > 0
+            and result_02.stdout | default('') | regex_findall('password.*pam_unix\\.so') | length > 0
+            and result_02.stdout | default('') | regex_findall('session.*pam_unix\\.so') | length > 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+
+- name: "Set requirement 02 data and task info"
+  ansible.builtin.set_fact:
+    data_02: "{{ result_02.stdout | default('') | trim if (pam_installed | default(false) and system_auth_exists | default(false)) else '' }}"
+    task_02_name: "Check pam_unix.so in /etc/pam.d/system-auth"
+    task_02_cmd: |
+      grep -P -- '\\bpam_unix\\.so\\b' /etc/pam.d/system-auth
+    task_02_rc: "{{ result_02.rc | default(-1) if (pam_installed | default(false) and system_auth_exists | default(false)) else -1 }}"
+
+- name: "Set requirement 02 details"
+  ansible.builtin.set_fact:
+    details_02: >-
+      {%- if not (pam_installed | default(false)) -%}
+        PAM package is not installed
+      {%- elif not (system_auth_exists | default(false)) -%}
+        File /etc/pam.d/system-auth does not exist
+      {%- elif status_02 == 'PASS' -%}
+        All required pam_unix.so lines present
+      {%- else -%}
+        Missing one or more required pam_unix.so lines
+      {%- endif %}
+
+# Requirement 03 — Overall compliance evaluation
+- name: "Set requirement 03 status"
+  ansible.builtin.set_fact:
+    status_03: >-
+      {%- if not (pam_installed | default(false)) -%}
+        SKIPPED
+      {%- elif (status_01 | default('FAIL')) == 'PASS' and (status_02 | default('FAIL')) == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+
+- name: "Set requirement 03 data and task info"
+  ansible.builtin.set_fact:
+    data_03: "password-auth: {{ status_01 | default('UNKNOWN') }}, system-auth: {{ status_02 | default('UNKNOWN') }}"
+    task_03_name: "Overall compliance evaluation"
+    task_03_cmd: "Evaluate status_01 and status_02"
+    task_03_rc: 0
+
+- name: "Set requirement 03 details"
+  ansible.builtin.set_fact:
+    details_03: >-
+      {%- if status_03 == 'PASS' -%}
+        Both files contain all required pam_unix.so lines
+      {%- elif status_03 == 'SKIPPED' -%}
+        PAM package is not installed or configuration files not found
+      {%- else -%}
+        One or both files are missing required lines or are absent
+      {%- endif %}
+
+# Requirement 04 — Store final audit result in cis_result
+- name: "Req 04 - Store final audit result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 | default('UNKNOWN') | trim }}"
+    task_04_name: "Store cis_result"
+    task_04_cmd: "set_fact cis_result"
+    task_04_rc: 0
+    data_04: "{{ status_03 | default('UNKNOWN') | trim }}"
+    status_04: "{{ status_03 | default('UNKNOWN') | trim }}"
+    details_04: "Final compliance status stored in cis_result"
+
+# Generate audit report
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.2.5"
+    - "Reference: CIS Benchmark checkpoint 5.3.2.5"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

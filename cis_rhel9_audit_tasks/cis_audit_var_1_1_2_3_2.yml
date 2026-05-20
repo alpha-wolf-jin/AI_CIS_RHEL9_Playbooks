@@ -1,0 +1,2 @@
+req_01: "Check if a separate partition exists for /home using command: `findmnt -kn /home`. Expected result: output should show a mount point for /home."
+req_02: "Check if the nodev option is set on /home partition using command: `findmnt -kn /home | grep -v nodev`. Expected result: no output should be returned."

@@ -1,0 +1,6 @@
+playbook_name: "CIS_1.8.6_GDM_automount"
+checkpoint_id: "cis_1_8_6"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "Run the provided remediation script to fix Ensure GDM automatic mounting of removable media is disabled."
+req_02: "VERIFY: Run audit check to confirm Ensure GDM automatic mounting of removable media is disabled is properly configured."

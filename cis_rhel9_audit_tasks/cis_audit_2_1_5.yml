@@ -1,0 +1,157 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_5.yml
+
+- name: "Initialize default data for requirements 02 and 03"
+  set_fact:
+    status_02: "SKIP"
+    details_02: "Not applicable (package not installed)"
+    task_02_name: "Not executed"
+    task_02_cmd: "systemctl is-enabled dnsmasq.service 2>/dev/null | grep 'enabled'"
+    task_02_rc: -1
+    data_02: ""
+    status_03: "SKIP"
+    details_03: "Not applicable (package not installed)"
+    task_03_name: "Not executed"
+    task_03_cmd: "systemctl is-active dnsmasq.service 2>/dev/null | grep '^active'"
+    task_03_rc: -1
+    data_03: ""
+
+# --- REQUIREMENT 01: CHECK PACKAGE INSTALLATION ---
+- name: "Req 01 - Check if dnsmasq package is installed"
+  ansible.builtin.shell: rpm -q dnsmasq
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if dnsmasq package is installed using rpm"
+    task_01_cmd: "rpm -q dnsmasq"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) != 0 else 'FAIL' }}"
+    details_01: "{{ 'Package not installed (compliance baseline met)' if result_01.rc | default(-1) != 0 else 'Package is installed (requires further service checks)' }}"
+
+# --- REQUIREMENT 02: CHECK SERVICE ENABLED (only if package installed) ---
+- name: "Req 02 - Check if dnsmasq.service is enabled (only if package installed)"
+  ansible.builtin.shell: systemctl is-enabled dnsmasq.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc | default(-1) == 0"
+
+- name: "Store requirement 02 details (if executed)"
+  set_fact:
+    task_02_name: "Check if dnsmasq service is enabled"
+    task_02_rc: "{{ result_02.rc }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if result_02.rc != 0 else 'FAIL' }}"
+    details_02: "{{ 'Service is not enabled' if result_02.rc != 0 else 'Service is enabled (non-compliant)' }}"
+  when: "not result_02 is skipped"
+
+# --- REQUIREMENT 03: CHECK SERVICE ACTIVE (only if package installed) ---
+- name: "Req 03 - Check if dnsmasq.service is active (only if package installed)"
+  ansible.builtin.shell: systemctl is-active dnsmasq.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc | default(-1) == 0"
+
+- name: "Store requirement 03 details (if executed)"
+  set_fact:
+    task_03_name: "Check if dnsmasq service is active"
+    task_03_rc: "{{ result_03.rc }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if result_03.rc != 0 else 'FAIL' }}"
+    details_03: "{{ 'Service is not active' if result_03.rc != 0 else 'Service is active (non-compliant)' }}"
+  when: "not result_03 is skipped"
+
+# --- REQUIREMENT 04: OVERALL COMPLIANCE DETERMINATION ---
+- name: "Compute overall compliance status"
+  set_fact:
+    status_04: >-
+      {{
+        'PASS' if (status_01 == 'PASS') or (status_02 == 'PASS' and status_03 == 'PASS')
+        else 'FAIL'
+      }}
+    details_04: >-
+      {{
+        'Package not installed, no service checks needed' if status_01 == 'PASS'
+        else ('Service not enabled and not active, compliance met for required dependency' if (status_02 == 'PASS' and status_03 == 'PASS')
+        else 'dnsmasq service is enabled or active, non-compliant')
+      }}
+    task_04_name: "Overall compliance summary"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: ""
+
+# --- REQUIREMENT 05: STORE FINAL RESULT IN cis_result ---
+- name: "Req 05 - Store final compliance result in cis_result"
+  set_fact:
+    cis_result: "{{ status_04 }}"
+
+- name: "Store requirement 05 details"
+  set_fact:
+    task_05_name: "Store final audit result in cis_result"
+    task_05_cmd: "set_fact: cis_result = {{ status_04 }}"
+    task_05_rc: 0
+    data_05: "{{ cis_result }}"
+    status_05: "PASS"
+    details_05: "Variable cis_result stored successfully"
+
+# --- FINAL AUDIT REPORT ---
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.5"
+    - "Reference: CIS Benchmark checkpoint 2.1.5"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Overall summary') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(0) }}"
+    - "  Data: {{ data_04 | default('') }}"
+    - "  Status: {{ status_04 | default('ERROR') }}"
+    - "  Details: {{ details_04 | default('') }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(0) }}"
+    - "  Data: {{ data_05 | default('') }}"
+    - "  Status: {{ status_05 | default('ERROR') }}"
+    - "  Details: {{ details_05 | default('') }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') }}"
+    - "  Details: {{ details_04 | default('Not evaluated') }}"

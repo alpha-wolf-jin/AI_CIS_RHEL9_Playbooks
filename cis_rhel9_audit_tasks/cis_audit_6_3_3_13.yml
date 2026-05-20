@@ -1,0 +1,99 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_13.yml
+
+- name: "Req 01 - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Req 01 - Check if audit rules directory exists"
+  ansible.builtin.stat:
+    path: /etc/audit/rules.d
+  register: rules_dir
+  failed_when: false
+
+- name: "Set default audit_result when prerequisites not met"
+  set_fact:
+    audit_result:
+      stdout: ""
+      stderr: ""
+      rc: -1
+  when: "not ('audit' in (ansible_facts.packages | default({})) and rules_dir.stat.exists)"
+
+- name: "Req 01 - Run on-disk audit check for file deletion events"
+  ansible.builtin.shell: |
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && awk "/^ *-a *always,exit/ \
+      &&/ -F *arch=b(32|64)/ \
+      &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) \
+      &&/ -F *auid>=${UID_MIN}/ \
+      &&/ -S/ \
+      &&(/unlink/||/rename/||/unlinkat/||/renameat/) \
+      &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules \
+      || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+  args:
+    executable: /bin/bash
+  register: audit_result
+  when:
+  - "'audit' in (ansible_facts.packages | default({}))"
+  - "rules_dir.stat.exists"
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Set compliance status"
+  set_fact:
+    status_02: "{{ ('SKIP' if not ('audit' in (ansible_facts.packages | default({})) and rules_dir.stat.exists) else ('PASS' if (audit_result.stdout | default('') | trim | length > 0 and 'ERROR' not in audit_result.stdout) else ('ERROR' if 'ERROR' in audit_result.stdout else 'FAIL'))) | trim }}"
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+
+- name: "Req 02 - Set compliance details"
+  set_fact:
+    details_02: "{{ ('Prerequisites not met: auditd not installed or rules.d directory missing' if not ('audit' in (ansible_facts.packages | default({})) and rules_dir.stat.exists) else ('Audit rules found for file deletion events' if status_02 == 'PASS' else ('UID_MIN variable is unset' if status_02 == 'ERROR' else 'No matching audit rules found for file deletion events'))) | trim }}"
+
+- name: "Req 03 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | default('ERROR') | trim }}"
+
+- name: "Req 04 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.13"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.13"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Req 01 - Run on-disk audit check"
+    - "  Command: awk /^ *-a *always,exit/ &&/ -F *arch=b(32|64)/ ... /etc/audit/rules.d/*.rules"
+    - "  Exit code: {{ audit_result.rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Req 02 - Set compliance status"
+    - "  Command: set_fact"
+    - "  Exit code: 0"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Req 03 - Store final audit result"
+    - "  Command: set_fact"
+    - "  Exit code: 0"
+    - "  Data: {{ cis_result | default('ERROR') | trim }}"
+    - "  Status: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: Final result stored in cis_result"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Req 04 - Generate audit report"
+    - "  Command: debug msg"
+    - "  Exit code: 0"
+    - "  Data: Report generated"
+    - "  Status: PASS"
+    - "  Details: Report displayed above"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

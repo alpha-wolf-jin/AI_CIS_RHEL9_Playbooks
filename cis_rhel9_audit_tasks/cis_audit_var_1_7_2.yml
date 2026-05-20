@@ -1,0 +1,16 @@
+playbook_name: "audit_cis_1.7.2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+marker_file: "{{ backup_dir }}/temp_script_created.marker"
+req_01: "Check if the /etc/issue file exists and is readable using command: `cat /etc/issue`. Expected result: The file contents are displayed and match the site's login warning banner policy."
+req_02: |
+  Check that no operating system information escape sequences (\\v, \\r, \\m, \\s) or the OS ID from /etc/os-release are present in /etc/issue using command: `grep -E -i \"(\\\\v|\\\\r|\\\\m|\\\\s|$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/\"//g'))\" /etc/issue`. Expected result: No output is returned (the grep finds no matches).
+req_03: "Summarize overall compliance status: The local login warning banner is configured properly if the /etc/issue file exists with appropriate content per site policy and contains no OS release or system identification information."
+expected_banner: ""
+audit_script_02: "/tmp/check_issue_os.sh"
+audit_script_02_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  grep -E -i '(\v|\r|\m|\s|'"$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/"//g')"')' /etc/issue
+  {% endraw %}
+req_02_command: >-
+  {% raw %}grep -E -i '(\v|\r|\m|\s|'"$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/"//g')"')' /etc/issue{% endraw %}

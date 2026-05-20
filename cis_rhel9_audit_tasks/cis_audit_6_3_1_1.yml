@@ -1,0 +1,111 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_1_1.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not evaluated"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- name: "Req 01 - Check if auditd packages are installed"
+  ansible.builtin.shell: rpm -q audit audit-libs
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if auditd packages are installed"
+    task_01_cmd: "rpm -q audit audit-libs"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: >-
+      {{ ('PASS' if (result_01.rc | default(-1) == 0) else 'FAIL') | trim }}
+    details_01: >-
+      {{ ('Command executed successfully; output captured' if (result_01.rc | default(-1) == 0) else 'Command failed with rc=' + (result_01.rc | default(-1) | string) + ': ' + (result_01.stderr | default('') | trim)) | trim }}
+
+- name: "Req 02 - Determine if both packages are listed"
+  ansible.builtin.set_fact:
+    audit_present: "{{ 'audit-' in (result_01.stdout | default('')) }}"
+    audit_libs_present: "{{ 'audit-libs-' in (result_01.stdout | default('')) }}"
+    both_packages_installed: "{{ ('audit-' in (result_01.stdout | default(''))) and ('audit-libs-' in (result_01.stdout | default(''))) }}"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Verify both packages are listed"
+    task_02_cmd: "Evaluate output of rpm -q audit audit-libs"
+    task_02_rc: "{{ 0 if (both_packages_installed | default(false)) else 1 }}"
+    data_02: "{{ result_01.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if (both_packages_installed | default(false)) else 'SKIP') | trim }}"
+    details_02: >-
+      {{ ('Both audit and audit-libs packages are listed' if (both_packages_installed | default(false))
+          else 'One or both packages not found – audit cannot be performed') | trim }}
+
+- name: "Req 03 - Determine overall compliance status"
+  ansible.builtin.set_fact:
+    task_03_name: "Summarize overall compliance"
+    task_03_cmd: "Logical evaluation based on package verification"
+    task_03_rc: "{{ 0 if (both_packages_installed | default(false)) else 1 }}"
+    data_03: "{{ 'Both audit and audit-libs packages are installed' if (both_packages_installed | default(false)) else 'Not all required packages are installed: audit audit-libs' }}"
+    status_03: "{{ ('PASS' if (both_packages_installed | default(false)) else 'SKIP') | trim }}"
+    details_03: >-
+      {{ ('System is compliant: both auditd packages installed' if (both_packages_installed | default(false))
+          else 'Audit skipped – auditd packages not fully installed') | trim }}
+
+- name: "Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.1.1"
+    - "Reference: CIS Benchmark checkpoint 6.3.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"

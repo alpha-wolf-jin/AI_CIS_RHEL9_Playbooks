@@ -1,0 +1,20 @@
+req_01: "Check if authselect is installed using command: `rpm -q authselect`. Expected result: package version is displayed."
+req_02: "Check if an active authselect profile is selected using command: `head -1 /etc/authselect/authselect.conf`. Expected result: a profile name or path is returned."
+req_03: |
+  Check if the active authselect profile includes pam_pwquality.so in password-auth using command: `grep -P '\\bpam_pwquality\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth`. Expected result: a line containing pam_pwquality.so is present.
+req_04: |
+  Check if the active authselect profile includes pam_pwquality.so in system-auth using command: `grep -P '\\bpam_pwquality\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth`. Expected result: a line containing pam_pwquality.so is present.
+req_05: |
+  Check if the active authselect profile includes pam_pwhistory.so in password-auth using command: `grep -P '\\bpam_pwhistory\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth`. Expected result: a line containing pam_pwhistory.so is present.
+req_06: |
+  Check if the active authselect profile includes pam_pwhistory.so in system-auth using command: `grep -P '\\bpam_pwhistory\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth`. Expected result: a line containing pam_pwhistory.so is present.
+req_07: |
+  Check if the active authselect profile includes pam_faillock.so in password-auth using command: `grep -P '\\bpam_faillock\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth`. Expected result: a line containing pam_faillock.so is present.
+req_08: |
+  Check if the active authselect profile includes pam_faillock.so in system-auth using command: `grep -P '\\bpam_faillock\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth`. Expected result: a line containing pam_faillock.so is present.
+req_09: |
+  Check if the active authselect profile includes pam_unix.so in password-auth using command: `grep -P '\\bpam_unix\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth`. Expected result: a line containing pam_unix.so is present.
+req_10: |
+  Check if the active authselect profile includes pam_unix.so in system-auth using command: `grep -P '\\bpam_unix\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth`. Expected result: a line containing pam_unix.so is present.
+req_11: "Summarize overall compliance: all required PAM modules (pwquality, pwhistory, faillock, unix) must be present in both password-auth and system-auth files of the active authselect profile. Expected result: all checks pass."
+req_12: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

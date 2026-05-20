@@ -1,0 +1,93 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_1_3.yml
+
+- name: "Req 01 - Check if libpwquality is installed"
+  ansible.builtin.shell: "rpm -q {{ package_name }}"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    libpwquality_installed: "{{ result_01.rc == 0 }}"
+    task_01_name: "Check if libpwquality is installed"
+    task_01_cmd: "rpm -q {{ package_name }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'NOT_APPLICABLE' }}"
+    details_01: "{{ 'Package is installed' if result_01.rc | default(-1) == 0 else 'libpwquality is not installed' }}"
+
+- name: "Req 02 - Check libpwquality version"
+  ansible.builtin.shell: |
+    INSTALLED_VER=$(rpm -q {{ package_name }} --qf '%{VERSION}-%{RELEASE}\n' 2>/dev/null)
+    MIN_VER="{{ min_ver }}"
+    if [ -z "$INSTALLED_VER" ]; then echo "N/A"; exit 1; fi
+    echo "$INSTALLED_VER"
+    if [ "$(printf '%s\n' "$MIN_VER" "$INSTALLED_VER" | sort -V | head -n1)" = "$MIN_VER" ]; then exit 0; else exit 1; fi
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: libpwquality_installed | default(false) | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check libpwquality version"
+    task_02_cmd: "rpm -q {{ package_name }} --qf '%{VERSION}-%{RELEASE}' + sort -V comparison"
+    task_02_rc: "{{ result_02.rc | default(-1) if result_02 is not skipped else -1 }}"
+    data_02: "{{ result_02.stdout | trim if result_02 is not skipped else 'N/A' }}"
+    status_02: "{{ 'NOT_APPLICABLE' if not libpwquality_installed | default(false) | bool else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
+    details_02: "{{ 'libpwquality is not installed' if not libpwquality_installed | default(false) | bool else ('Version is compliant (>= ' + min_ver + ')' if result_02.rc | default(-1) == 0 else 'Version is less than ' + min_ver + ' or could not be determined') }}"
+
+- name: "Store requirement 03 details (overall compliance)"
+  ansible.builtin.set_fact:
+    task_03_name: "Overall compliance evaluation"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "See overall result"
+    status_03: "{{ 'NOT_APPLICABLE' if not (libpwquality_installed | default(false) | bool) else ('PASS' if status_01 | default('UNKNOWN') == 'PASS' and status_02 | default('UNKNOWN') == 'PASS' else 'FAIL') }}"
+    details_03: "{{ 'libpwquality is not installed, so not applicable' if not (libpwquality_installed | default(false) | bool) else ('Compliant: libpwquality is installed and version is ' + min_ver + ' or greater' if status_01 | default('UNKNOWN') == 'PASS' and status_02 | default('UNKNOWN') == 'PASS' else 'Non-compliant: either libpwquality not installed or version is less than ' + min_ver) }}"
+
+- name: "Store cis_result (final audit result)"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.1.3"
+    - "Reference: CIS Benchmark checkpoint 5.3.1.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"

@@ -1,0 +1,302 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_12.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    data_09: "Not collected yet"
+    status_09: "UNKNOWN"
+    details_09: "Not evaluated"
+    data_10: "Not collected yet"
+    status_10: "UNKNOWN"
+    details_10: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    sshd_installed: false
+
+- name: "Req 01 - Check if OpenSSH server package is installed"
+  ansible.builtin.shell: "dpkg -l | grep openssh-server || rpm -q openssh-server"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    sshd_installed: "{{ result_01.rc == 0 }}"
+    task_01_name: "Check if OpenSSH server is installed"
+    task_01_cmd: "dpkg -l | grep openssh-server || rpm -q openssh-server"
+    task_01_rc: "{{ result_01.rc | int }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'FAIL' }}"
+    details_01: "{{ 'OpenSSH server is installed' if result_01.rc == 0 else 'OpenSSH server is NOT installed' }}"
+
+- name: "Req 02 - Check global HostbasedAuthentication setting"
+  ansible.builtin.shell: "sshd -T | grep hostbasedauthentication"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: sshd_installed
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check global HostbasedAuthentication"
+    task_02_cmd: "sshd -T | grep hostbasedauthentication"
+    task_02_rc: "{{ result_02.rc | default(-1) | int }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if sshd_installed and result_02.rc | default(-1) | int == 0 and (result_02.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL' if sshd_installed else 'NOT_APPLICABLE' }}"
+    details_02: "{{ 'HostbasedAuthentication is globally disabled' if sshd_installed and result_02.rc | default(-1) | int == 0 and (result_02.stdout | default('') | trim) == 'hostbasedauthentication no' else 'HostbasedAuthentication is NOT globally disabled' if sshd_installed else 'OpenSSH server not installed, check not applicable' }}"
+
+- name: "Req 03 - Check user-specific HostbasedAuthentication setting"
+  ansible.builtin.shell: "sshd -T -C user=sshuser | grep hostbasedauthentication"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: sshd_installed
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check user-specific HostbasedAuthentication"
+    task_03_cmd: "sshd -T -C user=sshuser | grep hostbasedauthentication"
+    task_03_rc: "{{ result_03.rc | default(-1) | int }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if sshd_installed and result_03.rc | default(-1) | int == 0 and (result_03.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL' if sshd_installed else 'NOT_APPLICABLE' }}"
+    details_03: "{{ 'HostbasedAuthentication is disabled for user sshuser' if sshd_installed and result_03.rc | default(-1) | int == 0 and (result_03.stdout | default('') | trim) == 'hostbasedauthentication no' else 'HostbasedAuthentication is NOT disabled for user sshuser' if sshd_installed else 'OpenSSH server not installed, check not applicable' }}"
+
+- name: "Req 04 - Check source address HostbasedAuthentication setting"
+  ansible.builtin.shell: "sshd -T -C addr=192.168.1.100 | grep hostbasedauthentication"
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: sshd_installed
+
+- name: "Store requirement 04 details"
+  ansible.builtin.set_fact:
+    task_04_name: "Check addr-specific HostbasedAuthentication"
+    task_04_cmd: "sshd -T -C addr=192.168.1.100 | grep hostbasedauthentication"
+    task_04_rc: "{{ result_04.rc | default(-1) | int }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: "{{ 'PASS' if sshd_installed and result_04.rc | default(-1) | int == 0 and (result_04.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL' if sshd_installed else 'NOT_APPLICABLE' }}"
+    details_04: "{{ 'HostbasedAuthentication is disabled for addr=192.168.1.100' if sshd_installed and result_04.rc | default(-1) | int == 0 and (result_04.stdout | default('') | trim) == 'hostbasedauthentication no' else 'HostbasedAuthentication is NOT disabled for addr=192.168.1.100' if sshd_installed else 'OpenSSH server not installed, check not applicable' }}"
+
+- name: "Req 05 - Check host-specific HostbasedAuthentication setting"
+  ansible.builtin.shell: "sshd -T -C host=client.example.com | grep hostbasedauthentication"
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: sshd_installed
+
+- name: "Store requirement 05 details"
+  ansible.builtin.set_fact:
+    task_05_name: "Check host-specific HostbasedAuthentication"
+    task_05_cmd: "sshd -T -C host=client.example.com | grep hostbasedauthentication"
+    task_05_rc: "{{ result_05.rc | default(-1) | int }}"
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+    status_05: "{{ 'PASS' if sshd_installed and result_05.rc | default(-1) | int == 0 and (result_05.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL' if sshd_installed else 'NOT_APPLICABLE' }}"
+    details_05: "{{ 'HostbasedAuthentication is disabled for host=client.example.com' if sshd_installed and result_05.rc | default(-1) | int == 0 and (result_05.stdout | default('') | trim) == 'hostbasedauthentication no' else 'HostbasedAuthentication is NOT disabled for host=client.example.com' if sshd_installed else 'OpenSSH server not installed, check not applicable' }}"
+
+- name: "Req 06 - Check local address HostbasedAuthentication setting"
+  ansible.builtin.shell: "sshd -T -C laddr=10.0.0.1 | grep hostbasedauthentication"
+  args:
+    executable: /bin/bash
+  register: result_06
+  failed_when: false
+  changed_when: false
+  when: sshd_installed
+
+- name: "Store requirement 06 details"
+  ansible.builtin.set_fact:
+    task_06_name: "Check laddr-specific HostbasedAuthentication"
+    task_06_cmd: "sshd -T -C laddr=10.0.0.1 | grep hostbasedauthentication"
+    task_06_rc: "{{ result_06.rc | default(-1) | int }}"
+    data_06: "{{ result_06.stdout | default('') | trim }}"
+    status_06: "{{ 'PASS' if sshd_installed and result_06.rc | default(-1) | int == 0 and (result_06.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL' if sshd_installed else 'NOT_APPLICABLE' }}"
+    details_06: "{{ 'HostbasedAuthentication is disabled for laddr=10.0.0.1' if sshd_installed and result_06.rc | default(-1) | int == 0 and (result_06.stdout | default('') | trim) == 'hostbasedauthentication no' else 'HostbasedAuthentication is NOT disabled for laddr=10.0.0.1' if sshd_installed else 'OpenSSH server not installed, check not applicable' }}"
+
+- name: "Req 07 - Check local port HostbasedAuthentication setting"
+  ansible.builtin.shell: "sshd -T -C lport=22 | grep hostbasedauthentication"
+  args:
+    executable: /bin/bash
+  register: result_07
+  failed_when: false
+  changed_when: false
+  when: sshd_installed
+
+- name: "Store requirement 07 details"
+  ansible.builtin.set_fact:
+    task_07_name: "Check lport-specific HostbasedAuthentication"
+    task_07_cmd: "sshd -T -C lport=22 | grep hostbasedauthentication"
+    task_07_rc: "{{ result_07.rc | default(-1) | int }}"
+    data_07: "{{ result_07.stdout | default('') | trim }}"
+    status_07: "{{ 'PASS' if sshd_installed and result_07.rc | default(-1) | int == 0 and (result_07.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL' if sshd_installed else 'NOT_APPLICABLE' }}"
+    details_07: "{{ 'HostbasedAuthentication is disabled for lport=22' if sshd_installed and result_07.rc | default(-1) | int == 0 and (result_07.stdout | default('') | trim) == 'hostbasedauthentication no' else 'HostbasedAuthentication is NOT disabled for lport=22' if sshd_installed else 'OpenSSH server not installed, check not applicable' }}"
+
+- name: "Req 08 - Check routing domain HostbasedAuthentication setting"
+  ansible.builtin.shell: "sshd -T -C rdomain=example | grep hostbasedauthentication"
+  args:
+    executable: /bin/bash
+  register: result_08
+  failed_when: false
+  changed_when: false
+  when: sshd_installed
+
+- name: "Store requirement 08 details"
+  ansible.builtin.set_fact:
+    task_08_name: "Check rdomain-specific HostbasedAuthentication"
+    task_08_cmd: "sshd -T -C rdomain=example | grep hostbasedauthentication"
+    task_08_rc: "{{ result_08.rc | default(-1) | int }}"
+    data_08: "{{ result_08.stdout | default('') | trim }}"
+    status_08: "{{ 'PASS' if sshd_installed and result_08.rc | default(-1) | int == 0 and (result_08.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL' if sshd_installed else 'NOT_APPLICABLE' }}"
+    details_08: "{{ 'HostbasedAuthentication is disabled for rdomain=example' if sshd_installed and result_08.rc | default(-1) | int == 0 and (result_08.stdout | default('') | trim) == 'hostbasedauthentication no' else 'HostbasedAuthentication is NOT disabled for rdomain=example' if sshd_installed else 'OpenSSH server not installed, check not applicable' }}"
+
+- name: "Req 09 - Evaluate overall compliance"
+  ansible.builtin.set_fact:
+    status_09: "{{ 'NOT_APPLICABLE' if not sshd_installed else 'PASS' if status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' and status_06 == 'PASS' and status_07 == 'PASS' and status_08 == 'PASS' else 'FAIL' | trim }}"
+    details_09: >-
+      {% if not sshd_installed %}
+        OpenSSH server not installed, CIS 5.1.12 not applicable.
+      {% elif status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' and status_06 == 'PASS' and status_07 == 'PASS' and status_08 == 'PASS' %}
+        Compliant: HostbasedAuthentication is disabled in all tested contexts
+      {% else %}
+        Non-compliant: HostbasedAuthentication is enabled or misconfigured in at least one context
+      {% endif %}
+    task_09_name: "Evaluate overall compliance"
+    task_09_cmd: "N/A"
+    task_09_rc: 0
+    data_09: "N/A"
+
+- name: "Req 10 - Store final cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_09 }}"
+    status_10: "PASS"
+    details_10: "cis_result fact set to {{ status_09 }}"
+    task_10_name: "Store final cis_result"
+    task_10_cmd: "set_fact"
+    task_10_rc: 0
+    data_10: "cis_result = {{ status_09 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.12"
+    - "Reference: CIS Benchmark checkpoint 5.1.12"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: {{ task_09_name | default('Not recorded') }}"
+    - "  Command: {{ task_09_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_09_rc | default(-1) }}"
+    - "  Data: {{ data_09 | default('') | trim }}"
+    - "  Status: {{ status_09 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_09 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 10 - {{ req_10 }}:"
+    - "  Task: {{ task_10_name | default('Not recorded') }}"
+    - "  Command: {{ task_10_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_10_rc | default(-1) }}"
+    - "  Data: {{ data_10 | default('') | trim }}"
+    - "  Status: {{ status_10 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_10 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_09 | default('Not evaluated') | trim }}"
+    - "========================================================"

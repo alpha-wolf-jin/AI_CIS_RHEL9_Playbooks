@@ -1,0 +1,82 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1_5.yml
+
+- name: "Req 1 - Execute audit script"
+  ansible.builtin.shell:
+    cmd: /bin/bash
+    stdin: "{{ audit_script_content }}"
+  args:
+    executable: /bin/bash
+  register: audit_result
+  failed_when: false
+  changed_when: false
+
+- name: "Req 1 - Store details"
+  set_fact:
+    task_01_name: "Execute audit script"
+    task_01_cmd: "Shell script (piped via stdin)"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (audit_result.rc | default(-1) | int == 0) else 'FAIL' }}"
+    details_01: "{{ 'Audit script executed successfully' if (audit_result.rc | default(-1) | int == 0) else 'Audit script execution failed' }}"
+
+- name: "Req 2 - Set compliance status fact"
+  set_fact:
+    status_compliance: "{{ ('PASS' if '** PASS **' in (audit_result.stdout | default('')) else 'FAIL') | trim }}"
+    details_compliance: "{{ 'Compliant' if ('** PASS **' in (audit_result.stdout | default(''))) else 'Non-compliant' | trim }}"
+
+- name: "Req 2 - Store details"
+  set_fact:
+    task_02_name: "Determine compliance status from audit output"
+    task_02_cmd: "set_fact status_compliance"
+    task_02_rc: 0
+    data_02: "{{ status_compliance }}"
+    status_02: "{{ status_compliance }}"
+    details_02: "{{ details_compliance }}"
+
+- name: "Req 3 - Store final result in cis_result"
+  set_fact:
+    cis_result: "{{ status_compliance }}"
+
+- name: "Req 3 - Store details"
+  set_fact:
+    task_03_name: "Store cis_result variable"
+    task_03_cmd: "set_fact cis_result"
+    task_03_rc: 0
+    data_03: "cis_result set to {{ cis_result }}"
+    status_03: "PASS"
+    details_03: "Variable stored successfully"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.1.5"
+    - "Reference: CIS Benchmark checkpoint 1.1.1.5"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"

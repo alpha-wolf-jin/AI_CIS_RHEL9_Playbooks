@@ -1,0 +1,306 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_4_2_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if group.present backup exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/group.present"
+  register: _snap_group_present
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/group before changes"
+  ansible.builtin.copy:
+    src: /etc/group
+    dest: "{{ backup_dir }}/group.present"
+    remote_src: true
+  when: not _snap_group_present.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if gshadow.present backup exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/gshadow.present"
+  register: _snap_gshadow_present
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/gshadow before changes"
+  ansible.builtin.copy:
+    src: /etc/gshadow
+    dest: "{{ backup_dir }}/gshadow.present"
+    remote_src: true
+  when: not _snap_gshadow_present.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if .group_after_absent marker exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/.group_after_absent"
+  register: _snap_group_after_absent
+  tags: [snapshot]
+- name: "Snapshot - Mark group.after as absent (will be created during execution)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/.group_after_absent"
+  when: not _snap_group_after_absent.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if .gshadow_after_absent marker exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/.gshadow_after_absent"
+  register: _snap_gshadow_after_absent
+  tags: [snapshot]
+- name: "Snapshot - Mark gshadow.after as absent (will be created during execution)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/.gshadow_after_absent"
+  when: not _snap_gshadow_after_absent.stat.exists
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+    tags: [execute]
+
+  - name: "Check current root group GID"
+    ansible.builtin.shell: "getent group root | awk -F: '{print $3}'"
+    args:
+      executable: /bin/bash
+    register: root_gid_check
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set root group GID to 0"
+    ansible.builtin.shell: "groupmod -g 0 root"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when: root_gid_check.stdout | trim != '0'
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Set root group GID to 0"
+      task_01_cmd: "groupmod -g 0 root"
+      task_01_rc: "{{ (result_01.rc | default(-1)) if result_01 is not skipped else 0 }}"
+      data_01: "{{ (result_01.stdout | default('') | trim) if result_01 is not skipped else 'Already 0' }}"
+      status_01: "{{ 'PASS' if (result_01 is skipped) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      details_01: >-
+        {{ 'Root group GID already 0, no change needed' if result_01 is skipped else
+           ('Root group GID set to 0' if result_01.rc | default(-1) == 0 else
+            'Failed: ' + (result_01.stderr | default('Unknown error') | trim)) }}
+    tags: [execute]
+
+  - name: "Req 02 - Remove non-root groups with GID 0"
+    ansible.builtin.shell: |
+      for g in $(getent group | awk -F: '$3==0 && $1!="root" {print $1}'); do groupdel "$g"; done
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: "result_02.stdout | default('') | trim | length > 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remove non-root groups with GID 0"
+      task_02_cmd: |
+        for g in $(getent group | awk -F: '$3==0 && $1!=\"root\" {print $1}'); do groupdel \"$g\"; done
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if result_02.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: "{{ 'Non-root GID 0 groups removed' if result_02.rc | default(-1) == 0 else 'Failed: ' + (result_02.stderr | default('Unknown error') | trim) }}"
+    tags: [execute]
+
+  - name: "Snapshot after - Save /etc/group after changes"
+    ansible.builtin.copy:
+      src: /etc/group
+      dest: "{{ backup_dir }}/group.after"
+      remote_src: true
+    changed_when: false
+    tags: [execute]
+
+  - name: "Snapshot after - Save /etc/gshadow after changes"
+    ansible.builtin.copy:
+      src: /etc/gshadow
+      dest: "{{ backup_dir }}/gshadow.after"
+      remote_src: true
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Verify only root group has GID 0"
+    ansible.builtin.shell: "getent group | awk -F: '$3==0 {print $1}'"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Verify only root group has GID 0"
+      task_03_cmd: "getent group | awk -F: '$3==0 {print $1}'"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (result_03.stdout | default('') | trim) == 'root' else 'FAIL' }}"
+      details_03: "{{ 'Only root group has GID 0' if (result_03.stdout | default('') | trim) == 'root' else 'Unexpected groups with GID 0: ' + (result_03.stdout | default('') | trim) }}"
+    tags: [execute]
+
+  - name: "Store overall remediation result"
+    set_fact:
+      cis_result: "{{ 'PASS' if status_03 == 'PASS' else 'FAIL' if status_03 == 'FAIL' else 'ERROR' }}"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Store overall remediation result"
+      task_04_cmd: "set_fact: cis_result = mapping from status_03"
+      task_04_rc: 0
+      data_04: "{{ cis_result }}"
+      status_04: "PASS"
+      details_04: "cis_result set to {{ cis_result }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.4.2.3"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.4.2.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if group.after absence marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/.group_after_absent"
+    register: _restore_group_after_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove group.after file"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/group.after"
+      state: absent
+    when: _restore_group_after_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if gshadow.after absence marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/.gshadow_after_absent"
+    register: _restore_gshadow_after_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove gshadow.after file"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/gshadow.after"
+      state: absent
+    when: _restore_gshadow_after_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if group backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/group.present"
+    register: _restore_group
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/group from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/group.present"
+      dest: /etc/group
+      remote_src: true
+    when: _restore_group.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if gshadow backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/gshadow.present"
+    register: _restore_gshadow
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/gshadow from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/gshadow.present"
+      dest: /etc/gshadow
+      remote_src: true
+    when: _restore_gshadow.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

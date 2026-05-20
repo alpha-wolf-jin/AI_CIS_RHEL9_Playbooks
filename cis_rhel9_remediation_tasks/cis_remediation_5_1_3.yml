@@ -1,0 +1,178 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/ssh directory exists"
+  ansible.builtin.stat:
+    path: /etc/ssh
+  register: _ssh_dir_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/ssh directory"
+  ansible.builtin.archive:
+    path: /etc/ssh/
+    dest: "{{ backup_dir }}/ssh_backup.tar.gz"
+    format: gz
+  when: _ssh_dir_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /tmp/remediate_ssh_keys.sh exists"
+  ansible.builtin.stat:
+    path: /tmp/remediate_ssh_keys.sh
+  register: _snap_temp_script
+  tags: [snapshot]
+- name: "Snapshot - Check if temp script marker exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/temp_script_existed"
+  register: _snap_marker_existed
+  tags: [snapshot]
+- name: "Snapshot - Record temp script existence marker"
+  ansible.builtin.copy:
+    content: "{{ _snap_temp_script.stat.exists | default(false) | lower }}"
+    dest: "{{ backup_dir }}/temp_script_existed"
+  when: not _snap_marker_existed.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    tags: [execute]
+
+  - name: "Set fact ssh_installed"
+    ansible.builtin.set_fact:
+      ssh_installed: "{{ 'openssh-server' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Deploy remediation script"
+    ansible.builtin.copy:
+      dest: /tmp/remediate_ssh_keys.sh
+      content: "{{ remediation_script }}"
+      mode: '0700'
+    when: ssh_installed | bool
+    tags: [execute]
+
+  - name: "Req 01 - Run remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/remediate_ssh_keys.sh
+    args:
+      executable: /bin/bash
+    register: result_01
+    when: ssh_installed | bool
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify permissions on SSH public host key files"
+    ansible.builtin.shell: /bin/bash /tmp/remediate_ssh_keys.sh
+    args:
+      executable: /bin/bash
+    register: result_02
+    when: ssh_installed | bool
+    failed_when: false
+    tags: [execute]
+
+  - name: "Remove temporary script"
+    ansible.builtin.file:
+      path: /tmp/remediate_ssh_keys.sh
+      state: absent
+    when: ssh_installed | bool
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store req 01 details"
+    set_fact:
+      task_01_name: "Req 01 - Run remediation script"
+      task_01_cmd: "/bin/bash /tmp/remediate_ssh_keys.sh"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if (ssh_installed | default(false)) and (result_01.rc | default(-1) == 0) else 'SKIPPED' if not (ssh_installed | default(false)) else 'FAILED' }}"
+      details_01: "{{ 'Script executed successfully' if (ssh_installed | default(false)) and (result_01.rc | default(-1) == 0) else 'Skipped because openssh-server not installed' if not (ssh_installed | default(false)) else 'Script failed' }}"
+    tags: [execute]
+
+  - name: "Store req 02 details"
+    set_fact:
+      task_02_name: "Req 02 - Verify permissions"
+      task_02_cmd: "/bin/bash /tmp/remediate_ssh_keys.sh"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if (ssh_installed | default(false)) and (result_02.rc | default(-1) == 0) and ('No access changes required' in result_02.stdout | default('')) else 'FAIL' if (ssh_installed | default(false)) else 'SKIPPED' }}"
+      details_02: "{{ 'Verification passed - no changes needed' if (ssh_installed | default(false)) and (result_02.rc | default(-1) == 0) and ('No access changes required' in result_02.stdout | default('')) else 'Verification failed - changes still required' if (ssh_installed | default(false)) else 'Skipped because openssh-server not installed' }}"
+    tags: [execute]
+
+  - name: "Store overall CIS result"
+    set_fact:
+      cis_result: "{{ status_02 }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 5.1.3"
+      - "Reference: CIS Benchmark checkpoint 5.1.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_02 }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/ssh_backup.tar.gz"
+    register: _restore_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Extract backup to /etc/ssh"
+    ansible.builtin.unarchive:
+      src: "{{ backup_dir }}/ssh_backup.tar.gz"
+      dest: /
+      remote_src: yes
+    when: _restore_backup.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read temp script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/temp_script_existed"
+    register: _restore_temp_marker
+    failed_when: false
+    when: _restore_backup.stat.exists
+    tags: [restore]
+
+  - name: "Restore - Remove temp script if it was created"
+    ansible.builtin.file:
+      path: /tmp/remediate_ssh_keys.sh
+      state: absent
+    when:
+    - _restore_temp_marker.content is defined
+    - (_restore_temp_marker.content | b64decode | trim) == 'false'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_backup.stat.exists
+    failed_when: false
+    tags: [restore]

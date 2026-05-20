@@ -1,0 +1,344 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_1_1.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /var/lib/aide/aide.db.gz from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/aide.db.gz.present"
+    dest: "/var/lib/aide/aide.db.gz"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete /var/lib/aide/aide.db.new.gz (from prior run)"
+  ansible.builtin.file:
+    path: "/var/lib/aide/aide.db.new.gz"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /var/lib/aide/aide.db.gz exists"
+  ansible.builtin.stat:
+    path: "/var/lib/aide/aide.db.gz"
+  register: _sg_aide_db_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /var/lib/aide/aide.db.gz (present)"
+  ansible.builtin.copy:
+    src: "/var/lib/aide/aide.db.gz"
+    dest: "{{ state_guard_dir }}/aide.db.gz.present"
+    remote_src: true
+  when: "_sg_aide_db_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Mark /var/lib/aide/aide.db.gz as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/aide.db.gz.absent"
+  when: "not _sg_aide_db_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+  tags: [execute]
+- block:
+# Requirement 1: Check dnf availability
+  - name: "Req 01 - Check if dnf package manager is available"
+    ansible.builtin.shell: which dnf
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if dnf package manager is available"
+      task_01_cmd: "which dnf"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'dnf found at: ' + (result_01.stdout | default('') | trim) if (result_01.rc | default(-1)) == 0 else 'dnf not found' }}"
+    tags: [execute]
+
+# Requirement 2: Install AIDE
+  - name: "Req 02 - Install AIDE package using dnf"
+    ansible.builtin.dnf:
+      name: aide
+      state: present
+    register: result_02
+    failed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Install AIDE package using dnf"
+      task_02_cmd: "dnf install -y aide"
+      task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
+      data_02: "{{ 'AIDE installed' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else (result_02.msg | default('Skipped - dnf not available') | trim) }}"
+      status_02: "{{ 'PASS' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else ('SKIPPED' if result_02 is not defined or result_02.skipped | default(false) else 'FAIL') }}"
+      details_02: "{{ 'AIDE installed successfully' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else ('Skipped because dnf is not available' if result_02 is not defined or result_02.skipped | default(false) else 'Failed to install AIDE') }}"
+    tags: [execute]
+
+# Requirement 3: Ensure AIDE configuration file exists
+  - name: "Req 03 - Ensure AIDE configuration file exists"
+    ansible.builtin.stat:
+      path: /etc/aide.conf
+    register: result_03_config
+    failed_when: false
+    changed_when: false
+    when: "result_02 is defined and (result_02.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Ensure AIDE configuration file exists"
+      task_03_cmd: "stat /etc/aide.conf"
+      task_03_rc: "{{ result_03_config.rc | default(0) if result_03_config is defined else -1 }}"
+      data_03: "{{ 'Config file present' if (result_03_config is defined and result_03_config.stat.exists) else 'Config file missing – manual configuration required' }}"
+      status_03: "{{ 'PASS' if (result_03_config is defined and result_03_config.stat.exists) else 'SKIPPED' }}"
+      details_03: "{{ 'AIDE configuration is set (/etc/aide.conf exists)' if (result_03_config is defined and result_03_config.stat.exists) else 'Manual configuration step – /etc/aide.conf not found' }}"
+    tags: [execute]
+
+# Requirement 4: Initialize AIDE database
+  - name: "Req 04 - Initialize AIDE database"
+    ansible.builtin.shell: aide --init
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: "result_02 is defined and (result_02.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Initialize AIDE database"
+      task_04_cmd: "aide --init"
+      task_04_rc: "{{ result_04.rc | default(-1) if result_04 is defined else -1 }}"
+      data_04: "{{ 'Database initialized' if (result_04 is defined and (result_04.rc | default(-1)) == 0) else (result_04.stderr | default('Skipped') | trim) }}"
+      status_04: "{{ 'PASS' if (result_04 is defined and (result_04.rc | default(-1)) == 0) else ('SKIPPED' if result_04 is not defined or result_04.skipped | default(false) else 'FAIL') }}"
+      details_04: "{{ 'AIDE database initialized successfully' if (result_04 is defined and (result_04.rc | default(-1)) == 0) else ('Skipped because AIDE is not installed' if result_04 is not defined or result_04.skipped | default(false) else 'Failed to initialize AIDE database') }}"
+    tags: [execute]
+
+# Requirement 5: Move database to active location
+  - name: "Req 05 - Move AIDE database to active location"
+    ansible.builtin.shell: mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    when: "result_04 is defined and (result_04.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Move AIDE database to active location"
+      task_05_cmd: "mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz"
+      task_05_rc: "{{ result_05.rc | default(-1) if result_05 is defined else -1 }}"
+      data_05: "{{ 'Database moved' if (result_05 is defined and (result_05.rc | default(-1)) == 0) else (result_05.stderr | default('Skipped') | trim) }}"
+      status_05: "{{ 'PASS' if (result_05 is defined and (result_05.rc | default(-1)) == 0) else ('SKIPPED' if result_05 is not defined or result_05.skipped | default(false) else 'FAIL') }}"
+      details_05: "{{ 'AIDE database moved to active location' if (result_05 is defined and (result_05.rc | default(-1)) == 0) else ('Skipped because database initialization failed' if result_05 is not defined or result_05.skipped | default(false) else 'Failed to move AIDE database') }}"
+    tags: [execute]
+
+# Requirement 6: Verify AIDE installation and database
+  - name: "Req 06 - Verify AIDE is installed and database exists"
+    ansible.builtin.shell: rpm -q aide && ls -l /var/lib/aide/aide.db.gz
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    ansible.builtin.set_fact:
+      task_06_name: "Verify AIDE is installed and database exists"
+      task_06_cmd: "rpm -q aide && ls -l /var/lib/aide/aide.db.gz"
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: "{{ 'PASS' if (result_06.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_06: "{{ 'AIDE is installed and database is present' if (result_06.rc | default(-1)) == 0 else 'Verification failed - AIDE not installed or database missing' }}"
+    tags: [execute]
+
+# Set overall remediation result based on the last requirement's status
+  - name: "Set overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_06 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+# Generate remediation report
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.1.1"
+      - "        Reference: CIS Benchmark checkpoint 6.1.1"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if aide.db.gz backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/aide.db.gz.present"
+    register: _sg_restore_aide_db
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /var/lib/aide/aide.db.gz from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/aide.db.gz.present"
+      dest: "/var/lib/aide/aide.db.gz"
+      remote_src: true
+    when: "_sg_restore_aide_db.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/aide.db.gz.absent"
+    register: _sg_restore_absent_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /var/lib/aide/aide.db.gz (was absent before)"
+    ansible.builtin.file:
+      path: "/var/lib/aide/aide.db.gz"
+      state: absent
+    when: "_sg_restore_absent_marker.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /var/lib/aide/aide.db.new.gz"
+    ansible.builtin.file:
+      path: "/var/lib/aide/aide.db.new.gz"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

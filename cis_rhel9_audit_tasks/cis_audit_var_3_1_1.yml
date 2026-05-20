@@ -1,0 +1,18 @@
+req_01: "Run the provided audit script to verify Ensure IPv6 status is identified."
+req_02: "Summarise compliance status for Ensure IPv6 status is identified. Expected result: PASS if compliant, FAIL otherwise."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status derived from the last requirement's status variable."
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+
+  {
+     l_output=""
+     ! grep -Pqs -- '^\h*0\b' /sys/module/ipv6/parameters/disable && l_output="- IPv6 is not enabled"
+     if sysctl net.ipv6.conf.all.disable_ipv6 | grep -Pqs -- "^\h*net\.ipv6\.conf\.all\.disable_ipv6\h*=\h*1\b" && \
+        sysctl net.ipv6.conf.default.disable_ipv6 | grep -Pqs -- "^\h*net\.ipv6\.conf\.default\.disable_ipv6\h*=\h*1\b"; then
+        l_output="- IPv6 is not enabled"
+     fi
+     [ -z "$l_output" ] && l_output="- IPv6 is enabled"
+     echo -e "\n$l_output\n"
+  }
+  {% endraw %}

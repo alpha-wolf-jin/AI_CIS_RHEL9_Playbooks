@@ -1,0 +1,9 @@
+playbook_name: "remediate_cis_2.1.16"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+
+req_01: "Apply prerequisite check: ensure systemctl and dnf are available using command: `which systemctl && which dnf`. Expected result: both commands return a path."
+req_02: "Apply stop tftp.socket and tftp.service using command: `systemctl stop tftp.socket tftp.service`. Expected result: services are stopped."
+req_03: "Apply remove tftp-server package using command: `dnf remove -y tftp-server`. Expected result: package is removed."
+req_04: "Apply mask tftp.socket and tftp.service (if package is required as dependency) using command: `systemctl mask tftp.socket tftp.service`. Expected result: services are masked."
+req_05: "Apply verify that tftp.socket and tftp.service are stopped and masked (or removed) using command: `systemctl is-active tftp.socket tftp.service && systemctl is-enabled tftp.socket tftp.service`. Expected result: both services show 'inactive' and 'masked' or 'disabled'."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

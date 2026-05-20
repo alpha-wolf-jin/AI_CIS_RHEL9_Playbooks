@@ -1,0 +1,5 @@
+req_01: "Check if OpenSSH server is installed using command: `which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server`. Expected result: sshd binary or package is present."
+req_02: "Check if sshd is running using command: `systemctl is-active sshd || service sshd status`. Expected result: active or running."
+req_03: "Check UsePAM is enabled in sshd configuration using command: `sshd -T | grep -i usepam`. Expected result: usepam yes"
+req_04: "Summarize overall compliance: If all checks pass, then the system is compliant with checkpoint 5.1.22. Otherwise, it is non-compliant."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

@@ -1,0 +1,274 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_1.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: ""
+    status_02: "SKIPPED"
+    details_02: "auditd not installed"
+    data_03: ""
+    status_03: "SKIPPED"
+    details_03: "auditd not installed"
+    data_04: ""
+    status_04: "SKIPPED"
+    details_04: "auditd not installed"
+    data_05: ""
+    status_05: "SKIPPED"
+    details_05: "auditd not installed"
+    data_06: ""
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: ""
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+
+- name: "Req 01 - Check if auditd package is installed"
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      if dpkg -l auditd 2>/dev/null | grep -q '^ii'; then
+        echo "auditd is installed (dpkg)"
+        exit 0
+      elif rpm -q audit &>/dev/null; then
+        echo "auditd is installed (rpm)"
+        exit 0
+      else
+        echo "auditd is not installed"
+        exit 1
+      fi
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if auditd package is installed"
+    task_01_cmd: "dpkg -l auditd || rpm -q audit"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+    details_01: "{{ 'auditd package is installed' if result_01.rc | default(-1) == 0 else 'auditd package not found' }}"
+    auditd_applicable: "{{ result_01.rc == 0 }}"
+
+- name: "Set NOT_APPLICABLE for audit rules if auditd not applicable"
+  ansible.builtin.set_fact:
+    task_02_name: "Check on-disk audit rules for /etc/sudoers"
+    task_02_cmd: |
+      awk '/^ *-w/ &&/\\/etc\\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_02_rc: -1
+    data_02: ""
+    status_02: "NOT_APPLICABLE"
+    details_02: "auditd not installed - not applicable"
+    task_03_name: "Check on-disk audit rules for /etc/sudoers.d"
+    task_03_cmd: |
+      awk '/^ *-w/ &&/\\/etc\\/sudoers\\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_03_rc: -1
+    data_03: ""
+    status_03: "NOT_APPLICABLE"
+    details_03: "auditd not installed - not applicable"
+    task_04_name: "Check running audit rules for /etc/sudoers"
+    task_04_cmd: |
+      auditctl -l | awk '/^ *-w/ &&/\\/etc\\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_04_rc: -1
+    data_04: ""
+    status_04: "NOT_APPLICABLE"
+    details_04: "auditd not installed - not applicable"
+    task_05_name: "Check running audit rules for /etc/sudoers.d"
+    task_05_cmd: |
+      auditctl -l | awk '/^ *-w/ &&/\\/etc\\/sudoers\\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_05_rc: -1
+    data_05: ""
+    status_05: "NOT_APPLICABLE"
+    details_05: "auditd not installed - not applicable"
+  when: "not auditd_applicable | bool"
+
+- name: "Req 02 - Check on-disk audit rules for /etc/sudoers"
+  ansible.builtin.shell:
+    cmd: |
+      awk '/^ *-w/ &&/\/etc\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "auditd_applicable | bool"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check on-disk audit rules for /etc/sudoers"
+    task_02_cmd: |
+      awk '/^ *-w/ &&/\\/etc\\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if ('-w /etc/sudoers -p wa -k scope' in (result_02.stdout | default(''))) else 'FAIL' }}"
+    details_02: "{{ 'On-disk rule for sudoers found' if ('-w /etc/sudoers -p wa -k scope' in (result_02.stdout | default(''))) else 'On-disk rule for sudoers missing' }}"
+  when: "auditd_applicable | bool"
+
+- name: "Req 03 - Check on-disk audit rules for /etc/sudoers.d"
+  ansible.builtin.shell:
+    cmd: |
+      awk '/^ *-w/ &&/\/etc\/sudoers\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "auditd_applicable | bool"
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check on-disk audit rules for /etc/sudoers.d"
+    task_03_cmd: |
+      awk '/^ *-w/ &&/\\/etc\\/sudoers\\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if ('-w /etc/sudoers.d -p wa -k scope' in (result_03.stdout | default(''))) else 'FAIL' }}"
+    details_03: "{{ 'On-disk rule for sudoers.d found' if ('-w /etc/sudoers.d -p wa -k scope' in (result_03.stdout | default(''))) else 'On-disk rule for sudoers.d missing' }}"
+  when: "auditd_applicable | bool"
+
+- name: "Req 04 - Check running audit rules for /etc/sudoers"
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      auditctl -l | awk '/^ *-w/ &&/\/etc\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: "auditd_applicable | bool"
+
+- name: "Store requirement 04 details"
+  ansible.builtin.set_fact:
+    task_04_name: "Check running audit rules for /etc/sudoers"
+    task_04_cmd: |
+      auditctl -l | awk '/^ *-w/ &&/\\/etc\\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: "{{ 'PASS' if ('-w /etc/sudoers -p wa -k scope' in (result_04.stdout | default(''))) else 'FAIL' }}"
+    details_04: "{{ 'Running rule for sudoers found' if ('-w /etc/sudoers -p wa -k scope' in (result_04.stdout | default(''))) else 'Running rule for sudoers missing' }}"
+  when: "auditd_applicable | bool"
+
+- name: "Req 05 - Check running audit rules for /etc/sudoers.d"
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      auditctl -l | awk '/^ *-w/ &&/\/etc\/sudoers\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: "auditd_applicable | bool"
+
+- name: "Store requirement 05 details"
+  ansible.builtin.set_fact:
+    task_05_name: "Check running audit rules for /etc/sudoers.d"
+    task_05_cmd: |
+      auditctl -l | awk '/^ *-w/ &&/\\/etc\\/sudoers\\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_05_rc: "{{ result_05.rc | default(-1) }}"
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+    status_05: "{{ 'PASS' if ('-w /etc/sudoers.d -p wa -k scope' in (result_05.stdout | default(''))) else 'FAIL' }}"
+    details_05: "{{ 'Running rule for sudoers.d found' if ('-w /etc/sudoers.d -p wa -k scope' in (result_05.stdout | default(''))) else 'Running rule for sudoers.d missing' }}"
+  when: "auditd_applicable | bool"
+
+- name: "Req 06 - Summarize overall compliance status"
+  ansible.builtin.set_fact:
+    status_06: >-
+      {% if not (auditd_applicable | default(false) | bool) %}
+      NOT_APPLICABLE
+      {% elif status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' %}
+      PASS
+      {% else %}
+      FAIL
+      {% endif %}
+    details_06: >-
+      {% if not (auditd_applicable | default(false) | bool) %}
+      auditd not installed - not applicable
+      {% elif status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' %}
+      All checks passed
+      {% else %}
+      One or more checks failed
+      {% endif %}
+    task_06_name: "Summarize overall compliance"
+    task_06_cmd: "set_fact"
+    task_06_rc: 0
+    data_06: "N/A"
+
+- name: "Req 07 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_06 }}"
+    task_07_name: "Store cis_result"
+    task_07_cmd: "set_fact"
+    task_07_rc: 0
+    data_07: "cis_result set to {{ status_06 }}"
+    status_07: "PASS"
+    details_07: "Final audit result stored successfully"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.1"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.1"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL RESULT:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

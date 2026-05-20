@@ -1,0 +1,243 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_3_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/fstab exists"
+  ansible.builtin.stat:
+    path: /etc/fstab
+  register: fstab_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/fstab if exists"
+  ansible.builtin.copy:
+    src: /etc/fstab
+    dest: "{{ backup_dir }}/fstab.bak"
+    remote_src: true
+  when: fstab_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /home is a separate partition"
+  ansible.builtin.shell: mount | grep -E '\s/home\s'
+  args:
+    executable: /bin/bash
+  register: home_mount_check
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save original /home mount options if mounted"
+  ansible.builtin.shell: findmnt -n -o OPTIONS /home
+  args:
+    executable: /bin/bash
+  register: home_orig_opts
+  when: home_mount_check.rc == 0
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist original /home mount options"
+  ansible.builtin.copy:
+    content: "{{ home_orig_opts.stdout | default('') }}"
+    dest: "{{ backup_dir }}/home_orig_opts.txt"
+  when: home_mount_check.rc == 0 and home_orig_opts.stdout | default('') | trim != ''
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check for separate /home partition"
+    ansible.builtin.shell: mount | grep -E '\s/home\s'
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set home partition existence flag"
+    ansible.builtin.set_fact:
+      home_partition_exists: "{{ result_01.rc == 0 and '/home' in result_01.stdout | default('') }}"
+      task_01_name: "Check for separate /home partition"
+      task_01_cmd: |
+        mount | grep -E '\\s/home\\s'
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if (result_01.rc | default(-1) == 0 and '/home' in result_01.stdout | default('')) else 'FAILED' }}"
+      details_01: "{{ 'Separate /home partition exists' if (result_01.rc | default(-1) == 0 and '/home' in result_01.stdout | default('')) else 'No separate /home partition found' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Check if nodev already present in /home fstab entry"
+    ansible.builtin.shell: awk '$2 == "/home" {print $4}' /etc/fstab | grep -o 'nodev'
+    args:
+      executable: /bin/bash
+    register: nodev_check
+    when: home_partition_exists
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Insert nodev option into /home partition in /etc/fstab"
+    ansible.builtin.lineinfile:
+      path: /etc/fstab
+      regexp: |
+        ^(\s*\S+\s+/home\s+\S+\s+)((?:(?!nodev)[^\s,]+(,?))+\s+)(.*)$
+      line: |
+        \1nodev,\2\3
+      backrefs: true
+    register: result_02
+    when: home_partition_exists and nodev_check.rc != 0
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify nodev in /etc/fstab for /home"
+    ansible.builtin.shell: grep -E '^\s*[^#]+/home\s' /etc/fstab | grep -o 'nodev'
+    args:
+      executable: /bin/bash
+    register: fstab_verify
+    when: home_partition_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Insert nodev option into /home partition in /etc/fstab"
+      task_02_cmd: "ansible.builtin.lineinfile (add 'nodev' to mount options of /home in /etc/fstab)"
+      task_02_rc: "{{ result_02.rc | default(0) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {{ 'SKIPPED' if not home_partition_exists
+           else 'APPLIED' if fstab_verify.rc | default(-1) == 0
+           else 'FAILED' }}
+      details_02: >-
+        {{ 'SKIPPED: /home is not a separate partition' if not home_partition_exists
+           else 'nodev option present in /etc/fstab for /home' if fstab_verify.rc | default(-1) == 0
+           else 'Failed to insert nodev into /etc/fstab' }}
+    tags: [execute]
+
+  - name: "Req 03 - Remount /home with new options"
+    ansible.builtin.shell: mount -o remount /home
+    args:
+      executable: /bin/bash
+    register: result_03
+    when: home_partition_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Remount /home with new options"
+      task_03_cmd: "mount -o remount /home"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stderr | default('') | trim }}"
+      status_03: >-
+        {{ 'SKIPPED' if not home_partition_exists
+           else 'APPLIED' if result_03.rc | default(-1) == 0
+           else 'FAILED' }}
+      details_03: >-
+        {{ 'SKIPPED: /home is not a separate partition' if not home_partition_exists
+           else 'Remount successful' if result_03.rc | default(-1) == 0
+           else 'Remount failed: ' ~ (result_03.stderr | default('') | trim) }}
+    tags: [execute]
+
+  - name: "Req 04 - Verify nodev option is set on /home partition"
+    ansible.builtin.shell: mount | grep -E '\s/home\s' | grep -o 'nodev'
+    args:
+      executable: /bin/bash
+    register: result_04
+    when: home_partition_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify nodev option on /home partition"
+      task_04_cmd: |
+        mount | grep -E '\\s/home\\s' | grep -o 'nodev'
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: >-
+        {{ 'SKIPPED' if not home_partition_exists
+           else 'APPLIED' if result_04.rc | default(-1) == 0 and result_04.stdout | default('') | trim == 'nodev'
+           else 'FAILED' }}
+      details_04: >-
+        {{ 'SKIPPED: /home is not a separate partition' if not home_partition_exists
+           else 'nodev option verified on /home' if result_04.rc | default(-1) == 0 and result_04.stdout | default('') | trim == 'nodev'
+           else 'nodev option not found on /home partition' }}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.2.3.2"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.3.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | trim }}"
+      - "  Details: {{ details_01 | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/fstab.bak"
+    register: restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite /etc/fstab with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/fstab.bak"
+      dest: /etc/fstab
+      remote_src: true
+    when: restore_backup_stat.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remount /home with original options if applicable"
+    ansible.builtin.shell: |
+      if [ -f "{{ backup_dir }}/home_orig_opts.txt" ] && mount | grep -qE '\s/home\s'; then
+        original_opts=$(cat "{{ backup_dir }}/home_orig_opts.txt")
+        mount -o remount,"$original_opts" /home
+      fi
+    args:
+      executable: /bin/bash
+    when: restore_backup_stat.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: restore_backup_stat.stat.exists
+    failed_when: false
+    tags: [restore]

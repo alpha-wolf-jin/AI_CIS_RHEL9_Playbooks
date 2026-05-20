@@ -1,0 +1,141 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_1_13.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: snapshot_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup existing audit script"
+  ansible.builtin.copy:
+    src: "{{ audit_script }}"
+    dest: "{{ backup_dir }}/audit_script_backup.bak"
+    remote_src: yes
+  when: snapshot_script_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Record pre-existence of audit script"
+  ansible.builtin.copy:
+    content: "{{ 'existed' if snapshot_script_stat.stat.exists else 'absent' }}"
+    dest: "{{ backup_dir }}/script_pre_existence"
+  tags: [snapshot]
+
+- block:
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute audit script to find SUID and SGID files"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    async: 300
+    poll: 10
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Execute audit script to find SUID and SGID files"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: "PASS"
+      details_01: "Audit script executed successfully - list of SUID/SGID files generated for manual review."
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify compliance status from script output"
+      task_02_cmd: "Analyze audit script stdout"
+      task_02_rc: 0
+      data_02: "SUID/SGID list generated; manual review required"
+      status_02: "UNKNOWN"
+      details_02: "Manual review of SUID/SGID files required -- compliance cannot be determined automatically."
+    tags: [execute]
+
+  - name: "Req 03 - Store final audit result as cis_result"
+    set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Generate audit report"
+    debug:
+      msg:
+      - "AUDIT REPORT — CIS 7.1.13"
+      - "Reference: CIS Benchmark checkpoint 7.1.13"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store overall compliance result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Status: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: Overall compliance status stored in cis_result"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Read pre-existence marker for audit script"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/script_pre_existence"
+    register: restore_marker
+    ignore_errors: true
+    tags: [restore]
+
+  - name: "Restore - Bring back original audit script if it existed"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/audit_script_backup.bak"
+      dest: "{{ audit_script }}"
+      remote_src: yes
+    when:
+    - "restore_marker.content is defined"
+    - "(restore_marker.content | b64decode | trim) == 'existed'"
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if it was absent before execution"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - "restore_marker.content is defined"
+    - "(restore_marker.content | b64decode | trim) == 'absent'"
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,3 @@
+req_01: "Run the audit procedure for Ensure unsuccessful file access attempts are collected: On disk configuration"
+req_02: "VERIFY: Summarise compliance status for Ensure unsuccessful file access attempts are collected. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

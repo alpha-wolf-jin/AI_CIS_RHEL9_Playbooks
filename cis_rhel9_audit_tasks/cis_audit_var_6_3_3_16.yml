@@ -1,0 +1,3 @@
+req_01: "Run the audit procedure for Ensure successful and unsuccessful attempts to use the setfacl command are collected: On disk configuration"
+req_02: "VERIFY: Summarise compliance status for Ensure successful and unsuccessful attempts to use the setfacl command are collected. Expected result: PASS if compliant, FAIL otherwise"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

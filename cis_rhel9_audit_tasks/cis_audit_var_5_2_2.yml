@@ -1,0 +1,8 @@
+req_01: "Check if sudo is installed using command: `which sudo`. Expected result: sudo is present."
+req_02: |
+  Check that Defaults use_pty is set in sudoers configuration using command: `grep -rPi -- '^\\h*Defaults\\h+([^#\\n\\r]+,\\h*)?use_pty\\b' /etc/sudoers*`. Expected result: Output matches `/etc/sudoers:Defaults use_pty`.
+req_03: |
+  Check that Defaults !use_pty is not set in sudoers configuration using command: `grep -rPi -- '^\\h*Defaults\\h+([^#\\n\\r]+,\\h*)?!use_pty\\b' /etc/sudoers*`. Expected result: No output returned.
+req_04: "Summarize overall compliance status: Check if both previous checks pass (use_pty is set and !use_pty is absent). Expected result: Compliant if both conditions are met; otherwise non-compliant."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+sudo_package_name: sudo

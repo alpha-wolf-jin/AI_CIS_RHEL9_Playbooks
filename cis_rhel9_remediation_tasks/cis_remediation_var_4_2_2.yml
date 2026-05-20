@@ -1,0 +1,5 @@
+checkpoint_id: "cis_4_2_2"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "1. Run the provided remediation script to fix Ensure firewalld loopback traffic is configured."
+req_02: "2. VERIFY - Run audit check to confirm Ensure firewalld loopback traffic is configured is properly configured. Expected result - System is compliant"

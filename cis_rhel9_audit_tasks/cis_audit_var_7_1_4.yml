@@ -1,0 +1,7 @@
+target_file: "/etc/group-"
+req_01: "Check if /etc/group- file exists using command: `test -f /etc/group-`. Expected result: file exists."
+req_02: "Check permissions on /etc/group- are 644 or more restrictive using command: `stat -Lc '%a' /etc/group-`. Expected result: 644 or less (e.g., 600, 640, 644)."
+req_03: "Check Uid of /etc/group- is 0/root using command: `stat -Lc '%u' /etc/group-`. Expected result: 0."
+req_04: "Check Gid of /etc/group- is 0/root using command: `stat -Lc '%g' /etc/group-`. Expected result: 0."
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/group- does not exist, FAIL if file exists but permissions, Uid, or Gid are incorrect."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

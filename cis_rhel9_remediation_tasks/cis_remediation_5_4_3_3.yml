@@ -1,0 +1,376 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_4_3_3.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/profile.d/50-systemwide_umask.sh from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/50-systemwide_umask.sh.present"
+    dest: "/etc/profile.d/50-systemwide_umask.sh"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete /etc/profile.d/50-systemwide_umask.sh (absent marker)"
+  ansible.builtin.file:
+    path: "/etc/profile.d/50-systemwide_umask.sh"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check if login.defs backup exists in prior checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/login.defs.present"
+  register: _sg_login_defs_present_prior
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/login.defs from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/login.defs.present"
+    dest: "/etc/login.defs"
+    remote_src: true
+  when:
+  - "_sg_flag.stat.exists"
+  - "_sg_login_defs_present_prior.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check for login.defs absent marker in prior checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/login.defs.absent"
+  register: _sg_login_defs_absent_prior
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Delete /etc/login.defs (absent marker)"
+  ansible.builtin.file:
+    path: "/etc/login.defs"
+    state: absent
+  when:
+  - "_sg_flag.stat.exists"
+  - "_sg_login_defs_absent_prior.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/profile.d/50-systemwide_umask.sh exists"
+  ansible.builtin.stat:
+    path: "/etc/profile.d/50-systemwide_umask.sh"
+  register: _sg_umask_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/profile.d/50-systemwide_umask.sh (present)"
+  ansible.builtin.copy:
+    src: "/etc/profile.d/50-systemwide_umask.sh"
+    dest: "{{ state_guard_dir }}/50-systemwide_umask.sh.present"
+    remote_src: true
+  when: "_sg_umask_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/profile.d/50-systemwide_umask.sh as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/50-systemwide_umask.sh.absent"
+  when: "not _sg_umask_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/login.defs exists"
+  ansible.builtin.stat:
+    path: "/etc/login.defs"
+  register: _sg_login_defs_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/login.defs (present)"
+  ansible.builtin.copy:
+    src: "/etc/login.defs"
+    dest: "{{ state_guard_dir }}/login.defs.present"
+    remote_src: true
+  when: "_sg_login_defs_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/login.defs as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/login.defs.absent"
+  when: "not _sg_login_defs_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Check if /tmp/cis_umask_audit.sh exists"
+  ansible.builtin.stat:
+    path: "/tmp/cis_umask_audit.sh"
+  register: _sg_audit_stat
+  tags: [snapshot]
+- name: "State Guard - Mark /tmp/cis_umask_audit.sh as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/cis_umask_audit.absent"
+  when: "not _sg_audit_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if bash is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set bash_installed fact"
+    ansible.builtin.set_fact:
+      bash_installed: "{{ 'bash' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Deploy umask audit script"
+    ansible.builtin.copy:
+      content: "{{ umask_script }}"
+      dest: "/tmp/cis_umask_audit.sh"
+      mode: '0700'
+    when: "bash_installed | bool"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute umask audit script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_umask_audit.sh
+    args:
+      executable: /bin/bash
+    register: result_01_audit
+    when: "bash_installed | bool"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set default umask to 027 in profile.d"
+    ansible.builtin.copy:
+      content: |
+        umask 027
+      dest: "/etc/profile.d/50-systemwide_umask.sh"
+      mode: '0644'
+    when: "bash_installed | bool"
+    register: result_01_remediate
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Fix umask in /etc/login.defs if present"
+    ansible.builtin.lineinfile:
+      path: "/etc/login.defs"
+      regexp: |
+        ^\s*umask\s+
+      line: "umask 027"
+    when: "bash_installed | bool"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Cleanup audit script"
+    ansible.builtin.file:
+      path: "/tmp/cis_umask_audit.sh"
+      state: absent
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify umask is configured correctly"
+    ansible.builtin.shell: |
+      profile_ok=0
+      defs_ok=0
+      grep -Psiq -- '^\h*umask\h+(0?[0-7][2-7]7|u(=[rwx]{0,3}),g=([rx]{0,2}),o=)(\h*#.*)?$' /etc/profile.d/50-systemwide_umask.sh && profile_ok=1
+      grep -Psiq -- '^\h*umask\h+(0?[0-7][2-7]7|u(=[rwx]{0,3}),g=([rx]{0,2}),o=)(\h*#.*)?$' /etc/login.defs && defs_ok=1
+      if [ "$profile_ok" -eq 1 ] && [ "$defs_ok" -eq 1 ]; then
+        echo "PASS: umask 027 is set in both files"
+      else
+        echo "FAIL: umask not set correctly (profile.d: $profile_ok, login.defs: $defs_ok)"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02
+    when: "bash_installed | bool"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute umask audit and remediation script"
+      task_01_cmd: "/bin/bash /tmp/cis_umask_audit.sh; copy umask 027 to /etc/profile.d/50-systemwide_umask.sh; fix umask in /etc/login.defs"
+      task_01_rc: "{{ 0 if (bash_installed | bool and result_01_remediate is not skipped and result_01_remediate is not failed) else -1 }}"
+      data_01: "{{ result_01_audit.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if not (bash_installed | bool) else ('PASS' if (result_01_remediate is not skipped and result_01_remediate is not failed) else 'FAIL') }}"
+      details_01: "{{ 'Bash not installed - skipped' if not (bash_installed | bool) else ('Umask 027 configured successfully' if (result_01_remediate is not skipped and result_01_remediate is not failed) else 'Failed to configure umask') }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify umask configuration"
+      task_02_cmd: "grep -Psiq umask pattern in /etc/profile.d/50-systemwide_umask.sh and /etc/login.defs"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if not (bash_installed | bool) else ('PASS' if 'PASS:' in (result_02.stdout | default('')) else 'FAIL') }}"
+      details_02: "{{ 'Bash not installed - skipped' if not (bash_installed | bool) else ('Umask verified correctly' if 'PASS:' in (result_02.stdout | default('')) else 'Umask verification failed: ' + (result_02.stdout | default(''))) }}"
+    tags: [execute]
+
+  - name: "Req 03 - Set cis_result fact"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Set cis_result from verification status"
+      task_03_cmd: "set_fact: cis_result = status_02"
+      task_03_rc: 0
+      data_03: "{{ cis_result }}"
+      status_03: "{{ cis_result }}"
+      details_03: "cis_result set to {{ cis_result }}"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "{{ 'PASS' if cis_result in ['PASS','FAIL','SKIP','ERROR'] else 'ERROR' }}"
+      details_04: "Remediation report generated with overall result {{ cis_result }}"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 5.4.3.3"
+      - "Reference: CIS Benchmark checkpoint 5.4.3.3"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/profile.d/50-systemwide_umask.sh"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/50-systemwide_umask.sh.present"
+      dest: "/etc/profile.d/50-systemwide_umask.sh"
+      remote_src: true
+    when: "_sg_restore_flag.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for umask absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/50-systemwide_umask.sh.absent"
+    register: _sg_restore_umask_absent
+    when: "_sg_restore_flag.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /etc/profile.d/50-systemwide_umask.sh (was absent)"
+    ansible.builtin.file:
+      path: "/etc/profile.d/50-systemwide_umask.sh"
+      state: absent
+    when:
+    - "_sg_restore_flag.stat.exists"
+    - "_sg_restore_umask_absent.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/login.defs from snapshot"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/login.defs.present"
+      dest: "/etc/login.defs"
+      remote_src: true
+    when: "_sg_restore_flag.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for login.defs absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/login.defs.absent"
+    register: _sg_restore_login_absent
+    when: "_sg_restore_flag.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /etc/login.defs (was absent)"
+    ansible.builtin.file:
+      path: "/etc/login.defs"
+      state: absent
+    when:
+    - "_sg_restore_flag.stat.exists"
+    - "_sg_restore_login_absent.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for audit script absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/cis_umask_audit.absent"
+    register: _sg_restore_audit_absent
+    when: "_sg_restore_flag.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /tmp/cis_umask_audit.sh (was absent)"
+    ansible.builtin.file:
+      path: "/tmp/cis_umask_audit.sh"
+      state: absent
+    when:
+    - "_sg_restore_flag.stat.exists"
+    - "_sg_restore_audit_absent.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists"
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,42 @@
+req_01: "Run the provided audit script to verify no unowned or ungrouped files or directories exist"
+req_02: "VERIFY: Summarise compliance status for Ensure no files or directories without an owner and a group exist. Expected result: PASS if compliant, FAIL otherwise"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+audit_script: "/tmp/cis_7_1_12_audit.sh"
+backup_dir: "/var/log/ai-playbooks-backup/cis_audit_7_1_12"
+marker_file: "{{ backup_dir }}/script_existed.txt"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     l_output="" l_output2=""
+     a_nouser=(); a_nogroup=()
+     a_path=(! -path "/run/user/*" -a ! -path "/proc/*" -a ! -path "*/containerd/*" -a ! -path "*/kubelet/pods/*" -a ! -path "*/kubelet/plugins/*" -a ! -path "/sys/fs/cgroup/memory/*" -a ! -path "/var/*/private/*")
+     while IFS= read -r l_mount; do
+        while IFS= read -r -d $'\0' l_file; do
+           if [ -e "$l_file" ]; then
+              while IFS=: read -r l_user l_group; do
+                 [ "$l_user" = "UNKNOWN" ] && a_nouser+=("$l_file")
+                 [ "$l_group" = "UNKNOWN" ] && a_nogroup+=("$l_file")
+              done < <(stat -Lc '%U:%G' "$l_file")
+           fi
+        done < <(find "$l_mount" -xdev \( "${a_path[@]}" \) \( -type f -o -type d \) \( -nouser -o -nogroup \) -print0 2> /dev/null)
+     done < <(findmnt -Dkerno fstype,target | awk '($1 !~ /^\s*(nfs|proc|smb|vfat|iso9660|efivarfs|selinuxfs)/ && $2 !~ /^\/run\/user\//){print $2}')
+     if ! (( ${#a_nouser[@]} > 0 )); then
+        l_output="$l_output\n  - No files or directories without a owner exist on the local filesystem."
+     else
+        l_output2="$l_output2\n  - There are \"$(printf '%s' "${#a_nouser[@]}")\" unowned files or directories on the system.\n   - The following is a list of unowned files and/or directories:\n$(printf '%s\n' "${a_nouser[@]}")\n   - end of list"
+     fi
+     if ! (( ${#a_nogroup[@]} > 0 )); then
+        l_output="$l_output\n  - No files or directories without a group exist on the local filesystem."
+     else
+        l_output2="$l_output2\n  - There are \"$(printf '%s' "${#a_nogroup[@]}")\" ungrouped files or directories on the system.\n   - The following is a list of ungrouped files and/or directories:\n$(printf '%s\n' "${a_nogroup[@]}")\n   - end of list"
+     fi
+     unset a_path; unset a_arr ; unset a_nouser; unset a_nogroup
+     if [ -z "$l_output2" ]; then
+        echo -e "\n- Audit Result:\n  ** PASS **\n - * Correctly configured * :\n$l_output\n"
+     else
+        echo -e "\n- Audit Result:\n  ** FAIL **\n - * Reasons for audit failure * :\n$l_output2"
+        [ -n "$l_output" ] && echo -e "\n- * Correctly configured * :\n$l_output\n"
+     fi
+  }
+  {% endraw %}

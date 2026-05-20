@@ -1,0 +1,9 @@
+playbook_name: "cis_6_1_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check: ensure AIDE is installed using command: `which aide || apt-get install aide -y`. Expected result: AIDE is available."
+req_02: "Apply determination of the absolute path to the non-symlinked version of /sbin using command: `readlink -f /sbin`. Expected result: output is either /usr/sbin or /sbin."
+req_03: |
+  Apply addition or update of audit tool integrity rules in /etc/aide.conf using command: `printf '\\n%s' \"# Audit Tools\" \"$(readlink -f /sbin/auditctl) p+i+n+u+g+s+b+acl+xattrs+sha512\" \"$(readlink -f /sbin/auditd) p+i+n+u+g+s+b+acl+xattrs+sha512\" \"$(readlink -f /sbin/ausearch) p+i+n+u+g+s+b+acl+xattrs+sha512\" \"$(readlink -f /sbin/aureport) p+i+n+u+g+s+b+acl+xattrs+sha512\" \"$(readlink -f /sbin/autrace) p+i+n+u+g+s+b+acl+xattrs+sha512\" \"$(readlink -f /sbin/augenrules) p+i+n+u+g+s+b+acl+xattrs+sha512\" >> /etc/aide.conf`. Expected result: lines are appended to /etc/aide.conf with correct paths and checksums.
+req_04: |
+  Apply verification that the configuration is correct using command: `grep -E '^/usr/sbin/(auditctl|auditd|ausearch|aureport|autrace|augenrules) p\\+i\\+n\\+u\\+g\\+s\\+b\\+acl\\+xattrs\\+sha512$' /etc/aide.conf || grep -E '^/sbin/(auditctl|auditd|ausearch|aureport|autrace|augenrules) p\\+i\\+n\\+u\\+g\\+s\\+b\\+acl\\+xattrs\\+sha512$' /etc/aide.conf`. Expected result: all six audit tool lines are present with the correct path and checksum attributes.
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

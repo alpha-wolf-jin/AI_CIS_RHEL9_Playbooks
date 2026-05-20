@@ -1,0 +1,8 @@
+playbook_name: "remediate_cis_2_1_15"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply stop telnet.socket using command: `systemctl stop telnet.socket`. Expected result: telnet.socket is stopped."
+req_02: "Apply remove telnet-server package using command: `dnf remove telnet-server`. Expected result: telnet-server package is removed."
+req_03: "Apply mask telnet.socket using command: `systemctl mask telnet.socket`. Expected result: telnet.socket is masked and cannot be started."
+req_04: "Verify telnet.socket is not active using command: `systemctl is-active telnet.socket`. Expected result: inactive."
+req_05: "Verify telnet-server package is not installed using command: `rpm -q telnet-server`. Expected result: package telnet-server is not installed."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

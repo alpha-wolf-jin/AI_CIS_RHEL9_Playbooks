@@ -1,0 +1,18 @@
+req_01: >-
+  Check if faillock configuration file exists using command: `test -f /etc/security/faillock.conf`. Expected result: file exists.
+req_02: >-
+  Check if even_deny_root or root_unlock_time is enabled in /etc/security/faillock.conf using command:
+  `grep -Pi -- '^\h*(even_deny_root|root_unlock_time\h*=\h*\d+)\b' /etc/security/faillock.conf`.
+  Expected result: output contains 'even_deny_root' and/or 'root_unlock_time = <number>'.
+req_03: >-
+  Check if root_unlock_time is set to less than 60 seconds in /etc/security/faillock.conf using command:
+  `grep -Pi -- '^\h*root_unlock_time\h*=\h*([1-9]|[1-5][0-9])\b' /etc/security/faillock.conf`.
+  Expected result: nothing returned.
+req_04: >-
+  Check if root_unlock_time is set to less than 60 seconds in pam_faillock.so module in /etc/pam.d/system-auth and /etc/pam.d/password-auth using command:
+  `grep -Pi -- '^\h*auth\h+([^#\n\r]+\h+)pam_faillock\.so\h+([^#\n\r]+\h+)?root_unlock_time\h*=\h*([1-9]|[1-5][0-9])\b'
+  /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: nothing returned.
+req_05: >-
+  Summarize overall compliance status: all checks passed (even_deny_root or root_unlock_time >= 60 enabled, no invalid lower values). Expected result: compliant.
+req_06: >-
+  Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable.

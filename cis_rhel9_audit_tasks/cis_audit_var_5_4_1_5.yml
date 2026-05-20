@@ -1,0 +1,8 @@
+max_inactive: 45
+req_01: "Check if shadow password file exists using command: `test -f /etc/shadow`. Expected result: file exists."
+req_02: "Check if useradd command is available using command: `command -v useradd`. Expected result: command exists."
+req_03: "Check the default INACTIVE value for new users using command: `useradd -D | grep INACTIVE`. Expected result: INACTIVE=45 or less."
+req_04: |
+  Check all users with a password have INACTIVE no more than 45 days after password expires using command: `awk -F: '($2~/^\\$.+\\$/) {if($7 > 45 || $7 < 0)print \"User: \" $1 \" INACTIVE: \" $7}' /etc/shadow`. Expected result: no output returned.
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/shadow does not exist or useradd is not available, FAIL if any check fails."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,14 @@
+playbook_name: "cis_5_3_3_2_7"
+checkpoint_id: "cis_5_3_3_2_7"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+config_file: "/etc/security/pwquality.conf"
+config_dir: "/etc/security/pwquality.conf.d"
+config_target: "/etc/security/pwquality.conf.d/50-pwroot.conf"
+config_param: "enforce_for_root"
+req_01: "Apply prerequisite check for pwquality configuration directory using command: `test -d /etc/security/pwquality.conf.d || mkdir -p /etc/security/pwquality.conf.d`. Expected result: Directory exists."
+req_02: "Apply prerequisite check for libpwquality using command: `dpkg -l | grep -q libpwquality || rpm -q libpwquality`. Expected result: package is installed."
+req_03: |
+  Apply enforce_for_root option in a new configuration file using command: `printf '\\n%s\\n' \"enforce_for_root\" >> /etc/security/pwquality.conf.d/50-pwroot.conf`. Expected result: The line 'enforce_for_root' is appended to the file.
+req_04: |
+  Verify enforce_for_root is set using command: `grep -q '^enforce_for_root' /etc/security/pwquality.conf.d/50-pwroot.conf && echo \"enforce_for_root is enabled\"`. Expected result: Output 'enforce_for_root is enabled'.

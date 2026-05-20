@@ -1,0 +1,6 @@
+req_01: "Check if journald is the method for capturing logs using command: `systemctl is-active systemd-journald`. Expected result: active"
+req_02: |
+  Check if ForwardToSyslog is disabled using command: `systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E \"^ForwardToSyslog=no\"`. Expected result: ForwardToSyslog=no
+req_03: "Summarize overall compliance: PASS if both checks pass, SKIP if journald is not active, FAIL if journald is active but ForwardToSyslog is not set to no."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_05: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format: AUDIT REPORT — CIS 6.2.2.2 ... OVERALL COMPLIANCE: section containing Result: {{ cis_result }}"

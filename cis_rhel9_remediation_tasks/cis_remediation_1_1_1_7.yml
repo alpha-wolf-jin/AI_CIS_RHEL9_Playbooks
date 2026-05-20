@@ -1,0 +1,190 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_1_7.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Check if modprobe config file exists"
+  ansible.builtin.stat:
+    path: "{{ modprobe_conf }}"
+  register: _snap_conf_stat
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Backup config file if it exists"
+  ansible.builtin.copy:
+    src: "{{ modprobe_conf }}"
+    dest: "{{ backup_dir }}/udf.conf.present"
+    remote_src: true
+  when: "_snap_conf_stat.stat.exists | default(false)"
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Mark config file as absent if not exists"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}/udf.conf.absent"
+    state: touch
+  when: "not _snap_conf_stat.stat.exists | default(false)"
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Record if udf module is loaded"
+  ansible.builtin.shell: |
+    if lsmod | grep -q '^{{ module_name }} '; then echo loaded; else echo not_loaded; fi
+  args:
+    executable: /bin/bash
+  register: _snap_mod_state
+  changed_when: false
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Save module load state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_mod_state.stdout | trim }}"
+    dest: "{{ backup_dir }}/udf_loaded.state"
+  tags: [snapshot]
+  failed_when: false
+
+
+- block:
+  - name: "Req 01 - Copy remediation script to target"
+    ansible.builtin.copy:
+      content: "{{ remediation_script_content }}"
+      dest: /tmp/cis_remediate_udf.sh
+      mode: '0700'
+    tags: [execute]
+    failed_when: false
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_remediate_udf.sh
+    args:
+      executable: /bin/bash
+    register: result_01
+    tags: [execute]
+    failed_when: false
+
+  - name: "Cleanup - Remove remediation script"
+    ansible.builtin.file:
+      path: /tmp/cis_remediate_udf.sh
+      state: absent
+    tags: [execute]
+    failed_when: false
+
+  - name: "Req 02 - Verify udf module is not available"
+    ansible.builtin.shell: "{{ verify_cmd }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    tags: [execute]
+    failed_when: false
+    changed_when: false
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Run remediation script to disable udf kernel module"
+      task_01_cmd: "/bin/bash /tmp/cis_remediate_udf.sh"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('APPLIED' if (result_01.rc | default(-1)) == 0 else 'FAILED') | trim }}"
+      details_01: "{{ ('Script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Script execution failed') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify udf kernel module is not available"
+      task_02_cmd: "{{ verify_cmd }}"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') | trim }}"
+      details_02: "{{ ('System is compliant' if (result_02.rc | default(-1)) == 0 else 'System not compliant') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.1.7"
+      - "Reference: CIS Benchmark checkpoint 1.1.1.7"
+      - ""
+      - "Requirement 1 - {{ req_01 }}"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "Requirement 2 - {{ req_02 }}"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "OVERALL REMEDIATION"
+      - "  Result: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup present exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/udf.conf.present"
+    register: _rest_present_stat
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Restore config file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/udf.conf.present"
+      dest: "{{ modprobe_conf }}"
+      remote_src: true
+    when: "_rest_present_stat.stat.exists | default(false)"
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Check if absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/udf.conf.absent"
+    register: _rest_absent_stat
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Remove config file if it was absent originally"
+    ansible.builtin.file:
+      path: "{{ modprobe_conf }}"
+      state: absent
+    when: "_rest_absent_stat.stat.exists | default(false)"
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Read saved module load state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/udf_loaded.state"
+    register: _restore_mod_state
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload udf module if it was originally loaded"
+    ansible.builtin.shell: modprobe {{ module_name }} 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when:
+    - "_restore_mod_state.content is defined"
+    - "(_restore_mod_state.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: "_rest_present_stat.stat.exists | default(false) or _rest_absent_stat.stat.exists | default(false)"
+    tags: [restore]
+    failed_when: false

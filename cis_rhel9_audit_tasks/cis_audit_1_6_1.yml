@@ -1,0 +1,104 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_6_1.yml
+
+- name: "Req 01 - Check if crypto-policies package is installed"
+  ansible.builtin.shell: "rpm -q crypto-policies"
+  args:
+    executable: /bin/bash
+  register: pkg_check
+  failed_when: false
+  tags: [audit]
+- name: "Set crypto-policies installed fact"
+  ansible.builtin.set_fact:
+    crypto_policies_installed: "{{ pkg_check.rc == 0 }}"
+  tags: [audit]
+- name: "Req 01 - Check if crypto policy config file exists"
+  ansible.builtin.shell: "test -f /etc/crypto-policies/config"
+  args:
+    executable: /bin/bash
+  register: file_check
+  failed_when: false
+  when: crypto_policies_installed | bool
+  tags: [audit]
+- name: "Set file existence fact"
+  ansible.builtin.set_fact:
+    file_exists: "{{ file_check is not skipped and file_check.rc == 0 }}"
+  tags: [audit]
+- name: "Req 02 - Check if crypto policy is set to LEGACY"
+  ansible.builtin.shell: "grep -Pi '^\\h*LEGACY\\b' /etc/crypto-policies/config"
+  args:
+    executable: /bin/bash
+  register: legacy_check
+  failed_when: false
+  when:
+  - crypto_policies_installed | bool
+  - file_exists | bool
+  tags: [audit]
+- name: "Set legacy found fact"
+  ansible.builtin.set_fact:
+    legacy_found: "{{ legacy_check is not skipped and legacy_check.rc == 0 }}"
+  tags: [audit]
+- name: "Req 03 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    cis_result: "{{ 'NOT_APPLICABLE' if not crypto_policies_installed | bool else ('PASS' if file_exists | bool and not legacy_found | bool else 'FAIL') }}"
+    overall_details: >-
+      {{ 'Crypto-policies package not installed' if not crypto_policies_installed | bool
+         else ('System-wide crypto policy is not set to LEGACY' if file_exists | bool and not legacy_found | bool
+         else ('System-wide crypto policy is set to LEGACY' if file_exists | bool and legacy_found | bool
+         else 'Crypto policy configuration file /etc/crypto-policies/config does not exist')) }}
+  tags: [audit]
+- name: "Req 04 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ cis_result }}"
+    status_04: "{{ cis_result }}"
+    details_04: "{{ overall_details }}"
+    task_04_name: "Store final audit result in cis_result"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "N/A"
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.6.1"
+    - "Reference: CIS Benchmark checkpoint 1.6.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 | trim }}:"
+    - "  Task: Check if crypto policy config file exists"
+    - "  Command: test -f /etc/crypto-policies/config"
+    - "  Exit code: {{ file_check.rc if not file_check is skipped else 'N/A' }}"
+    - "  Data: {{ file_check.stdout | default('') | trim }}"
+    - "  Status: {{ 'NOT_APPLICABLE' if not crypto_policies_installed | bool else ('PASS' if file_exists | bool else 'FAIL') }}"
+    - "  Details: {{ 'Package not installed' if not crypto_policies_installed | bool else ('File exists' if file_exists | bool else 'File does not exist') }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 | trim }}:"
+    - "  Task: Check if crypto policy is set to LEGACY"
+    - "  Command: grep -Pi '^\\h*LEGACY\\b' /etc/crypto-policies/config"
+    - "  Exit code: {{ legacy_check.rc if not legacy_check is skipped else 'N/A' }}"
+    - "  Data: {{ legacy_check.stdout | default('') | trim }}"
+    - "  Status: {{ 'NOT_APPLICABLE' if not crypto_policies_installed | bool else ('PASS' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 1 else ('FAIL' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 0 else 'SKIPPED')) }}"
+    - "  Details: {{ 'Package not installed' if not crypto_policies_installed | bool else ('No LEGACY policy found' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 1 else ('LEGACY policy found' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 0 else ('Configuration not checked' if not crypto_policies_installed | bool else 'Config file missing'))) }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 | trim }}:"
+    - "  Task: Summarize overall compliance"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: N/A"
+    - "  Status: {{ cis_result }}"
+    - "  Details: {{ overall_details }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 | trim }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL RESULT:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ overall_details }}"
+    - "========================================================"
+  tags: [audit]

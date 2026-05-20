@@ -1,0 +1,14 @@
+playbook_name: "cis_5_1_13_ignorerhosts"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/ssh/sshd_config"
+config_param: "IgnoreRhosts"
+config_value: "yes"
+service_name: "sshd"
+package_name: "openssh-server"
+req_01: "Apply prerequisite check: ensure openssh-server is installed using command: `dpkg -l | grep -q openssh-server || apt-get install -y openssh-server`. Expected result: openssh-server is installed."
+req_02: "Apply IgnoreRhosts configuration using command: `sed -i 's/^#*IgnoreRhosts.*/IgnoreRhosts yes/' /etc/ssh/sshd_config`. Expected result: The IgnoreRhosts parameter is set to yes."
+req_03: |
+  Apply ensure IgnoreRhosts is set before any Include or Match entries using command: `awk '/^Include|^Match/{exit} {print}' /etc/ssh/sshd_config | grep -q '^IgnoreRhosts yes' || sed -i '1s/^/IgnoreRhosts yes\\n/' /etc/ssh/sshd_config`. Expected result: IgnoreRhosts yes appears before any Include or Match lines.
+req_04: "Apply restart sshd service to apply changes using command: `systemctl restart sshd`. Expected result: sshd service restarts successfully."
+req_05: "Verify IgnoreRhosts is enabled using command: `sshd -T | grep -i ignorerhosts`. Expected result: output contains 'ignorerhosts yes'."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

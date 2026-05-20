@@ -1,0 +1,9 @@
+checkpoint_id: "cis_4_3_2"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+
+req_01: "Check if nftables service is enabled using command: systemctl is-enabled nftables.service | grep -q 'enabled'. Expected result: exit code 0 if enabled."
+req_02: "Apply rule to accept established TCP connections on input using command: systemctl is-enabled nftables.service | grep -q 'enabled' && nft add rule inet filter input ip protocol tcp ct state established accept. Expected result: rule added successfully."
+req_03: "Apply rule to accept established UDP connections on input using command: systemctl is-enabled nftables.service | grep -q 'enabled' && nft add rule inet filter input ip protocol udp ct state established accept. Expected result: rule added successfully."
+req_04: "Apply rule to accept established ICMP connections on input using command: systemctl is-enabled nftables.service | grep -q 'enabled' && nft add rule inet filter input ip protocol icmp ct state established accept. Expected result: rule added successfully."
+req_05: "Verify that nftables established connection rules are configured using command: nft list ruleset inet filter input | grep -E 'ct state established accept'. Expected result: output contains rules for tcp, udp, and icmp with ct state established accept."

@@ -1,0 +1,8 @@
+req_01: "Check if the system-wide crypto policies package is installed using command: `rpm -q crypto-policies`. Expected result: package version is returned (e.g., crypto-policies-20230731-1.git9f2c5f0.fc38.noarch)."
+req_02: |
+  Check that SHA1 hash and signature support is disabled in the current policy by verifying that no hash or sign lines include SHA1 using command: `awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\\s*-\\s*([^#\\n\\r]+)?SHA1/){print}' /etc/crypto-policies/state/CURRENT.pol`. Expected result: no output (nothing returned).
+req_03: |
+  Check that sha1_in_certs is set to 0 (disabled) using command: `grep -Psi -- '^\\h*sha1_in_certs\\h*=\\h*' /etc/crypto-policies/state/CURRENT.pol`. Expected result: output contains `sha1_in_certs = 0`.
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if crypto-policies package is not installed, FAIL if any check fails."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+crypto_policy_file: "/etc/crypto-policies/state/CURRENT.pol"

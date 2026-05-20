@@ -1,0 +1,6 @@
+playbook_name: "cis_7_1_8_gshadow_permissions"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+target_file: "/etc/gshadow-"
+req_01: "Apply ownership of /etc/gshadow- to root:root using command: `chown root:root /etc/gshadow-`. Expected result: The file /etc/gshadow- is owned by root:root."
+req_02: "Apply permissions of 0000 on /etc/gshadow- using command: `chmod 0000 /etc/gshadow-`. Expected result: The file /etc/gshadow- has permissions set to 0000 (no read, write, or execute for any user)."
+req_03: "Verify permissions and ownership on /etc/gshadow- using command: `stat -c '%a %U:%G' /etc/gshadow-`. Expected result: Output is `0 root:root`."

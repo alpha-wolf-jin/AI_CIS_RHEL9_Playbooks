@@ -1,0 +1,483 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_2_1.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    data_09: "Not collected yet"
+    status_09: "UNKNOWN"
+    details_09: "Not evaluated"
+    data_10: "Not collected yet"
+    status_10: "UNKNOWN"
+    details_10: "Not evaluated"
+    data_11: "Not collected yet"
+    status_11: "UNKNOWN"
+    details_11: "Not evaluated"
+    data_12: "Not collected yet"
+    status_12: "UNKNOWN"
+    details_12: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    task_08_name: "Not executed"
+    task_08_cmd: "N/A"
+    task_08_rc: -1
+    task_09_name: "Not executed"
+    task_09_cmd: "N/A"
+    task_09_rc: -1
+    task_10_name: "Not executed"
+    task_10_cmd: "N/A"
+    task_10_rc: -1
+    task_11_name: "Not executed"
+    task_11_cmd: "N/A"
+    task_11_rc: -1
+    task_12_name: "Not executed"
+    task_12_cmd: "N/A"
+    task_12_rc: -1
+    profile_found: false
+
+- name: "Req 01 - Check if authselect is installed"
+  ansible.builtin.shell: rpm -q authselect
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    authselect_installed: "{{ result_01.rc == 0 }}"
+    cis_applicable: "{{ result_01.rc == 0 }}"
+    task_01_name: "Req 01 - Check if authselect is installed"
+    task_01_cmd: "rpm -q authselect"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ 'Package installed' if result_01.rc | default(-1) == 0 else 'Package not installed' | trim }}"
+
+- name: "Req 02 - Check the active authselect profile"
+  ansible.builtin.shell: head -1 /etc/authselect/authselect.conf
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: cis_applicable
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Req 02 - Check the active authselect profile"
+    task_02_cmd: "head -1 /etc/authselect/authselect.conf"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_02: "{{ 'Active profile retrieved' if result_02.rc | default(-1) == 0 else 'Profile not found or command failed' | trim }}"
+    profile_found: "{{ result_02.rc | default(-1) == 0 }}"
+  when: cis_applicable
+
+- name: "Set skipped status for profile-dependent checks when profile not found"
+  ansible.builtin.set_fact:
+        # Requirement 03
+    task_03_name: "Req 03 - Check pam_pwquality.so in password-auth"
+    task_03_cmd: "N/A (profile missing)"
+    task_03_rc: -1
+    data_03: "N/A"
+    status_03: "SKIPPED"
+    details_03: "Skipped because no active authselect profile"
+        # Requirement 04
+    task_04_name: "Req 04 - Check pam_pwquality.so in system-auth"
+    task_04_cmd: "N/A (profile missing)"
+    task_04_rc: -1
+    data_04: "N/A"
+    status_04: "SKIPPED"
+    details_04: "Skipped because no active authselect profile"
+        # Requirement 05
+    task_05_name: "Req 05 - Check pam_pwhistory.so in password-auth"
+    task_05_cmd: "N/A (profile missing)"
+    task_05_rc: -1
+    data_05: "N/A"
+    status_05: "SKIPPED"
+    details_05: "Skipped because no active authselect profile"
+        # Requirement 06
+    task_06_name: "Req 06 - Check pam_pwhistory.so in system-auth"
+    task_06_cmd: "N/A (profile missing)"
+    task_06_rc: -1
+    data_06: "N/A"
+    status_06: "SKIPPED"
+    details_06: "Skipped because no active authselect profile"
+        # Requirement 07
+    task_07_name: "Req 07 - Check pam_faillock.so in password-auth"
+    task_07_cmd: "N/A (profile missing)"
+    task_07_rc: -1
+    data_07: "N/A"
+    status_07: "SKIPPED"
+    details_07: "Skipped because no active authselect profile"
+        # Requirement 08
+    task_08_name: "Req 08 - Check pam_faillock.so in system-auth"
+    task_08_cmd: "N/A (profile missing)"
+    task_08_rc: -1
+    data_08: "N/A"
+    status_08: "SKIPPED"
+    details_08: "Skipped because no active authselect profile"
+        # Requirement 09
+    task_09_name: "Req 09 - Check pam_unix.so in password-auth"
+    task_09_cmd: "N/A (profile missing)"
+    task_09_rc: -1
+    data_09: "N/A"
+    status_09: "SKIPPED"
+    details_09: "Skipped because no active authselect profile"
+        # Requirement 10
+    task_10_name: "Req 10 - Check pam_unix.so in system-auth"
+    task_10_cmd: "N/A (profile missing)"
+    task_10_rc: -1
+    data_10: "N/A"
+    status_10: "SKIPPED"
+    details_10: "Skipped because no active authselect profile"
+  when: cis_applicable and not profile_found
+
+- name: "Req 03 - Check pam_pwquality.so in password-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_pwquality\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/password-auth
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Req 03 - Check pam_pwquality.so in password-auth"
+    task_03_cmd: |
+      grep -P '\\bpam_pwquality\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_03: "{{ 'Module found' if result_03.rc | default(-1) == 0 else ('Module NOT found' if result_03.rc | default(-1) == 1 else ('File missing or grep error' if result_03.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 04 - Check pam_pwquality.so in system-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_pwquality\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/system-auth
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 04 details"
+  ansible.builtin.set_fact:
+    task_04_name: "Req 04 - Check pam_pwquality.so in system-auth"
+    task_04_cmd: |
+      grep -P '\\bpam_pwquality\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: "{{ ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_04: "{{ 'Module found' if result_04.rc | default(-1) == 0 else ('Module NOT found' if result_04.rc | default(-1) == 1 else ('File missing or grep error' if result_04.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 05 - Check pam_pwhistory.so in password-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_pwhistory\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/password-auth
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 05 details"
+  ansible.builtin.set_fact:
+    task_05_name: "Req 05 - Check pam_pwhistory.so in password-auth"
+    task_05_cmd: |
+      grep -P '\\bpam_pwhistory\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth
+    task_05_rc: "{{ result_05.rc | default(-1) }}"
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+    status_05: "{{ ('PASS' if result_05.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_05: "{{ 'Module found' if result_05.rc | default(-1) == 0 else ('Module NOT found' if result_05.rc | default(-1) == 1 else ('File missing or grep error' if result_05.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 06 - Check pam_pwhistory.so in system-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_pwhistory\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/system-auth
+  args:
+    executable: /bin/bash
+  register: result_06
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 06 details"
+  ansible.builtin.set_fact:
+    task_06_name: "Req 06 - Check pam_pwhistory.so in system-auth"
+    task_06_cmd: |
+      grep -P '\\bpam_pwhistory\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth
+    task_06_rc: "{{ result_06.rc | default(-1) }}"
+    data_06: "{{ result_06.stdout | default('') | trim }}"
+    status_06: "{{ ('PASS' if result_06.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_06: "{{ 'Module found' if result_06.rc | default(-1) == 0 else ('Module NOT found' if result_06.rc | default(-1) == 1 else ('File missing or grep error' if result_06.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 07 - Check pam_faillock.so in password-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_faillock\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/password-auth
+  args:
+    executable: /bin/bash
+  register: result_07
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 07 details"
+  ansible.builtin.set_fact:
+    task_07_name: "Req 07 - Check pam_faillock.so in password-auth"
+    task_07_cmd: |
+      grep -P '\\bpam_faillock\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth
+    task_07_rc: "{{ result_07.rc | default(-1) }}"
+    data_07: "{{ result_07.stdout | default('') | trim }}"
+    status_07: "{{ ('PASS' if result_07.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_07: "{{ 'Module found' if result_07.rc | default(-1) == 0 else ('Module NOT found' if result_07.rc | default(-1) == 1 else ('File missing or grep error' if result_07.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 08 - Check pam_faillock.so in system-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_faillock\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/system-auth
+  args:
+    executable: /bin/bash
+  register: result_08
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 08 details"
+  ansible.builtin.set_fact:
+    task_08_name: "Req 08 - Check pam_faillock.so in system-auth"
+    task_08_cmd: |
+      grep -P '\\bpam_faillock\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth
+    task_08_rc: "{{ result_08.rc | default(-1) }}"
+    data_08: "{{ result_08.stdout | default('') | trim }}"
+    status_08: "{{ ('PASS' if result_08.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_08: "{{ 'Module found' if result_08.rc | default(-1) == 0 else ('Module NOT found' if result_08.rc | default(-1) == 1 else ('File missing or grep error' if result_08.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 09 - Check pam_unix.so in password-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_unix\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/password-auth
+  args:
+    executable: /bin/bash
+  register: result_09
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 09 details"
+  ansible.builtin.set_fact:
+    task_09_name: "Req 09 - Check pam_unix.so in password-auth"
+    task_09_cmd: |
+      grep -P '\\bpam_unix\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/password-auth
+    task_09_rc: "{{ result_09.rc | default(-1) }}"
+    data_09: "{{ result_09.stdout | default('') | trim }}"
+    status_09: "{{ ('PASS' if result_09.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_09: "{{ 'Module found' if result_09.rc | default(-1) == 0 else ('Module NOT found' if result_09.rc | default(-1) == 1 else ('File missing or grep error' if result_09.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 10 - Check pam_unix.so in system-auth"
+  ansible.builtin.shell: |
+    grep -P '\bpam_unix\.so\b' /etc/authselect/"$(head -1 /etc/authselect/authselect.conf)"/system-auth
+  args:
+    executable: /bin/bash
+  register: result_10
+  failed_when: false
+  changed_when: false
+  when: cis_applicable and profile_found
+
+- name: "Store requirement 10 details"
+  ansible.builtin.set_fact:
+    task_10_name: "Req 10 - Check pam_unix.so in system-auth"
+    task_10_cmd: |
+      grep -P '\\bpam_unix\\.so\\b' /etc/authselect/\"$(head -1 /etc/authselect/authselect.conf)\"/system-auth
+    task_10_rc: "{{ result_10.rc | default(-1) }}"
+    data_10: "{{ result_10.stdout | default('') | trim }}"
+    status_10: "{{ ('PASS' if result_10.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_10: "{{ 'Module found' if result_10.rc | default(-1) == 0 else ('Module NOT found' if result_10.rc | default(-1) == 1 else ('File missing or grep error' if result_10.rc | default(-1) == 2 else 'Grep error')) | trim }}"
+  when: cis_applicable and profile_found
+
+- name: "Req 11 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_11_name: "Req 11 - Summarize overall compliance"
+    task_11_cmd: "N/A"
+    task_11_rc: -1
+    data_11: "N/A"
+    status_11: >-
+      {%- if not cis_applicable -%} NOT_APPLICABLE
+      {%- elif not profile_found -%} SKIPPED
+      {%- elif status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' and status_06 == 'PASS' and status_07 == 'PASS' and status_08 == 'PASS' and status_09 == 'PASS' and status_10 == 'PASS' -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+    details_11: >-
+      {%- if not cis_applicable -%} Authselect is not installed – control not applicable
+      {%- elif not profile_found -%} No active authselect profile – control cannot be evaluated
+      {%- elif status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' and status_06 == 'PASS' and status_07 == 'PASS' and status_08 == 'PASS' and status_09 == 'PASS' and status_10 == 'PASS' -%} All required PAM modules are present in both password-auth and system-auth
+      {%- else -%} One or more PAM modules missing or errors encountered
+      {%- endif -%}
+
+- name: "Req 12 - Store final audit result as cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_11 | trim }}"
+    task_12_name: "Req 12 - Store final audit result as cis_result"
+    task_12_cmd: "N/A"
+    task_12_rc: -1
+    data_12: "N/A"
+    status_12: "{{ status_11 | trim }}"
+    details_12: "{{ details_11 | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.2.1"
+    - "Reference: CIS Benchmark checkpoint 5.3.2.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: {{ task_08_name | default('Not recorded') }}"
+    - "  Command: {{ task_08_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_08_rc | default(-1) }}"
+    - "  Data: {{ data_08 | default('') | trim }}"
+    - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_08 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: {{ task_09_name | default('Not recorded') }}"
+    - "  Command: {{ task_09_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_09_rc | default(-1) }}"
+    - "  Data: {{ data_09 | default('') | trim }}"
+    - "  Status: {{ status_09 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_09 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 10 - {{ req_10 }}:"
+    - "  Task: {{ task_10_name | default('Not recorded') }}"
+    - "  Command: {{ task_10_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_10_rc | default(-1) }}"
+    - "  Data: {{ data_10 | default('') | trim }}"
+    - "  Status: {{ status_10 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_10 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 11 - {{ req_11 }}:"
+    - "  Task: {{ task_11_name | default('Not recorded') }}"
+    - "  Command: {{ task_11_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_11_rc | default(-1) }}"
+    - "  Data: {{ data_11 | default('') | trim }}"
+    - "  Status: {{ status_11 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_11 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 12 - {{ req_12 }}:"
+    - "  Task: {{ task_12_name | default('Not recorded') }}"
+    - "  Command: {{ task_12_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_12_rc | default(-1) }}"
+    - "  Data: {{ data_12 | default('') | trim }}"
+    - "  Status: {{ status_12 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_12 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_11 | default('Not evaluated') | trim }}"
+    - "========================================================"

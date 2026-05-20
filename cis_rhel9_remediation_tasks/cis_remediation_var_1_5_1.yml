@@ -1,0 +1,6 @@
+playbook_name: "CIS 1.5.1 - ASLR"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+sysctl_conf_file: "/etc/sysctl.d/60-kernel_sysctl.conf"
+kernel_param: "kernel.randomize_va_space"
+kernel_value: "2"
+permanent_remediation: true

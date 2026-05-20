@@ -1,0 +1,6 @@
+playbook_name: "cis_1_1_2_6_2_nodev_var_log"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply the nodev mount option to /var/log partition by editing /etc/fstab: add 'nodev' to the fourth field (mounting options) for the /var/log partition. Expected result: The /var/log entry in /etc/fstab includes 'nodev' in its options."
+req_02: "Remount the /var/log partition with the updated options using command: `mount -o remount /var/log`. Expected result: The /var/log partition is remounted with the nodev option active."
+req_03: |
+  Verify the nodev option is set on /var/log partition using command: `mount | grep -E '\\s/var/log\\s' | grep -o 'nodev'`. Expected result: The output contains 'nodev'.

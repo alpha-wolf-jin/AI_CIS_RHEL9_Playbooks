@@ -1,0 +1,6 @@
+req_01: "Check if /etc/shells exists using command: `test -f /etc/shells`. Expected result: true"
+req_02: "Check permissions on /etc/shells are mode 644 or more restrictive using command: `stat -Lc '%a' /etc/shells`. Expected result: 644 or more restrictive (e.g., 600, 640, 644)"
+req_03: "Check owner of /etc/shells is root (UID 0) using command: `stat -Lc '%u' /etc/shells`. Expected result: 0"
+req_04: "Check group owner of /etc/shells is root (GID 0) using command: `stat -Lc '%g' /etc/shells`. Expected result: 0"
+req_05: "Summarize overall compliance status: all checks passed (permissions 644 or more restrictive, UID 0, GID 0). Expected result: compliant"
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

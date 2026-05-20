@@ -1,0 +1,7 @@
+playbook_name: "CIS_2.4.1.2_remediation"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if cron is installed using command: `if command -v cron >/dev/null 2>&1; then echo 'cron installed'; else echo 'cron not installed'; fi`. Expected result: 'cron installed'"
+req_02: "Apply ownership change on /etc/crontab using command: `chown root:root /etc/crontab`. Expected result: /etc/crontab is owned by root:root"
+req_03: "Apply permission change on /etc/crontab using command: `chmod og-rwx /etc/crontab`. Expected result: only the owner (root) has read/write access; group and others have no permissions"
+req_04: "Verify ownership and permissions on /etc/crontab using command: `stat -c '%U:%G %A' /etc/crontab`. Expected result: 'root:root -rw-------' (or similar indicating root ownership and 600 permissions)"
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,7 @@
+req_01: "Check if chrony is installed using command: `rpm -q chrony`. Expected result: package version is returned."
+req_02: |
+  Check if chrony is configured to run as root using command: `grep -Psi -- '^\\\\h*OPTIONS=\"?\\\\h*([^#\\n\\r]+\\\\h+)?-u\\\\h+root\\\\b' /etc/sysconfig/chronyd`. Expected result: no output (nothing returned).
+req_03: "Summarize overall compliance: chrony is not run as the root user if the first check passes and the second check returns no output."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+root_check_cmd: |
+  grep -Psi -- '^\h*OPTIONS="?\h*([^#\n\r]+\h+)?-u\h+root\b' /etc/sysconfig/chronyd

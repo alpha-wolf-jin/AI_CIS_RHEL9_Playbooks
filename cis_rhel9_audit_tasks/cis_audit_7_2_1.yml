@@ -1,0 +1,106 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_2_1.yml
+
+- name: "Req 01 - Check if /etc/passwd exists"
+  ansible.builtin.shell: test -f /etc/passwd
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Check if /etc/shadow exists"
+  ansible.builtin.shell: test -f /etc/shadow
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+
+- name: "Req 03 - Check all user accounts use shadowed passwords"
+  ansible.builtin.shell: "awk -F: '($2 != \"x\" ) { print \"User: \\\"\" $1 \"\\\" is not set to shadowed passwords \"}' /etc/passwd"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement details"
+  ansible.builtin.set_fact:
+    task_01_name: "Req 01 - Check if /etc/passwd exists"
+    task_01_cmd: "test -f /etc/passwd"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+    details_01: "{{ 'Completed successfully' if result_01.rc | default(-1) == 0 else 'Failed to execute' }}"
+    task_02_name: "Req 02 - Check if /etc/shadow exists"
+    task_02_cmd: "test -f /etc/shadow"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if result_02.rc | default(-1) == 0 else 'FAIL' }}"
+    details_02: "{{ 'Completed successfully' if result_02.rc | default(-1) == 0 else 'Failed to execute' }}"
+    task_03_name: "Req 03 - Check shadowed passwords using awk"
+    task_03_cmd: |
+      awk -F: '($2 != \"x\" ) { print \"User: \\\"\" $1 \"\\\" is not set to shadowed passwords \"}' /etc/passwd
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if (result_03.rc | default(-1) == 0) and (result_03.stdout | default('') | trim | length == 0) else 'FAIL' }}"
+    details_03: "{{ 'No violations found' if (result_03.rc | default(-1) == 0) and (result_03.stdout | default('') | trim | length == 0) else 'Shadowed password violation(s) detected' }}"
+
+- name: "Req 04 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_04_name: "Req 04 - Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: ""
+    status_04: "{{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' else 'FAIL' }}"
+    details_04: "{{ 'System is compliant with CIS 7.2.1' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' else 'System is non-compliant with CIS 7.2.1' }}"
+
+- name: "Set final cis_result variable"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_04 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 7.2.1"
+    - "Reference: CIS Benchmark checkpoint 7.2.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

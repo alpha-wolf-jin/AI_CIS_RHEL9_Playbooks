@@ -1,0 +1,8 @@
+playbook_name: "CIS_1_1_2_7_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+mount_point: "/var/log/audit"
+fstab_path: "/etc/fstab"
+req_01: "Check if a separate partition exists for /var/log/audit using command: `mount | grep /var/log/audit`. Expected result: output showing the partition is mounted."
+req_02: "Edit the /etc/fstab file and add nosuid to the fourth field (mounting options) for the /var/log/audit partition. Expected result: the line for /var/log/audit includes nosuid in the options."
+req_03: "Remount /var/log/audit with the configured options using command: `mount -o remount /var/log/audit`. Expected result: the partition is remounted with nosuid option."
+req_04: "Verify the nosuid option is set on /var/log/audit partition using command: `mount | grep /var/log/audit | grep nosuid`. Expected result: output shows the nosuid option is present."

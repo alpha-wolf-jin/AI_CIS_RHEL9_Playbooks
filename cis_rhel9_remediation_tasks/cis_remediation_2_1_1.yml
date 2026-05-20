@@ -1,0 +1,314 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Record autofs package installation status"
+  ansible.builtin.shell: "rpm -q --queryformat '%{NAME}' {{ autofs_package }} 2>/dev/null || echo not_installed"
+  args:
+    executable: /bin/bash
+  register: _snap_pkg
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save autofs package status to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_pkg.stdout | trim }}"
+    dest: "{{ backup_dir }}/autofs_package_status.txt"
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Record autofs service active state"
+  ansible.builtin.shell: "systemctl is-active {{ autofs_service }} 2>/dev/null || echo unknown"
+  args:
+    executable: /bin/bash
+  register: _snap_active
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save active state"
+  ansible.builtin.copy:
+    content: "{{ _snap_active.stdout | trim }}"
+    dest: "{{ backup_dir }}/autofs_active_state.txt"
+    force: false
+  tags: [snapshot]
+- name: "Snapshot - Record autofs service enabled/masked state"
+  ansible.builtin.shell: "systemctl is-enabled {{ autofs_service }} 2>/dev/null || echo unknown"
+  args:
+    executable: /bin/bash
+  register: _snap_enabled
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save enabled state"
+  ansible.builtin.copy:
+    content: "{{ _snap_enabled.stdout | trim }}"
+    dest: "{{ backup_dir }}/autofs_enabled_state.txt"
+    force: false
+  tags: [snapshot]
+
+- block:
+  - name: "Gather installed package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Determine if autofs package is installed"
+    ansible.builtin.set_fact:
+      autofs_installed: "{{ 'autofs' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 1 - Stop autofs service"
+    ansible.builtin.systemd:
+      name: "{{ autofs_service }}"
+      state: stopped
+    register: stop_result
+    failed_when: false
+    when: autofs_installed
+    tags: [execute]
+
+  - name: "Req 2 - Remove autofs package"
+    ansible.builtin.dnf:
+      name: "{{ autofs_package }}"
+      state: absent
+    register: remove_result
+    failed_when: false
+    when: autofs_installed
+    tags: [execute]
+
+  - name: "Req 3 - Mask autofs service"
+    ansible.builtin.systemd:
+      name: "{{ autofs_service }}"
+      masked: yes
+    register: mask_result
+    failed_when: false
+    when:
+    - autofs_installed
+    - "remove_result is defined and remove_result.rc | default(0) != 0"
+    tags: [execute]
+
+  - name: "Req 4 - Verify autofs service is stopped and masked or removed"
+    ansible.builtin.shell: systemctl is-active {{ autofs_service }} 2>/dev/null || echo "inactive"
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    when: autofs_installed
+    tags: [execute]
+
+  - name: "Store requirement 1 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Stop autofs service"
+      task_01_cmd: "systemctl stop autofs.service"
+      task_01_rc: "{{ stop_result.rc | default(-1) if autofs_installed else -1 }}"
+      data_01: "{{ stop_result.stdout | default('') | trim if autofs_installed else 'Skipped: package not installed' }}"
+      status_01: "{{ 'APPLIED' if autofs_installed and not stop_result.failed else ('SKIPPED' if not autofs_installed else 'FAILED') }}"
+      details_01: "{{ 'Service stopped' if autofs_installed and stop_result.changed else ('Already stopped' if autofs_installed else 'Not applicable') }}"
+    tags: [execute]
+
+  - name: "Store requirement 2 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Remove autofs package"
+      task_02_cmd: "dnf remove autofs"
+      task_02_rc: "{{ remove_result.rc | default(-1) if autofs_installed else -1 }}"
+      data_02: "{{ remove_result.stdout | default('') | trim if autofs_installed else 'Skipped: package not installed' }}"
+      status_02: "{{ 'APPLIED' if autofs_installed and remove_result is not skipped and remove_result.rc == 0 else ('SKIPPED' if not autofs_installed else 'FAILED') }}"
+      details_02: "{{ 'Package removed' if autofs_installed and remove_result.rc == 0 else ('Removal failed or skipped' if autofs_installed else 'Not applicable') }}"
+    tags: [execute]
+
+  - name: "Store requirement 3 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Mask autofs service"
+      task_03_cmd: "systemctl mask autofs.service"
+      task_03_rc: "{{ mask_result.rc | default(-1) if (autofs_installed and remove_result.rc | default(0) != 0) else -1 }}"
+      data_03: "{{ mask_result.stdout | default('') | trim if (autofs_installed and remove_result.rc | default(0) != 0) else ('Skipped: package removed successfully' if autofs_installed else 'Skipped: package not installed') }}"
+      status_03: "{{ 'APPLIED' if autofs_installed and remove_result.rc | default(0) != 0 and mask_result is not skipped and not mask_result.failed else ('SKIPPED' if not autofs_installed or (autofs_installed and remove_result.rc | default(0) == 0) else 'FAILED') }}"
+      details_03: "{{ 'Service masked' if (autofs_installed and remove_result.rc | default(0) != 0 and mask_result is not skipped and mask_result.changed) else ('Already masked' if (autofs_installed and remove_result.rc | default(0) != 0 and mask_result is not skipped and not mask_result.changed) else ('Not needed' if autofs_installed else 'Not applicable')) }}"
+    tags: [execute]
+
+  - name: "Store requirement 4 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify autofs service status"
+      task_04_cmd: "systemctl is-active autofs.service"
+      task_04_rc: "{{ verify_result.rc | default(-1) if autofs_installed else -1 }}"
+      data_04: "{{ verify_result.stdout | default('') | trim if autofs_installed else 'Skipped: package not installed' }}"
+      status_04: "{{ 'APPLIED' if autofs_installed and (verify_result.stdout | default('') | lower == 'inactive' or verify_result.rc | default(0) != 0) else ('SKIPPED' if not autofs_installed else 'FAILED') }}"
+      details_04: "{{ 'Service is inactive (dead) and masked or not found' if autofs_installed and (verify_result.stdout | default('') | lower == 'inactive' or verify_result.rc | default(0) != 0) else ('Service is still active' if autofs_installed else 'Skipped: package not installed') }}"
+    tags: [execute]
+
+  - name: "Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_04 | default('UNKNOWN') }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.1"
+      - "Reference: CIS Benchmark checkpoint 2.1.1"
+      - "========================================================"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') }}"
+      - "  Details: {{ details_01 | default('') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') }}"
+      - "  Details: {{ details_02 | default('') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') }}"
+      - "  Details: {{ details_03 | default('') }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') }}"
+      - "  Details: {{ details_04 | default('') }}"
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') }}"
+      - "  Details: {{ details_04 | default('') }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if autofs snapshot files exist (any one is enough)"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/autofs_package_status.txt"
+    register: _restore_snap_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original autofs package status"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/autofs_package_status.txt"
+    register: _restore_pkg_data
+    failed_when: false
+    when: _restore_snap_stat.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Read original autofs active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/autofs_active_state.txt"
+    register: _restore_active_data
+    failed_when: false
+    when: _restore_snap_stat.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Read original autofs enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/autofs_enabled_state.txt"
+    register: _restore_enabled_data
+    failed_when: false
+    when: _restore_snap_stat.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Set facts from saved states"
+    ansible.builtin.set_fact:
+      _restore_pkg_state: "{{ _restore_pkg_data.content | b64decode | trim if _restore_pkg_data.content is defined else '' }}"
+      _restore_active_state: "{{ _restore_active_data.content | b64decode | trim if _restore_active_data.content is defined else '' }}"
+      _restore_enabled_state: "{{ _restore_enabled_data.content | b64decode | trim if _restore_enabled_data.content is defined else '' }}"
+    tags: [restore]
+
+  - name: "Restore - Check if autofs package is currently installed"
+    ansible.builtin.shell: "rpm -q --queryformat '%{NAME}' {{ autofs_package }} 2>/dev/null || echo not_installed"
+    args:
+      executable: /bin/bash
+    register: _restore_curr_pkg
+    failed_when: false
+    changed_when: false
+    when: _restore_snap_stat.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Reinstall autofs package if was originally installed"
+    ansible.builtin.dnf:
+      name: "{{ _restore_pkg_state | default('') }}"
+      state: present
+    when:
+    - _restore_snap_stat.stat.exists | default(false)
+    - _restore_pkg_state | default('') not in ['', 'not_installed']
+    - _restore_curr_pkg.stdout | default('') == 'not_installed'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Unmask autofs service (to allow other state changes)"
+    ansible.builtin.shell: "systemctl unmask {{ autofs_service }} 2>/dev/null || true"
+    args:
+      executable: /bin/bash
+    failed_when: false
+    when: _restore_snap_stat.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Re-mask autofs service if originally masked"
+    ansible.builtin.systemd:
+      name: "{{ autofs_service }}"
+      masked: yes
+    when:
+    - _restore_snap_stat.stat.exists | default(false)
+    - _restore_enabled_state | default('') == 'masked'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Enable autofs service if originally enabled"
+    ansible.builtin.systemd:
+      name: "{{ autofs_service }}"
+      enabled: yes
+    when:
+    - _restore_snap_stat.stat.exists | default(false)
+    - _restore_enabled_state | default('') == 'enabled'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Disable autofs service if originally disabled"
+    ansible.builtin.systemd:
+      name: "{{ autofs_service }}"
+      enabled: no
+    when:
+    - _restore_snap_stat.stat.exists | default(false)
+    - _restore_enabled_state | default('') == 'disabled'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Start autofs service if originally active"
+    ansible.builtin.systemd:
+      name: "{{ autofs_service }}"
+      state: started
+    when:
+    - _restore_snap_stat.stat.exists | default(false)
+    - _restore_active_state | default('') == 'active'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Stop autofs service if originally inactive"
+    ansible.builtin.systemd:
+      name: "{{ autofs_service }}"
+      state: stopped
+    when:
+    - _restore_snap_stat.stat.exists | default(false)
+    - _restore_active_state | default('') == 'inactive'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

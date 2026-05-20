@@ -1,0 +1,7 @@
+playbook_name: "cis_6_3_3_6_privileged_commands"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_rules_file: "/etc/audit/rules.d/50-privileged.rules"
+temp_script: "/tmp/remediate_privileged_audit.sh"
+req_01: "Run the provided remediation script to fix Ensure use of privileged commands are collected"
+req_02: "VERIFY - Run audit check to confirm Ensure use of privileged commands are collected is properly configured. Expected result: System is compliant"
+req_03: "Generate remediation report"

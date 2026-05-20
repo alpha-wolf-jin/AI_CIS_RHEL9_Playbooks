@@ -1,0 +1,298 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_1_4.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Check if hfsplus.conf.present backup exists"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/hfsplus.conf.present"
+  register: _sg_present_backup
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Check if hfsplus.conf.absent marker exists"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/hfsplus.conf.absent"
+  register: _sg_absent_marker
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Check if hfsplus_load.state exists"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/hfsplus_load.state"
+  register: _sg_load_state
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Restore config file from backup"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/hfsplus.conf.present"
+    dest: "/etc/modprobe.d/hfsplus.conf"
+    remote_src: true
+  when: _sg_present_backup.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Delete config file (was absent previously)"
+  ansible.builtin.file:
+    path: "/etc/modprobe.d/hfsplus.conf"
+    state: absent
+  when: _sg_absent_marker.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Reload hfsplus if previously loaded"
+  ansible.builtin.shell: "modprobe hfsplus 2>/dev/null"
+  args:
+    executable: /bin/bash
+  when: _sg_load_state.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/modprobe.d/hfsplus.conf exists"
+  ansible.builtin.stat:
+    path: "/etc/modprobe.d/hfsplus.conf"
+  register: _sg_conf_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/modprobe.d/hfsplus.conf"
+  ansible.builtin.copy:
+    src: "/etc/modprobe.d/hfsplus.conf"
+    dest: "{{ state_guard_dir }}/hfsplus.conf.present"
+    remote_src: true
+  when: _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark /etc/modprobe.d/hfsplus.conf as absent"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}/hfsplus.conf.absent"
+    state: touch
+  when: not _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Capture current hfsplus module load state"
+  ansible.builtin.shell: lsmod | grep -q '^hfsplus ' && echo 'loaded' > "{{ state_guard_dir }}/hfsplus_load.state"
+  args:
+    executable: /bin/bash
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.file:
+    path: "{{ state_guard_flag }}"
+    state: touch
+  tags: [snapshot]
+
+- block:
+        # === EXECUTE PHASE ===
+
+  - name: "Req 01 - Copy remediation script to target"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+
+        {
+           unset a_output2; l_output3="" l_dl="" # unset arrays and clear variables
+           l_mod_name="hfsplus" # set module name
+           l_mod_type="fs" # set module type
+           l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
+           f_module_fix()
+           {
+              l_dl="y" # Set to ignore duplicate checks
+              a_showconfig=() # Create array with modprobe output
+              while IFS= read -r l_showconfig; do
+                 a_showconfig+=("$l_showconfig")
+              done < <(modprobe --showconfig | grep -P -- '\b(install|blacklist)\h+'"${l_mod_name//-/_}"'\b')
+              if  lsmod | grep "$l_mod_name" &> /dev/null; then # Check if the module is currently loaded
+                 a_output2+=(" - unloading kernel module: \"$l_mod_name\"")
+                 modprobe -r "$l_mod_name" 2>/dev/null; rmmod "$l_mod_name" 2>/dev/null
+              fi
+              if ! grep -Pq -- '\binstall\h+'"${l_mod_name//- /_}"'\h+\/bin\/(true|false)\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - setting kernel  module: \"$l_mod_name\" to \"/bin/false\"")
+                 printf '%s\n' "install $l_mod_name /bin/false" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+              if ! grep -Pq -- '\bblacklist\h+'"${l_mod_name//-/_}"'\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - denylisting kernel  module: \"$l_mod_name\"")
+                 printf '%s\n' "blacklist $l_mod_name" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+           }
+           for l_mod_base_directory in $l_mod_path; do # Check if the module exists on the system
+              if [ -d "$l_mod_base_directory/${l_mod_name/-/\/}" ] && [ -n "$(ls -A $l_mod_base_directory/${l_mod_name/-/\/})" ]; then
+                 l_output3="$l_output3\n  - \"$l_mod_base_directory\""
+                 [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
+                 [ "$l_dl" != "y" ] && f_module_fix
+              else
+                 echo -e " - kernel module: \"$l_mod_name\" doesn't exist in \"$l_mod_base_directory\""
+              fi
+           done
+           [ -n "$l_output3" ] && echo -e "\n\n -- INFO --\n - module: \"$l_mod_name\" exists in:$l_output3"
+           [ "${#a_output2[@]}" -gt 0 ] && printf '%s\n' "${a_output2[@]}"
+           echo -e "\n - remediation of kernel module: \"$l_mod_name\" complete\n"
+        }
+        {% endraw %}
+      dest: "{{ script_dest }}"
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Run remediation script"
+    ansible.builtin.shell: "/bin/bash {{ script_dest }}"
+    args:
+      executable: /bin/bash
+    register: result_1
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Remediation script for hfsplus kernel module"
+      task_01_cmd: "/bin/bash {{ script_dest }}"
+      task_01_rc: "{{ result_1.rc | default(-1) }}"
+      data_01: "{{ result_1.stdout | default('') | trim }}"
+      status_01: "{{ ('APPLIED' if (result_1.rc | default(-1)) == 0 else 'FAILED') | trim }}"
+      details_01: "{{ ('Remediation script executed successfully' if (result_1.rc | default(-1)) == 0 else 'Script failed with exit code ' + (result_1.rc | default(-1) | string)) | trim }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify hfsplus kernel module is not available"
+    ansible.builtin.shell: |
+      MODULE="{{ kernel_module }}"
+      if lsmod | grep -q "^${MODULE} "; then
+        echo "FAIL - module loaded"
+        exit 1
+      fi
+      MOD_PATH="/lib/modules/$(uname -r)/kernel/fs/${MODULE}"
+      if [ -d "${MOD_PATH}" ] && [ -n "$(ls -A "${MOD_PATH}" 2>/dev/null)" ]; then
+        # module is present on disk – config file must exist and be correct
+        if [ -f /etc/modprobe.d/${MODULE}.conf ]; then
+          if grep -q "^install ${MODULE} /bin/false" /etc/modprobe.d/${MODULE}.conf && \
+             grep -q "^blacklist ${MODULE}" /etc/modprobe.d/${MODULE}.conf; then
+            echo "COMPLIANT"
+            exit 0
+          else
+            echo "FAIL - conf file missing required lines"
+            exit 1
+          fi
+        else
+          echo "FAIL - conf file not found"
+          exit 1
+        fi
+      else
+        # module not available on disk – no blacklist required
+        echo "COMPLIANT (module not available)"
+        exit 0
+      fi
+    args:
+      executable: /bin/bash
+    register: result_2
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify hfsplus kernel module is not available"
+      task_02_cmd: "Check if module loaded; if present on disk, verify config; if absent, system is compliant"
+      task_02_rc: "{{ result_2.rc | default(-1) }}"
+      data_02: "{{ result_2.stdout | default('') | trim }}"
+      status_02: "{{ ('APPLIED' if (result_2.rc | default(-1)) == 0 else 'FAILED') | trim }}"
+      details_02: "{{ ('System is compliant' if (result_2.rc | default(-1)) == 0 else 'System is not compliant - ' + (result_2.stdout | default('') | trim)) | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.1.4"
+      - "Reference: CIS Benchmark checkpoint 1.1.1.4"
+      - ""
+      - "Requirement 01 - {{ req_01 }}"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "Requirement 02 - {{ req_02 }}"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ ('PASS' if status_02 == 'APPLIED' else 'FAIL') }}"
+      - "  Details: {{ details_02 }}"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if hfsplus.conf.present backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/hfsplus.conf.present"
+    register: _sg_restore_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if hfsplus.conf.absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/hfsplus.conf.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read hfsplus load state"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/hfsplus_load.state"
+    register: _sg_restore_load_state
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore config file from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/hfsplus.conf.present"
+      dest: "/etc/modprobe.d/hfsplus.conf"
+      remote_src: true
+    when: _sg_restore_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete config file (was absent previously)"
+    ansible.builtin.file:
+      path: "/etc/modprobe.d/hfsplus.conf"
+      state: absent
+    when: _sg_restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Reload hfsplus if previously loaded"
+    ansible.builtin.shell: "modprobe hfsplus 2>/dev/null"
+    args:
+      executable: /bin/bash
+    when:
+    - "_sg_restore_load_state is not failed"
+    - "_sg_restore_load_state.content is defined"
+    - "(_sg_restore_load_state.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,60 @@
+req_01: "Check if the system has any filesystem kernel modules available by running the script. Expected result: The script outputs a list of available modules."
+req_02: "Check if any filesystem kernel modules with known CVEs are currently mounted using the script. Expected result: The script warns if a module with a CVE is mounted."
+req_03: "Check if any filesystem kernel modules are not fully disabled (i.e., not blacklisted or not set to /bin/false or /bin/true) using the script. Expected result: The script lists modules that are not fully disabled."
+req_04: "Check if any filesystem kernel modules are currently loaded into the kernel using the script. Expected result: The script lists loaded modules."
+req_05: "Check the overall compliance status by reviewing the script output. Expected result: The script prints either 'No unused filesystem kernel modules are enabled' or lists modules requiring review."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+audit_script: "/tmp/cis_1_1_1_9_audit.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     a_output=(); a_output2=(); a_modprobe_config=(); a_excluded=(); a_available_modules=()
+     a_ignore=("xfs" "vfat" "ext2" "ext3" "ext4")
+     a_cve_exists=("afs" "ceph" "cifs" "exfat" "ext" "fat" "fscache" "fuse" "gfs2" "nfs_common" "nfsd" "smbfs_common")
+     f_module_chk()
+     {
+        l_out2=""; grep -Pq -- "\b$l_mod_name\b" <<< "${a_cve_exists[*]}" && l_out2=" <- CVE exists!"
+        if ! grep -Pq -- '\bblacklist\h+'"$l_mod_name"'\b' <<< "${a_modprobe_config[*]}"; then
+           a_output2+=("  - Kernel module: \"$l_mod_name\" is not fully disabled $l_out2")
+        elif ! grep -Pq -- '\binstall\h+'"$l_mod_name"'\h+\/bin\/(false|true)\b' <<< "${a_modprobe_config[*]}"; then
+           a_output2+=("  - Kernel module: \"$l_mod_name\" is not fully disabled $l_out2")
+        fi
+        if lsmod | grep "$l_mod_name" &> /dev/null; then
+           a_output2+=("  - Kernel module: \"$l_mod_name\" is loaded")
+        fi
+     }
+     while IFS= read -r -d $'\0' l_module_dir; do
+        a_available_modules+=("$(basename "$l_module_dir")")
+     done < <(find "$(readlink -f /lib/modules/"$(uname -r)"/kernel/fs)" -mindepth 1 -maxdepth 1 -type d ! -empty -print0)
+     while IFS= read -r l_exclude; do
+        if grep -Pq -- "\b$l_exclude\b" <<< "${a_cve_exists[*]}"; then
+           a_output2+=("  - ** WARNING: kernel module: \"$l_exclude\" has a CVE and is currently mounted! **")
+        elif
+           grep -Pq -- "\b$l_exclude\b" <<< "${a_available_modules[*]}"; then
+           a_output+=("  - Kernel module: \"$l_exclude\" is currently mounted - do NOT unload or disable")
+        fi
+        ! grep -Pq -- "\b$l_exclude\b" <<< "${a_ignore[*]}" && a_ignore+=("$l_exclude")
+     done < <(findmnt -knD | awk '{print $2}' | sort -u)
+     while IFS= read -r l_config; do
+        a_modprobe_config+=("$l_config")
+     done < <(modprobe --showconfig | grep -P '^\h*(blacklist|install)')
+     for l_mod_name in "${a_available_modules[@]}"; do
+        [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
+        if grep -Pq -- "\b$l_mod_name\b" <<< "${a_ignore[*]}"; then
+           a_excluded+=(" - Kernel module: \"$l_mod_name\"")
+        else
+           f_module_chk
+        fi
+     done
+     [ "${#a_excluded[@]}" -gt 0 ] && printf '%s\n' "" " -- INFO --" \
+     "The following intentionally skipped" \
+      "${a_excluded[@]}"
+     if [ "${#a_output2[@]}" -le 0 ]; then
+        printf '%s\n' "" "  - No unused filesystem kernel modules are enabled" "${a_output[@]}" ""
+     else
+        printf '%s\n' "" "-- Audit Result: --" "  ** REVIEW the following **" "${a_output2[@]}"
+        [ "${#a_output[@]}" -gt 0 ] && printf '%s\n' "" "-- Correctly set: --" "${a_output[@]}" ""
+     fi
+  }
+  {% endraw %}

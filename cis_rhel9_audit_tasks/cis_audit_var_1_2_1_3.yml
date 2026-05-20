@@ -1,0 +1,5 @@
+req_01: "Check if dnf is installed using command: `which dnf || rpm -q dnf`. Expected result: dnf is installed."
+req_02: "Check global repo_gpgcheck configuration in /etc/dnf/dnf.conf using command: `grep ^repo_gpgcheck /etc/dnf/dnf.conf`. Expected result: repo_gpgcheck=1"
+req_03: 'Check per-repository configuration for repo_gpgcheck disabled (excluding fedoraproject.org) using command: `REPO_URL="fedoraproject.org"; for repo in $(grep -l "repo_gpgcheck=0" /etc/yum.repos.d/* ); do if ! grep "${REPO_URL}" "${repo}" &>/dev/null; then echo "${repo}"; fi; done`. Expected result: No output (no repositories with repo_gpgcheck=0 outside excluded URLs).'
+req_04: "Summarize overall compliance status: All checks passed; repo_gpgcheck is globally activated and no unauthorized repository disables it."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

@@ -1,0 +1,495 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_13.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/rsyncd.conf exists"
+  ansible.builtin.stat:
+    path: /etc/rsyncd.conf
+  register: _rsyncd_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/rsyncd.conf if present"
+  ansible.builtin.copy:
+    src: /etc/rsyncd.conf
+    dest: "{{ backup_dir }}/rsyncd.conf.bak"
+    remote_src: true
+  when: _rsyncd_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Record active state of rsyncd.socket"
+  ansible.builtin.shell: |
+    systemctl is-active rsyncd.socket && echo active > {{ backup_dir }}/rsyncd.socket.active || echo inactive > {{ backup_dir }}/rsyncd.socket.active
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Record active state of rsyncd.service"
+  ansible.builtin.shell: |
+    systemctl is-active rsyncd.service && echo active > {{ backup_dir }}/rsyncd.service.active || echo inactive > {{ backup_dir }}/rsyncd.service.active
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Record enabled state of rsyncd.socket"
+  ansible.builtin.shell: |
+    systemctl is-enabled rsyncd.socket 2>/dev/null > {{ backup_dir }}/rsyncd.socket.enabled || echo unknown > {{ backup_dir }}/rsyncd.socket.enabled
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Record enabled state of rsyncd.service"
+  ansible.builtin.shell: |
+    systemctl is-enabled rsyncd.service 2>/dev/null > {{ backup_dir }}/rsyncd.service.enabled || echo unknown > {{ backup_dir }}/rsyncd.service.enabled
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    tags: [execute]
+
+  - name: "Set rsync-daemon installation flag"
+    set_fact:
+      _rsync_installed: "{{ 'rsync-daemon' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: ""
+      status_01: "ERROR"
+      details_01: ""
+      data_02: ""
+      status_02: "ERROR"
+      details_02: ""
+      data_03: ""
+      status_03: "ERROR"
+      details_03: ""
+      data_04: ""
+      status_04: "ERROR"
+      details_04: ""
+      data_05: ""
+      status_05: "ERROR"
+      details_05: ""
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+    tags: [execute]
+
+# Requirement 01: Stop services (only when package installed)
+  - name: "Req 01 - Stop rsyncd.socket and rsyncd.service"
+    shell: |
+      set -o pipefail
+      systemctl stop rsyncd.socket rsyncd.service 2>&1
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: true
+    when: _rsync_installed | bool
+    tags: [execute]
+
+  - name: "Store requirement 01 data and status"
+    set_fact:
+      task_01_name: "Stop rsyncd.socket and rsyncd.service"
+      task_01_cmd: "systemctl stop rsyncd.socket rsyncd.service"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {%- if result_01 is skipped -%}SKIP
+        {%- elif result_01.rc is defined and result_01.rc == 0 -%}PASS
+        {%- elif 'not loaded' in result_01.stderr | default('') or 'not found' in result_01.stderr | default('') -%}SKIP
+        {%- else -%}FAIL
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      details_01: >-
+        {%- if result_01 is skipped -%}rsync-daemon not installed, step skipped
+        {%- elif status_01 | trim == 'PASS' -%}Services stopped successfully
+        {%- elif status_01 | trim == 'SKIP' -%}One or both units do not exist
+        {%- else -%}Failed to stop services
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 02: Remove package (with dependency check)
+  - name: "Check if rsync-daemon is a dependency of other packages"
+    shell: |
+      set -o pipefail
+      rpm -q --whatrequires rsync-daemon 2>/dev/null | grep -v '^no package requires' || true
+    args:
+      executable: /bin/bash
+    register: rsync_dep_check
+    failed_when: false
+    changed_when: false
+    when: _rsync_installed | bool
+    tags: [execute]
+
+  - name: "Req 02 - Remove rsync-daemon package"
+    shell: |
+      set -o pipefail
+      dnf remove -y rsync-daemon 2>&1
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: true
+    when:
+    - _rsync_installed | bool
+    - "'rsync-daemon' in ansible_facts.packages"
+    - rsync_dep_check.stdout_lines | default([]) | length == 0
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remove rsync-daemon package"
+      task_02_cmd: "dnf remove -y rsync-daemon"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {%- if result_02 is skipped -%}SKIP
+        {%- elif result_02.rc == 0 -%}PASS
+        {%- else -%}FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if result_02 is skipped -%}Package not installed, not required by other packages, or skipped due to missing rsync-daemon
+        {%- elif result_02.rc == 0 -%}Package removed successfully
+        {%- else -%}Failed to remove package
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 03: Mask services
+  - name: "Req 03 - Mask rsyncd.socket and rsyncd.service"
+    shell: |
+      set -o pipefail
+      systemctl mask rsyncd.socket rsyncd.service 2>&1
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: true
+    when: _rsync_installed | bool
+    tags: [execute]
+
+  - name: "Store requirement 03 data and status"
+    set_fact:
+      task_03_name: "Mask rsyncd.socket and rsyncd.service"
+      task_03_cmd: "systemctl mask rsyncd.socket rsyncd.service"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: >-
+        {%- if result_03 is skipped -%}SKIP
+        {%- elif result_03.rc == 0 -%}PASS
+        {%- elif 'not loaded' in result_03.stderr | default('') or 'not found' in result_03.stderr | default('') -%}SKIP
+        {%- else -%}FAIL
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      details_03: >-
+        {%- if result_03 is skipped -%}rsync-daemon not installed, step skipped
+        {%- elif status_03 | trim == 'PASS' -%}Services masked successfully
+        {%- elif status_03 | trim == 'SKIP' -%}One or both units do not exist
+        {%- else -%}Failed to mask services
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 04: Verify services inactive (separate checks to handle missing units)
+  - name: "Req 04 - Verify rsyncd.socket inactive"
+    shell: systemctl is-active rsyncd.socket 2>/dev/null && echo active || echo inactive
+    args:
+      executable: /bin/bash
+    register: result_04a
+    failed_when: false
+    changed_when: false
+    when: _rsync_installed | bool
+    tags: [execute]
+
+  - name: "Req 04 - Verify rsyncd.service inactive"
+    shell: systemctl is-active rsyncd.service 2>/dev/null && echo active || echo inactive
+    args:
+      executable: /bin/bash
+    register: result_04b
+    failed_when: false
+    changed_when: false
+    when: _rsync_installed | bool
+    tags: [execute]
+
+  - name: "Store requirement 04 data and status"
+    set_fact:
+      task_04_name: "Verify rsyncd.socket and rsyncd.service are inactive"
+      task_04_cmd: "systemctl is-active rsyncd.socket rsyncd.service (checked individually)"
+      task_04_rc: 0
+      data_04: >-
+        {%- if _rsync_installed -%}
+          {{ (result_04a.stdout | default('') | trim) + ' ' + (result_04b.stdout | default('') | trim) }}
+        {%- else -%}
+          rsync-daemon not installed, services inactive by default
+        {%- endif -%}
+      status_04: >-
+        {%- if not _rsync_installed -%}PASS
+        {%- elif result_04a is skipped or result_04b is skipped -%}ERROR
+        {%- elif result_04a.stdout | default('') | trim == 'inactive' and result_04b.stdout | default('') | trim == 'inactive' -%}PASS
+        {%- else -%}FAIL
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      details_04: >-
+        {%- if not _rsync_installed -%}rsync-daemon not installed, services inherently inactive
+        {%- elif status_04 | trim == 'PASS' -%}Both services are inactive
+        {%- else -%}One or both services are still active or cannot be verified
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 05: Verify package not installed
+  - name: "Req 05 - Verify rsync-daemon is not installed"
+    shell: |
+      set -o pipefail
+      rpm -q rsync-daemon 2>&1 || true
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    when: _rsync_installed | bool
+    tags: [execute]
+
+  - name: "Store requirement 05 data and status"
+    set_fact:
+      task_05_name: "Verify rsync-daemon is not installed"
+      task_05_cmd: "rpm -q rsync-daemon"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: >-
+        {%- if _rsync_installed -%}{{ result_05.stdout | default('') | trim }}
+        {%- else -%}package rsync-daemon is not installed
+        {%- endif -%}
+      status_05: >-
+        {%- if not _rsync_installed -%}PASS
+        {%- elif result_05 is skipped -%}ERROR
+        {%- elif 'package rsync-daemon is not installed' in result_05.stdout | default('') -%}PASS
+        {%- else -%}FAIL
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      details_05: >-
+        {%- if not _rsync_installed -%}Package rsync-daemon was never installed
+        {%- elif status_05 | trim == 'PASS' -%}Package rsync-daemon is not installed
+        {%- else -%}Package rsync-daemon is still installed
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 06: Set cis_result
+  - name: "Req 06 - Store final remediation result"
+    set_fact:
+      cis_result: >-
+        {%- if not _rsync_installed -%}SKIP
+        {%- elif status_04 | trim == 'PASS' and status_05 | trim == 'PASS' -%}PASS
+        {%- elif status_04 | trim == 'FAIL' or status_05 | trim == 'FAIL' -%}FAIL
+        {%- else -%}ERROR
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 07: Generate report
+  - name: "Req 07 - Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.13"
+      - "Reference: CIS Benchmark checkpoint 2.1.13"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ cis_result | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# --- Restore config file ---
+  - name: "Restore - Check if rsyncd.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rsyncd.conf.bak"
+    register: _restore_rsyncd_conf
+    tags: [restore]
+
+  - name: "Restore - Overwrite /etc/rsyncd.conf with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/rsyncd.conf.bak"
+      dest: /etc/rsyncd.conf
+      remote_src: true
+    when: _restore_rsyncd_conf.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+# --- Restore runtime state: rsyncd.socket ---
+  - name: "Restore - Check rsyncd.socket active state file"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rsyncd.socket.active"
+    register: _restore_sock_active_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read rsyncd.socket active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/rsyncd.socket.active"
+    register: _restore_sock_active_slurp
+    when: _restore_sock_active_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Start rsyncd.socket if it was active"
+    ansible.builtin.shell: systemctl start rsyncd.socket 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_sock_active_slurp.content is defined
+    - (_restore_sock_active_slurp.content | b64decode | trim) == 'active'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check rsyncd.socket enabled state file"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rsyncd.socket.enabled"
+    register: _restore_sock_enabled_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read rsyncd.socket enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/rsyncd.socket.enabled"
+    register: _restore_sock_enabled_slurp
+    when: _restore_sock_enabled_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Mask rsyncd.socket if it was masked"
+    ansible.builtin.shell: systemctl mask rsyncd.socket 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_sock_enabled_slurp.content is defined
+    - (_restore_sock_enabled_slurp.content | b64decode | trim) == 'masked'
+    failed_when: false
+    tags: [restore]
+
+# --- Restore runtime state: rsyncd.service ---
+  - name: "Restore - Check rsyncd.service active state file"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rsyncd.service.active"
+    register: _restore_svc_active_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read rsyncd.service active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/rsyncd.service.active"
+    register: _restore_svc_active_slurp
+    when: _restore_svc_active_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Start rsyncd.service if it was active"
+    ansible.builtin.shell: systemctl start rsyncd.service 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_svc_active_slurp.content is defined
+    - (_restore_svc_active_slurp.content | b64decode | trim) == 'active'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check rsyncd.service enabled state file"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rsyncd.service.enabled"
+    register: _restore_svc_enabled_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read rsyncd.service enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/rsyncd.service.enabled"
+    register: _restore_svc_enabled_slurp
+    when: _restore_svc_enabled_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Mask rsyncd.service if it was masked"
+    ansible.builtin.shell: systemctl mask rsyncd.service 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_svc_enabled_slurp.content is defined
+    - (_restore_svc_enabled_slurp.content | b64decode | trim) == 'masked'
+    failed_when: false
+    tags: [restore]
+
+# Cleanup
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

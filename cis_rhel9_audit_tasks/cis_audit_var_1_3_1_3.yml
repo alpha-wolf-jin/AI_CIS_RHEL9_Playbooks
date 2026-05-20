@@ -1,0 +1,6 @@
+req_01: "Check if SELinux is installed using command: `rpm -q selinux-policy-targeted`. Expected result: package version is returned."
+req_02: |
+  Check SELinux policy type configuration in /etc/selinux/config using command: `grep -E '^\\s*SELINUXTYPE=(targeted|mls)\\b' /etc/selinux/config`. Expected result: SELINUXTYPE=targeted or SELINUXTYPE=mls
+req_03: "Check the currently loaded SELinux policy using command: `sestatus | grep 'Loaded policy name:'`. Expected result: Loaded policy name: targeted or Loaded policy name: mls"
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if SELinux is not installed, FAIL if SELinux is installed but policy type is not targeted or mls."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

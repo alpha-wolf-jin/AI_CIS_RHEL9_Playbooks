@@ -1,0 +1,10 @@
+req_01: "Check if a separate partition exists for /var using command: `findmnt -kn /var`. Expected result: output should contain a mount point for /var."
+req_02: "Check if the nodev option is set on the /var partition using command: `findmnt -kn /var | grep -v nodev`. Expected result: no output returned."
+req_03: "Summarize overall compliance: if both checks pass, the system is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+mount_point: "/var"
+mount_option: "nodev"
+# Expected AI verification statuses for alignment check
+expected_ai_status_01: "PASS"
+expected_ai_status_02: "FAIL"
+expected_ai_status_03: "FAIL"

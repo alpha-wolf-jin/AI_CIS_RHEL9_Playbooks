@@ -1,0 +1,22 @@
+req_01: "Check if rsyslog is installed using command: `dpkg -l | grep rsyslog || rpm -q rsyslog`. Expected result: package is installed."
+req_02: "Check if systemd-journald is configured to forward logs to rsyslog using command: `systemd-analyze cat-config systemd/journald.conf systemd/journald.conf.d/* | grep -E '^ForwardToSyslog=yes'`. Expected result: ForwardToSyslog=yes"
+req_03: "Summarize overall compliance: if both checks pass, the system is compliant; otherwise, it is non-compliant."
+task_01_name: ""
+task_01_cmd: ""
+task_01_rc: -1
+data_01: ""
+status_01: "UNKNOWN"
+details_01: ""
+task_02_name: ""
+task_02_cmd: ""
+task_02_rc: -1
+data_02: ""
+status_02: "UNKNOWN"
+details_02: ""
+task_03_name: "Summarize compliance"
+task_03_cmd: "N/A"
+task_03_rc: 0
+data_03: ""
+status_03: "UNKNOWN"
+details_03: ""
+prereq_met: false

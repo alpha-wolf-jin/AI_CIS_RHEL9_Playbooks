@@ -1,0 +1,133 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_3_3_10.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- block:
+  - name: "Req 01 - Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+
+  - name: "Req 01 - Set package installation status"
+    ansible.builtin.set_fact:
+      package_installed: "{{ ansible_facts.packages is defined and 'systemd' in ansible_facts.packages }}"
+
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: package_installed | bool
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    when: package_installed | bool
+    failed_when: false
+    changed_when: false
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute audit script for tcp syncookies"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc if audit_result is defined else -1 }}"
+      data_01: "{{ (audit_result.stdout | default('') if audit_result is defined else '') | trim }}"
+      status_01: "{{ ('SKIPPED' if not package_installed else 'PASS' if audit_result is defined and audit_result.rc == 0 else 'FAIL' if audit_result is defined else 'UNKNOWN') | trim }}"
+      details_01: "{{ ('Systemd package not installed; audit script skipped' if not package_installed else ('Script executed successfully' if audit_result is defined and audit_result.rc == 0 else ('Script execution failed with exit code ' ~ audit_result.rc) if audit_result is defined else 'Unknown')) | trim }}"
+
+  - name: "Req 02 - Determine compliance status from script output"
+    ansible.builtin.set_fact:
+      status_02: "{{ ('SKIPPED' if not package_installed else ('PASS' if '** PASS **' in (audit_result.stdout | default('')) else 'FAIL' if '** FAIL **' in (audit_result.stdout | default('')) else 'UNKNOWN') if audit_result is defined else 'UNKNOWN') | trim }}"
+      details_02: "{{ ('Audit not performed (systemd not available)' if not package_installed else ('TCP syncookies is correctly enabled' if '** PASS **' in (audit_result.stdout | default('')) else 'TCP syncookies is not enabled or misconfigured' if '** FAIL **' in (audit_result.stdout | default('')) else 'Unable to determine compliance from script output') if audit_result is defined else 'Unknown') | trim }}"
+      task_02_name: "Parse audit script output for PASS/FAIL"
+      task_02_cmd: "N/A (set_fact)"
+      task_02_rc: 0
+      data_02: "{{ (audit_result.stdout | default('') if audit_result is defined else '') | trim }}"
+
+  - name: "Set report generation details"
+    ansible.builtin.set_fact:
+      task_03_name: "Generate audit report"
+      task_03_cmd: "debug msg"
+      task_03_rc: 0
+      data_03: "Audit report generated"
+      status_03: "PASS"
+      details_03: "Report generated successfully"
+
+  - name: "Set overall audit execution status"
+    ansible.builtin.set_fact:
+      overall_status: "{{ status_02 | trim }}"
+      overall_details: "{{ ('net.ipv4.tcp_syncookies is not set in an included file – CIS checkpoint 3.3.10 is NOT compliant' if status_02 | trim == 'FAIL' else 'net.ipv4.tcp_syncookies is correctly enabled and durable across reboots' if status_02 | trim == 'PASS' else 'Audit skipped because required systemd package is not installed' if status_02 | trim == 'SKIPPED' else 'Compliance could not be determined (status: ' ~ (status_02 | trim) ~ ')') | trim }}"
+
+  - name: "Store final result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ overall_status | trim }}"
+      cis_details: "{{ overall_details | trim }}"
+
+  - name: "Req 03 - Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 3.3.10"
+      - "Reference: CIS Benchmark checkpoint 3.3.10"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ cis_details | default('Not evaluated') | trim }}"
+      - "========================================================"
+
+  always:
+  - name: "Cleanup - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    failed_when: false
+    changed_when: false

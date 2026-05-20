@@ -1,0 +1,8 @@
+req_01: "Check if /etc/issue exists using command: `test -f /etc/issue && echo 'exists'`. Expected result: exists"
+req_02: "Check file permissions of /etc/issue using command: `stat -Lc 'Access: (%#a/%A)  Uid: ( %u/ %U) Gid: { %g/ %G)' /etc/issue`. Expected result: Access: (0644/-rw-r--r--)  Uid: ( 0/ root) Gid: { 0/ root)"
+req_03: "Verify that the access permissions are 644 or more restrictive using command: `stat -Lc '%a' /etc/issue`. Expected result: 644 or a more restrictive value (e.g., 600, 640)"
+req_04: "Verify that the Uid is 0/root using command: `stat -Lc '%u' /etc/issue`. Expected result: 0"
+req_05: "Verify that the Gid is 0/root using command: `stat -Lc '%g' /etc/issue`. Expected result: 0"
+req_06: "Summarize overall compliance status: if all checks pass, then compliant; otherwise, non-compliant."
+expected_stat_output: "Access: (0644/-rw-r--r--)  Uid: ( 0/ root) Gid: { 0/ root)"
+target_file: "/etc/issue"

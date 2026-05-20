@@ -1,0 +1,246 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_15.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "ERROR"
+    details_07: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+# Requirement 1
+- name: "Req 01 - Check if telnet-server package is installed"
+  shell: rpm -q {{ package_name }}
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    telnet_installed: "{{ result_01.rc == 0 }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc != 0 else 'FAIL' }}"
+    details_01: "{{ 'Package not installed' if result_01.rc != 0 else 'Package is installed' }}"
+    task_01_name: "Check if telnet-server package is installed"
+    task_01_cmd: "rpm -q {{ package_name }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+
+# Requirement 2 (conditional on package installed)
+- name: "Req 02 - Check if telnet.socket is enabled"
+  shell: systemctl is-enabled {{ socket_name }} 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "telnet_installed | default(false)"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    data_02: "{{ result_02.stdout | default('') | trim if telnet_installed | default(false) else 'Not applicable' }}"
+    status_02: >-
+      {%- if not (telnet_installed | default(false)) -%}
+        SKIP
+      {%- elif result_02.rc | default(-1) != 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not (telnet_installed | default(false)) -%}
+        Skipped: telnet-server package is not installed
+      {%- elif result_02.rc | default(-1) != 0 -%}
+        Socket is not enabled (grep returned nothing)
+      {%- else -%}
+        Socket is enabled
+      {%- endif -%}
+    task_02_name: "Check if telnet.socket is enabled"
+    task_02_cmd: "systemctl is-enabled {{ socket_name }} 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ result_02.rc | default(-1) if telnet_installed | default(false) else -1 }}"
+
+# Requirement 3 (conditional)
+- name: "Req 03 - Check if telnet.socket is active"
+  shell: systemctl is-active {{ socket_name }} 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "telnet_installed | default(false)"
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    data_03: "{{ result_03.stdout | default('') | trim if telnet_installed | default(false) else 'Not applicable' }}"
+    status_03: >-
+      {%- if not (telnet_installed | default(false)) -%}
+        SKIP
+      {%- elif result_03.rc | default(-1) != 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if not (telnet_installed | default(false)) -%}
+        Skipped: telnet-server package is not installed
+      {%- elif result_03.rc | default(-1) != 0 -%}
+        Socket is not active (grep returned nothing)
+      {%- else -%}
+        Socket is active
+      {%- endif -%}
+    task_03_name: "Check if telnet.socket is active"
+    task_03_cmd: "systemctl is-active {{ socket_name }} 2>/dev/null | grep '^active'"
+    task_03_rc: "{{ result_03.rc | default(-1) if telnet_installed | default(false) else -1 }}"
+
+# Requirement 4: manual check
+- name: "Store requirement 04 details (manual policy check)"
+  ansible.builtin.set_fact:
+    data_04: "{{ 'Not applicable' if not (telnet_installed | default(false)) else 'N/A' }}"
+    status_04: "{{ 'SKIP' if not (telnet_installed | default(false)) else 'ERROR' }}"
+    details_04: "{{ 'Skipped: telnet-server package is not installed' if not (telnet_installed | default(false)) else 'Manual verification required: dependent package approval per local site policy' }}"
+    task_04_name: "Verify dependent package approval"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+# Requirement 5: manual check
+- name: "Store requirement 05 details (manual policy check)"
+  ansible.builtin.set_fact:
+    data_05: "{{ 'Not applicable' if not (telnet_installed | default(false)) else 'N/A' }}"
+    status_05: "{{ 'SKIP' if not (telnet_installed | default(false)) else 'ERROR' }}"
+    details_05: "{{ 'Skipped: telnet-server package is not installed' if not (telnet_installed | default(false)) else 'Manual verification required: stopping and masking of service/socket per local site policy' }}"
+    task_05_name: "Verify stopping and masking policy"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+# Requirement 6: overall compliance
+- name: "Store requirement 06 details (overall compliance)"
+  ansible.builtin.set_fact:
+    status_06: >-
+      {%- if not (telnet_installed | default(false)) -%}
+        PASS
+      {%- elif status_02 == 'FAIL' or status_03 == 'FAIL' -%}
+        FAIL
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_06: >-
+      {%- if not (telnet_installed | default(false)) -%}
+        Compliant - package is not installed
+      {%- elif status_02 == 'FAIL' or status_03 == 'FAIL' -%}
+        Socket is enabled or active - not compliant
+      {%- else -%}
+        Package installed but socket appears disabled/inactive; local policy verification (requirements 4,5) must be completed to confirm compliance
+      {%- endif -%}
+    data_06: >-
+      {%- if not (telnet_installed | default(false)) -%}
+        PASS
+      {%- elif status_02 == 'FAIL' or status_03 == 'FAIL' -%}
+        FAIL
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    task_06_name: "Summarize overall compliance"
+    task_06_cmd: "Combined evaluation of requirements 1-5"
+    task_06_rc: 0
+
+# Requirement 7: store cis_result
+- name: "Req 07 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_06 | trim }}"
+    data_07: "{{ status_06 | trim }}"
+    status_07: "PASS"
+    details_07: "Final compliance status stored in cis_result"
+    task_07_name: "Store cis_result variable"
+    task_07_cmd: "set_fact cis_result = {{ status_06 | trim }}"
+    task_07_rc: 0
+
+# Generate audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.15"
+    - "Reference: CIS Benchmark checkpoint 2.1.15"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

@@ -1,0 +1,7 @@
+playbook_name: "cis_7_2_6"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for useradd and usermod using command: `which useradd usermod`. Expected result: paths to both binaries are returned."
+req_02: "Apply identification of duplicate user names using command: `awk -F: '{print $1}' /etc/passwd | sort | uniq -d`. Expected result: list of duplicate user names (if any)."
+req_03: "Apply assignment of unique user names for each duplicate by using command: `usermod -l <new_unique_name> <old_duplicate_name>`. Expected result: user name changed successfully with no errors."
+req_04: "Apply verification that no duplicate user names exist using command: `awk -F: '{print $1}' /etc/passwd | sort | uniq -d`. Expected result: no output (empty list)."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

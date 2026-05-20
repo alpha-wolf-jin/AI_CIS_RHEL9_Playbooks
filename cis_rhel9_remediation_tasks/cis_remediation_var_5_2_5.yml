@@ -1,0 +1,9 @@
+playbook_name: "cis_5_2_5"
+checkpoint_id: "cis_5_2_5"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "Apply remediation for: Ensure re-authentication for privilege escalation is not disabled globally. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure re-authentication for privilege escalation is not disabled globally is properly configured. Expected result: Compliant"
+sudoers_files:
+  - "/etc/sudoers"
+  - "/etc/sudoers.d/*"

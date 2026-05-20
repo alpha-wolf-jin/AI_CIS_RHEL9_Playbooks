@@ -1,0 +1,233 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_2_5.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/sudoers from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/sudoers.present"
+    dest: "/etc/sudoers"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/sudoers.d directory from prior checkpoint"
+  ansible.builtin.shell: |
+    if [ -d "{{ state_guard_dir }}/sudoers.d" ]; then
+      rm -rf /etc/sudoers.d/*
+      cp -r "{{ state_guard_dir }}/sudoers.d/"* /etc/sudoers.d/
+    fi
+  args:
+    executable: /bin/bash
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/sudoers exists"
+  ansible.builtin.stat:
+    path: "/etc/sudoers"
+  register: _sg_sudoers_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/sudoers"
+  ansible.builtin.copy:
+    src: "/etc/sudoers"
+    dest: "{{ state_guard_dir }}/sudoers.present"
+    remote_src: true
+  when: "_sg_sudoers_stat.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/sudoers.d directory exists"
+  ansible.builtin.stat:
+    path: "/etc/sudoers.d"
+  register: _sg_sudoersd_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/sudoers.d directory"
+  ansible.builtin.copy:
+    src: "/etc/sudoers.d/"
+    dest: "{{ state_guard_dir }}/sudoers.d/"
+    remote_src: true
+  when: "_sg_sudoersd_stat.stat.exists and _sg_sudoersd_stat.stat.isdir"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === STATE GUARD — EXECUTE PHASE ===
+
+  - name: "Req 01 - Check if sudo package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set sudo installed fact"
+    ansible.builtin.set_fact:
+      sudo_installed: "{{ 'sudo' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check for !authenticate in sudoers files"
+    ansible.builtin.shell: |
+      grep -rs '!authenticate' /etc/sudoers /etc/sudoers.d/ 2>/dev/null || echo "NOT_FOUND"
+    args:
+      executable: /bin/bash
+    register: authenticate_check
+    failed_when: false
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 01 - Remove !authenticate from sudoers files"
+    ansible.builtin.shell: |
+      find /etc/sudoers /etc/sudoers.d/ -type f ! -name '*.bak' -exec sed -i '/!authenticate/d' {} \;
+    args:
+      executable: /bin/bash
+    register: remediate_result
+    failed_when: false
+    when:
+    - "sudo_installed | default(false)"
+    - "authenticate_check.stdout | default('') != 'NOT_FOUND'"
+    tags: [execute]
+
+  - name: "Req 02 - Verify no !authenticate remains in sudoers files"
+    ansible.builtin.shell: |
+      if grep -rs '!authenticate' /etc/sudoers /etc/sudoers.d/ 2>/dev/null; then
+        echo "FAIL: !authenticate still present"
+        exit 1
+      fi
+      echo "CLEAN: No !authenticate found"
+      exit 0
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    when: "sudo_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Remove !authenticate from sudoers files"
+      task_01_cmd: |
+        find /etc/sudoers /etc/sudoers.d/ -type f ! -name '*.bak' -exec sed -i '/!authenticate/d' {} \\;
+      task_01_rc: "{{ remediate_result.rc | default(-1) }}"
+      data_01: "{{ remediate_result.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if not (sudo_installed | default(false)) else ('APPLIED' if (authenticate_check.stdout | default('')) == 'NOT_FOUND' or (remediate_result.rc | default(-1)) == 0 else 'FAILED') }}"
+      details_01: "{{ 'sudo package not installed' if not (sudo_installed | default(false)) else ('No !authenticate entries found - system already compliant' if (authenticate_check.stdout | default('')) == 'NOT_FOUND' else ('Successfully removed !authenticate entries' if (remediate_result.rc | default(-1)) == 0 else 'Failed to remove !authenticate entries')) }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify no !authenticate in sudoers files"
+      task_02_cmd: "grep -rs '!authenticate' /etc/sudoers /etc/sudoers.d/"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if not (sudo_installed | default(false)) else ('APPLIED' if (verify_result.rc | default(-1)) == 0 else 'FAILED') }}"
+      details_02: "{{ 'sudo package not installed' if not (sudo_installed | default(false)) else ('Verification passed - no !authenticate found' if (verify_result.rc | default(-1)) == 0 else 'Verification failed - !authenticate still present') }}"
+    tags: [execute]
+
+  - name: "Set cis_result for final report"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {%- if status_02 == 'APPLIED' -%}PASS
+        {%- elif status_02 == 'FAILED' -%}FAIL
+        {%- elif status_02 == 'SKIPPED' -%}SKIP
+        {%- else -%}ERROR
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 5.2.5"
+      - "Reference: CIS Benchmark checkpoint 5.2.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if sudoers backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sudoers.present"
+    register: _sg_restore_sudoers
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/sudoers from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/sudoers.present"
+      dest: "/etc/sudoers"
+      remote_src: true
+    when: "_sg_restore_sudoers.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if sudoers.d backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sudoers.d"
+    register: _sg_restore_sudoersd
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/sudoers.d from backup"
+    ansible.builtin.shell: |
+      rm -rf /etc/sudoers.d/*
+      cp -r "{{ state_guard_dir }}/sudoers.d/"* /etc/sudoers.d/
+    args:
+      executable: /bin/bash
+    when: "_sg_restore_sudoersd.stat.exists | default(false) and _sg_restore_sudoersd.stat.isdir | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

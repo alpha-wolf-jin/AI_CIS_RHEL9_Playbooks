@@ -1,0 +1,9 @@
+playbook_name: "cis_5_2_7_su_restriction"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+su_pam_file: "/etc/pam.d/su"
+su_group: "sugroup"
+pam_line: "auth required pam_wheel.so use_uid group={{ su_group }}"
+req_01: "Apply create an empty group for su restriction using command: `groupadd sugroup`. Expected result: Group 'sugroup' is created."
+req_02: "Apply add the pam_wheel.so configuration to /etc/pam.d/su using command: `echo 'auth required pam_wheel.so use_uid group=sugroup' >> /etc/pam.d/su`. Expected result: The line is appended to /etc/pam.d/su."
+req_03: "Verify the su command is restricted to the empty group using command: `grep 'pam_wheel.so' /etc/pam.d/su`. Expected result: Output contains 'auth required pam_wheel.so use_uid group=sugroup'."
+rollback: false

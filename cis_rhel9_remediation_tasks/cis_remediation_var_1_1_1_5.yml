@@ -1,0 +1,6 @@
+playbook_name: "remediate_cis_1_1_1_5"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+conf_file: "/etc/modprobe.d/jffs2.conf"
+req_01: "Run the provided remediation script to fix Ensure jffs2 kernel module is not available. Run the following script to unload and disable the jffs2 module"
+req_02: "VERIFY: Run audit check to confirm Ensure jffs2 kernel module is not available is properly configured. Expected result: System is compliant"
+req_03: "Generate remediation report"

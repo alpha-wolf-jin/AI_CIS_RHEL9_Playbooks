@@ -1,0 +1,211 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snap_rules_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-system_locale.rules.orig"
+    remote_src: true
+  when: "_snap_rules_stat.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "Snapshot - Record whether rules file existed"
+  ansible.builtin.copy:
+    content: "{{ _snap_rules_stat.stat.exists | default(false) }}"
+    dest: "{{ backup_dir }}/rules_existed"
+  tags: [snapshot]
+
+- block:
+        # === EXECUTE (tag: execute) ===
+
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'audit' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Create audit rules file with network environment monitoring rules"
+    ansible.builtin.copy:
+      dest: "{{ audit_rules_file }}"
+      content: |
+        -a always,exit -F arch=b64 -S sethostname,setdomainname -k {{ audit_key }}
+        -a always,exit -F arch=b32 -S sethostname,setdomainname -k {{ audit_key }}
+        -w /etc/issue -p wa -k {{ audit_key }}
+        -w /etc/issue.net -p wa -k {{ audit_key }}
+        -w /etc/hosts -p wa -k {{ audit_key }}
+        -w /etc/hostname -p wa -k {{ audit_key }}
+        -w /etc/sysconfig/network -p wa -k {{ audit_key }}
+        -w /etc/sysconfig/network-scripts/ -p wa -k {{ audit_key }}
+        -w /etc/NetworkManager -p wa -k {{ audit_key }}
+      owner: root
+      group: root
+      mode: '0640'
+    when: "auditd_installed | default(false) | bool"
+    register: _rules_created
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules with augenrules"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false) | bool"
+    register: _augenrules_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Check if reboot is required"
+    ansible.builtin.shell: |
+      set -o pipefail
+      if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then
+        echo "REBOOT_REQUIRED"
+      else
+        echo "NO_REBOOT"
+      fi
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false) | bool"
+    register: _reboot_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Reboot if required"
+    ansible.builtin.reboot:
+      reboot_timeout: 180
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "'REBOOT_REQUIRED' in _reboot_check.stdout | default('')"
+    tags: [execute]
+
+  - name: "Req 02 - Verify network environment audit rules are loaded"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -l | grep -E 'sethostname|setdomainname|/etc/issue|/etc/issue.net|/etc/hosts|/etc/hostname|/etc/sysconfig/network|/etc/sysconfig/network-scripts|/etc/NetworkManager' || echo 'VERIFY_FAILED'
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false) | bool"
+    register: _verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {%- if not (auditd_installed | default(false) | bool) -%}SKIP
+        {%- elif 'VERIFY_FAILED' in (_verify_result.stdout | default('VERIFY_FAILED')) -%}FAIL
+        {%- else -%}PASS
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 6.3.3.5"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ 'Create and load audit rules for network environment' if auditd_installed | default(false) else 'Check auditd installation' }}"
+      - "  Command: {{ 'augenrules --load' if auditd_installed | default(false) else 'package_facts' }}"
+      - "  Exit code: {{ _augenrules_result.rc | default(-1) if auditd_installed | default(false) else 0 }}"
+      - "  Data: {{ _augenrules_result.stdout | default('auditd not installed') | trim }}"
+      - "  Status: {{ 'SKIPPED' if not (auditd_installed | default(false)) else ('PASS' if (_augenrules_result.rc | default(-1)) == 0 else 'FAIL') }}"
+      - "  Details: {{ 'auditd package not installed - remediation skipped' if not (auditd_installed | default(false)) else ('Audit rules loaded successfully' if (_augenrules_result.rc | default(-1)) == 0 else 'Failed to load audit rules') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify network environment audit rules are active"
+      - "  Command: auditctl -l | grep -E 'sethostname|setdomainname|...'"
+      - "  Exit code: {{ _verify_result.rc | default(-1) }}"
+      - "  Data: {{ _verify_result.stdout | default('') | trim }}"
+      - "  Status: {{ 'SKIPPED' if not (auditd_installed | default(false)) else ('PASS' if 'VERIFY_FAILED' not in (_verify_result.stdout | default('VERIFY_FAILED')) else 'FAIL') }}"
+      - "  Details: {{ 'auditd not installed - verification skipped' if not (auditd_installed | default(false)) else ('All required audit rules are active' if 'VERIFY_FAILED' not in (_verify_result.stdout | default('VERIFY_FAILED')) else 'Some audit rules are missing') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store final remediation result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result }}"
+      - "  Status: PASS"
+      - "  Details: Remediation result stored in cis_result"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Generate remediation report"
+      - "  Command: debug"
+      - "  Exit code: 0"
+      - "  Data: Report created"
+      - "  Status: PASS"
+      - "  Details: Remediation report generated"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+    tags: [execute]
+
+  always:
+# === RESTORE (tag: restore) ===
+  - name: "Restore - Check if rules backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-system_locale.rules.orig"
+    register: _restore_rules_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite rules file with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-system_locale.rules.orig"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: "_restore_rules_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/rules_existed"
+    register: _restore_existed
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove rules file if it was created by this playbook"
+    ansible.builtin.file:
+      path: "{{ audit_rules_file }}"
+      state: absent
+    when:
+    - "_restore_existed.content is defined"
+    - "(_restore_existed.content | b64decode | trim) == 'False'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload audit rules after restore"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: "_restore_rules_check.stat.exists | default(false)"
+    failed_when: false
+    changed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

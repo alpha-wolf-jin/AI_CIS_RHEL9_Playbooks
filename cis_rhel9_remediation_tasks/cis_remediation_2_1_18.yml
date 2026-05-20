@@ -1,0 +1,495 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_18.yml
+
+- name: "Snapshot - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag_check
+  tags: [snapshot]
+- name: "Snapshot - Restore previous state if checkpoint exists"
+  block:
+  - name: "Snapshot - Read saved package state for httpd"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/httpd_pkg.state"
+    register: _sg_httpd_pkg
+    failed_when: false
+
+  - name: "Snapshot - Reinstall httpd if previously installed"
+    ansible.builtin.dnf:
+      name: httpd
+      state: present
+    when: _sg_httpd_pkg.content | default('') | b64decode | trim == 'installed'
+    failed_when: false
+
+  - name: "Snapshot - Read saved package state for nginx"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/nginx_pkg.state"
+    register: _sg_nginx_pkg
+    failed_when: false
+
+  - name: "Snapshot - Reinstall nginx if previously installed"
+    ansible.builtin.dnf:
+      name: nginx
+      state: present
+    when: _sg_nginx_pkg.content | default('') | b64decode | trim == 'installed'
+    failed_when: false
+
+  - name: "Snapshot - Read saved service states"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/service_states.json"
+    register: _sg_service_states
+    failed_when: false
+
+  - name: "Snapshot - Restore service states"
+    ansible.builtin.shell: |
+      echo '{{ _sg_service_states.content | b64decode | trim }}' | python3 -c "
+      import sys, json
+      data = json.load(sys.stdin)
+      import subprocess
+      for unit, state in data.get('active', {}).items():
+          subprocess.run(['systemctl', 'start', unit] if state == 'active' else ['systemctl', 'stop', unit], check=False)
+      for unit, state in data.get('enabled', {}).items():
+          if state == 'enabled':
+              subprocess.run(['systemctl', 'enable', unit], check=False)
+          elif state == 'disabled':
+              subprocess.run(['systemctl', 'disable', unit], check=False)
+          elif state == 'masked':
+              subprocess.run(['systemctl', 'mask', unit], check=False)
+      "
+    args:
+      executable: /bin/bash
+    when: _sg_service_states.content is defined
+    failed_when: false
+  when: _sg_flag_check.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag_check.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Capture package state (httpd)"
+  ansible.builtin.shell: |
+    if dnf list installed httpd &>/dev/null; then
+      echo "installed"
+    else
+      echo "absent"
+    fi
+  args:
+    executable: /bin/bash
+  register: _sg_httpd_pkg_state
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save httpd package state"
+  ansible.builtin.copy:
+    content: "{{ _sg_httpd_pkg_state.stdout | trim }}"
+    dest: "{{ state_guard_dir }}/httpd_pkg.state"
+  tags: [snapshot]
+- name: "Snapshot - Capture package state (nginx)"
+  ansible.builtin.shell: |
+    if dnf list installed nginx &>/dev/null; then
+      echo "installed"
+    else
+      echo "absent"
+    fi
+  args:
+    executable: /bin/bash
+  register: _sg_nginx_pkg_state
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save nginx package state"
+  ansible.builtin.copy:
+    content: "{{ _sg_nginx_pkg_state.stdout | trim }}"
+    dest: "{{ state_guard_dir }}/nginx_pkg.state"
+  tags: [snapshot]
+- name: "Snapshot - Capture active/enabled states of relevant services"
+  ansible.builtin.shell: |
+    echo '{'
+    echo '"active": {'
+    for unit in httpd.service httpd.socket nginx.service; do
+      state=$(systemctl is-active $unit 2>/dev/null || echo "unknown")
+      echo -n "\"$unit\": \"$state\""
+      if [ "$unit" != "nginx.service" ]; then echo ','; fi
+    done
+    echo '},'
+    echo '"enabled": {'
+    for unit in httpd.service httpd.socket nginx.service; do
+      state=$(systemctl is-enabled $unit 2>/dev/null || echo "unknown")
+      echo -n "\"$unit\": \"$state\""
+      if [ "$unit" != "nginx.service" ]; then echo ','; fi
+    done
+    echo '}'
+    echo '}'
+  args:
+    executable: /bin/bash
+  register: _sg_service_states_json
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save service states JSON"
+  ansible.builtin.copy:
+    content: "{{ _sg_service_states_json.stdout | trim }}"
+    dest: "{{ state_guard_dir }}/service_states.json"
+  tags: [snapshot]
+- name: "Snapshot - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      data_06: "Not collected yet"
+      status_06: "ERROR"
+      details_06: "Not evaluated"
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+    tags: [execute]
+
+# Requirement 1 – prerequisite check
+  - name: "Req 01 - Check prerequisites"
+    ansible.builtin.shell: "which systemctl && which dnf"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check systemctl and dnf binaries"
+      task_01_cmd: "which systemctl && which dnf"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ ('Both commands found' if result_01.rc | default(-1) == 0 else 'One or both not found') | trim }}"
+    tags: [execute]
+
+# Check if any web server package is installed before proceeding
+  - name: "Check if any web server package is installed"
+    ansible.builtin.shell: |
+      dnf list installed httpd nginx &>/dev/null && echo "installed" || echo "none"
+    args:
+      executable: /bin/bash
+    register: _web_pkg_check
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set web_server_present fact"
+    set_fact:
+      web_server_present: "{{ _web_pkg_check.stdout | trim == 'installed' }}"
+    tags: [execute]
+
+# Requirement 2 – stop services
+  - name: "Req 02 - Stop web server services"
+    ansible.builtin.shell: "systemctl stop httpd.socket httpd.service nginx.service"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: web_server_present | bool
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Stop httpd.socket httpd.service nginx.service"
+      task_02_cmd: "systemctl stop httpd.socket httpd.service nginx.service"
+      task_02_rc: "{{ result_02.rc | default(-1) if web_server_present | bool else 0 }}"
+      data_02: "{{ result_02.stdout | default('') | trim if web_server_present | bool else 'skipped' }}"
+      status_02: "{{ ('PASS' if web_server_present | bool and result_02.rc | default(-1) == 0 else 'SKIP' if not (web_server_present | bool) else 'FAIL') | trim }}"
+      details_02: "{{ ('Services stopped successfully' if web_server_present | bool and result_02.rc | default(-1) == 0 else 'No web server packages installed; skipping' if not (web_server_present | bool) else 'Failed to stop services') | trim }}"
+    tags: [execute]
+
+# Requirement 3 – remove packages
+  - name: "Req 03 - Remove httpd and nginx packages"
+    ansible.builtin.dnf:
+      name:
+      - httpd
+      - nginx
+      state: absent
+    register: result_03
+    failed_when: false
+    when: web_server_present | bool
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Remove httpd and nginx packages"
+      task_03_cmd: "dnf remove httpd nginx"
+      task_03_rc: "{{ result_03.rc | default(-1) if web_server_present | bool else 0 }}"
+      data_03: "{{ (result_03.stdout | default('') | trim) if web_server_present | bool else 'skipped' }}"
+      status_03: "{{ ('PASS' if web_server_present | bool and result_03.rc | default(-1) == 0 else 'SKIP' if not (web_server_present | bool) else 'FAIL') | trim }}"
+      details_03: "{{ ('Packages removed successfully' if web_server_present | bool and result_03.rc | default(-1) == 0 else 'No web server packages installed; skipping' if not (web_server_present | bool) else 'Failed to remove packages; will attempt masking') | trim }}"
+      packages_removed_success: "{{ web_server_present | bool and result_03.rc | default(-1) == 0 }}"
+    tags: [execute]
+
+# Requirement 4 – stop and mask if removal failed
+  - name: "Req 04 - Stop and mask web server services if removal failed"
+    block:
+    - name: "Req 04 - Stop services"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+      - httpd.socket
+      - httpd.service
+      - nginx.service
+      register: result_04_stop
+      failed_when: false
+
+    - name: "Req 04 - Mask service and socket units"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        masked: yes
+      loop:
+      - httpd.socket
+      - httpd.service
+      - nginx.service
+      register: result_04_mask
+      failed_when: false
+    when:
+    - web_server_present | bool
+    - not (packages_removed_success | default(false) | bool)
+    tags: [execute]
+
+  - name: "Evaluate requirement 04 result"
+    set_fact:
+      task_04_name: "Stop and mask web server services"
+      task_04_cmd: "systemctl stop httpd.socket httpd.service nginx.service && systemctl mask httpd.socket httpd.service nginx.service"
+      task_04_rc: 0
+      data_04: "{{ ('Stop and mask applied' if (result_04_stop is defined and not result_04_stop.failed) and (result_04_mask is defined and not result_04_mask.failed) else 'Not needed; packages removed' if packages_removed_success | default(false) | bool else 'No web server packages') }}"
+      status_04: "{{ ('PASS' if (not web_server_present | bool) or (packages_removed_success | default(false) | bool) else 'PASS' if (result_04_stop is defined and not result_04_stop.failed) and (result_04_mask is defined and not result_04_mask.failed) else 'FAIL') | trim }}"
+      details_04: "{{ ('Not needed; packages removed' if packages_removed_success | default(false) | bool else 'Services stopped and masked successfully' if (result_04_stop is defined and not result_04_stop.failed) and (result_04_mask is defined and not result_04_mask.failed) else 'Failed to stop and mask services') | trim }}"
+    when: web_server_present | bool
+    tags: [execute]
+
+  - name: "Set requirement 04 details for skipped case"
+    set_fact:
+      data_04: "skipped"
+      status_04: "SKIP"
+      details_04: "No web server packages installed; skipping"
+      task_04_name: "Stop and mask web server services"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+    when: not (web_server_present | bool)
+    tags: [execute]
+
+# Requirement 5 – verify
+  - name: "Req 05 - Verify services are inactive or masked/disabled"
+    ansible.builtin.shell: |
+      set -o pipefail
+      active_check=$(systemctl is-active httpd.socket httpd.service nginx.service 2>&1)
+      enabled_check=$(systemctl is-enabled httpd.socket httpd.service nginx.service 2>&1)
+      echo "ACTIVE: $active_check"
+      echo "ENABLED: $enabled_check"
+      if echo "$active_check" | grep -qP '^(inactive|unknown)$' && echo "$enabled_check" | grep -qP '^(disabled|masked|unknown)$'; then
+        echo "PASS"
+      else
+        echo "FAIL"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    when: web_server_present | bool
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Verify web server services are not active or enabled"
+      task_05_cmd: "systemctl is-active httpd.socket httpd.service nginx.service && systemctl is-enabled httpd.socket httpd.service nginx.service"
+      task_05_rc: "{{ result_05.rc | default(-1) if web_server_present | bool else 0 }}"
+      data_05: "{{ result_05.stdout | default('') | trim if web_server_present | bool else 'skipped' }}"
+      status_05: "{{ ('PASS' if (web_server_present | bool) and 'PASS' in (result_05.stdout | default('')) else 'SKIP' if not (web_server_present | bool) else 'FAIL') | trim }}"
+      details_05: "{{ ('Verification passed' if (web_server_present | bool) and 'PASS' in (result_05.stdout | default('')) else 'No web server packages installed; skipping' if not (web_server_present | bool) else 'Verification failed') | trim }}"
+    tags: [execute]
+
+# Requirement 6 – store cis_result
+  - name: "Req 06 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_05 | default('ERROR') | trim }}"
+    tags: [execute]
+
+# Requirement 7 – generate report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.18"
+      - "Reference: CIS Benchmark checkpoint 2.1.18"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: Store final remediation result"
+      - "  Command: N/A"
+      - "  Exit code: N/A"
+      - "  Data: {{ cis_result | default('ERROR') | trim }}"
+      - "  Status: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: Overall remediation status"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved package state for httpd"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/httpd_pkg.state"
+    register: _sg_restore_httpd_pkg
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Reinstall httpd if originally installed"
+    ansible.builtin.dnf:
+      name: httpd
+      state: present
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_httpd_pkg.content | default('') | b64decode | trim == 'installed'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved package state for nginx"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/nginx_pkg.state"
+    register: _sg_restore_nginx_pkg
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Reinstall nginx if originally installed"
+    ansible.builtin.dnf:
+      name: nginx
+      state: present
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_nginx_pkg.content | default('') | b64decode | trim == 'installed'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved service states"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/service_states.json"
+    register: _sg_restore_service_states
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Restore service states"
+    ansible.builtin.shell: |
+      echo '{{ _sg_restore_service_states.content | b64decode | trim }}' | python3 -c "
+      import sys, json
+      data = json.load(sys.stdin)
+      import subprocess
+      for unit, state in data.get('active', {}).items():
+          subprocess.run(['systemctl', 'start', unit] if state == 'active' else ['systemctl', 'stop', unit], check=False)
+      for unit, state in data.get('enabled', {}).items():
+          if state == 'enabled':
+              subprocess.run(['systemctl', 'enable', unit], check=False)
+          elif state == 'disabled':
+              subprocess.run(['systemctl', 'disable', unit], check=False)
+          elif state == 'masked':
+              subprocess.run(['systemctl', 'mask', unit], check=False)
+      "
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_service_states.content is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

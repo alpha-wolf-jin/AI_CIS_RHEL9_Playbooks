@@ -1,0 +1,8 @@
+req_01: "Check if AIDE is installed using command: `dpkg -l aide 2>/dev/null || rpm -q aide 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check if a cron job for AIDE check is scheduled using command: `grep -Ers '^([^#]+\\s+)?(\\/usr\\/s?bin\\/|^\\s*)aide(\\.wrapper)?\\s(--?\\S+\\s)*(-(check|update)|\\$AIDEARGS)\\b' /etc/cron.* /etc/crontab /var/spool/cron/`. Expected result: a cron job in compliance with site policy is returned.
+req_03: "Check if aidecheck.service is enabled using command: `systemctl is-enabled aidecheck.service`. Expected result: enabled."
+req_04: "Check if aidecheck.timer is enabled using command: `systemctl is-enabled aidecheck.timer`. Expected result: enabled."
+req_05: "Check if aidecheck.timer is running using command: `systemctl status aidecheck.timer`. Expected result: active (running)."
+req_06: "Summarize overall compliance: PASS if all checks pass, SKIP if AIDE is not installed, FAIL if AIDE is installed but any check fails."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

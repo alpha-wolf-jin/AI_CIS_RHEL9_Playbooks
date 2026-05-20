@@ -1,0 +1,11 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check on-disk audit rules for /etc/sudoers using command: `awk '/^ *-w/ &&/\\/etc\\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/sudoers -p wa -k scope`
+req_03: |
+  Check on-disk audit rules for /etc/sudoers.d using command: `awk '/^ *-w/ &&/\\/etc\\/sudoers\\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: `-w /etc/sudoers.d -p wa -k scope`
+req_04: |
+  Check running audit rules for /etc/sudoers using command: `auditctl -l | awk '/^ *-w/ &&/\\/etc\\/sudoers/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: `-w /etc/sudoers -p wa -k scope`
+req_05: |
+  Check running audit rules for /etc/sudoers.d using command: `auditctl -l | awk '/^ *-w/ &&/\\/etc\\/sudoers\\.d/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: `-w /etc/sudoers.d -p wa -k scope`
+req_06: "Summarize overall compliance: PASS if all checks pass, SKIP if auditd is not installed, FAIL if any check fails."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

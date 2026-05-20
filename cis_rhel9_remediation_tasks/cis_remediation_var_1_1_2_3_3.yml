@@ -1,0 +1,8 @@
+playbook_name: "remediate_cis_1_1_2_3_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if /home is a separate partition using command: `mount | grep ' /home '`. Expected result: output contains a line with /home partition."
+req_02: |
+  Edit /etc/fstab to add nosuid to the mounting options for /home partition using command: `sed -i 's|^\\([^ ]*[[:space:]]*/home[[:space:]]*[^ ]*[[:space:]]*\\)[^ ]*|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab`. Expected result: the /home line in /etc/fstab includes nosuid in the options field.
+req_03: "Remount /home with the updated options using command: `mount -o remount /home`. Expected result: no error output."
+req_04: "Verify that nosuid is set on /home partition using command: `findmnt -n -o OPTIONS /home | grep -q nosuid && echo 'nosuid is set'`. Expected result: output 'nosuid is set'."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

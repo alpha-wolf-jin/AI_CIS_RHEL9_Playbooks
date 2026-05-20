@@ -1,0 +1,176 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1_9.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    task_01_name: "Execute CIS audit script (covered by script)"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: -1
+    task_02_name: "Execute CIS audit script (covered by script)"
+    task_02_cmd: "/bin/bash {{ audit_script }}"
+    task_02_rc: -1
+    task_03_name: "Execute CIS audit script (covered by script)"
+    task_03_cmd: "/bin/bash {{ audit_script }}"
+    task_03_rc: -1
+    task_04_name: "Execute CIS audit script (covered by script)"
+    task_04_cmd: "/bin/bash {{ audit_script }}"
+    task_04_rc: -1
+    task_05_name: "Evaluate overall compliance"
+    task_05_cmd: "(analysis of audit script output)"
+    task_05_rc: -1
+    task_06_name: "Store cis_result"
+    task_06_cmd: "set_fact"
+    task_06_rc: 0
+
+- block:
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+
+  - name: "Execute CIS audit script for checkpoint 1.1.1.9"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+
+  - name: "Evaluate audit findings"
+    set_fact:
+      overall_pass: "{{ true if 'No unused filesystem kernel modules are enabled' in audit_result.stdout else false }}"
+      req03_fail: "{{ true if 'not fully disabled' in audit_result.stdout else false }}"
+      req04_fail: "{{ true if 'is loaded' in audit_result.stdout else false }}"
+      req02_fail: "{{ true if 'has a CVE' in audit_result.stdout else false }}"
+      script_rc: "{{ audit_result.rc | default(-1) | int }}"
+      script_stdout: "{{ audit_result.stdout | default('') | trim }}"
+
+  - name: "Store final compliance result"
+    set_fact:
+      cis_result: "{{ 'PASS' if overall_pass else 'FAIL' }}"
+
+  always:
+  - name: "Cleanup temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    failed_when: false
+
+- name: "Prepare report variables"
+  set_fact:
+    data_01: "{{ script_stdout | default('Not collected yet') | trim }}"
+    status_01: "{{ 'PASS' if (script_rc | default(-1) | int) == 0 else 'FAIL' }}"
+    details_01: "{{ 'Script executed successfully' if (script_rc | default(-1) | int) == 0 else 'Script execution failed' }}"
+    data_02: "{{ script_stdout | default('Not collected yet') | trim }}"
+    status_02: "{{ 'FAIL' if req02_fail | default(false) else 'PASS' }}"
+    details_02: "{{ 'Modules with CVE mounted found' if req02_fail | default(false) else 'No CVE-bearing modules mounted' }}"
+    data_03: "{{ script_stdout | default('Not collected yet') | trim }}"
+    status_03: "{{ 'FAIL' if req03_fail | default(false) else 'PASS' }}"
+    details_03: "{{ 'Modules not fully disabled found' if req03_fail | default(false) else 'No such modules detected' }}"
+    data_04: "{{ script_stdout | default('Not collected yet') | trim }}"
+    status_04: "{{ 'FAIL' if req04_fail | default(false) else 'PASS' }}"
+    details_04: "{{ 'Loaded modules found' if req04_fail | default(false) else 'No loaded modules detected' }}"
+    data_05: "{{ script_stdout | default('Not collected yet') | trim }}"
+    status_05: "{{ 'PASS' if overall_pass | default(false) else 'FAIL' }}"
+    details_05: "{{ 'System is compliant' if overall_pass | default(false) else 'Review flagged modules' }}"
+    data_06: "{{ cis_result | default('Not set') | trim }}"
+    status_06: "PASS"
+    details_06: "{{ 'cis_result stored as ' + (cis_result | default('UNKNOWN') | trim) }}"
+    task_01_name: "Execute CIS audit script (covered by script)"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: "{{ script_rc | default(-1) }}"
+    task_02_name: "Execute CIS audit script (covered by script)"
+    task_02_cmd: "/bin/bash {{ audit_script }}"
+    task_02_rc: "{{ script_rc | default(-1) }}"
+    task_03_name: "Execute CIS audit script (covered by script)"
+    task_03_cmd: "/bin/bash {{ audit_script }}"
+    task_03_rc: "{{ script_rc | default(-1) }}"
+    task_04_name: "Execute CIS audit script (covered by script)"
+    task_04_cmd: "/bin/bash {{ audit_script }}"
+    task_04_rc: "{{ script_rc | default(-1) }}"
+    task_05_name: "Evaluate overall compliance"
+    task_05_cmd: "(analysis of audit script output)"
+    task_05_rc: "{{ script_rc | default(-1) }}"
+    task_06_name: "Store cis_result"
+    task_06_cmd: "set_fact"
+    task_06_rc: 0
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.1.9"
+    - "Reference: CIS Benchmark checkpoint 1.1.1.9"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name }}"
+    - "  Command: {{ task_04_cmd }}"
+    - "  Exit code: {{ task_04_rc }}"
+    - "  Data: {{ data_04 }}"
+    - "  Status: {{ status_04 }}"
+    - "  Details: {{ details_04 }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name }}"
+    - "  Command: {{ task_05_cmd }}"
+    - "  Exit code: {{ task_05_rc }}"
+    - "  Data: {{ data_05 }}"
+    - "  Status: {{ status_05 }}"
+    - "  Details: {{ details_05 }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name }}"
+    - "  Command: {{ task_06_cmd }}"
+    - "  Exit code: {{ task_06_rc }}"
+    - "  Data: {{ data_06 }}"
+    - "  Status: {{ status_06 }}"
+    - "  Details: {{ details_06 }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') }}"

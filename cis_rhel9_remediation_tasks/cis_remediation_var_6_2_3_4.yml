@@ -1,0 +1,16 @@
+playbook_name: "cis_6_2_3_4_rsyslog_filecreatemode"
+checkpoint_id: "cis_6_2_3_4"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+config_file: "/etc/rsyslog.conf"
+config_param: "$FileCreateMode"
+config_value: "0640"
+package_name: "rsyslog"
+service_name: "rsyslog"
+req_01: "Ensure rsyslog is installed using command: `which rsyslogd`. Expected result: path to rsyslogd binary."
+req_02: |
+  Edit /etc/rsyslog.conf or a dedicated .conf file in /etc/rsyslog.d/ to set $FileCreateMode to 0640 or more restrictive using command: `grep -q '^\\$FileCreateMode' /etc/rsyslog.conf && sed -i 's/^\\$FileCreateMode.*/$FileCreateMode 0640/' /etc/rsyslog.conf || echo '$FileCreateMode 0640' >> /etc/rsyslog.conf`. Expected result: $FileCreateMode 0640 is present in the configuration.
+req_03: "Restart the rsyslog service using command: `systemctl restart rsyslog`. Expected result: rsyslog service restarts without error."
+req_04: |
+  Verify the configuration using command: `grep '^\\$FileCreateMode' /etc/rsyslog.conf`. Expected result: $FileCreateMode 0640 or more restrictive value is displayed.
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

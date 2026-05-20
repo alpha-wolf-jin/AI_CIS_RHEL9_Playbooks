@@ -1,0 +1,393 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_9.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Capture nfs-utils installation state"
+  ansible.builtin.shell: rpm -q nfs-utils &>/dev/null && echo installed || echo not_installed
+  args:
+    executable: /bin/bash
+  register: _snap_nfs_utils_state
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if nfs-utils state backup file exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/nfs_utils_state.txt"
+  register: _snap_nfs_utils_file
+  tags: [snapshot]
+- name: "Snapshot - Save nfs-utils state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_nfs_utils_state.stdout | trim }}"
+    dest: "{{ backup_dir }}/nfs_utils_state.txt"
+  when: not _snap_nfs_utils_file.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Capture nfs-server active state"
+  ansible.builtin.shell: systemctl is-active nfs-server 2>/dev/null || echo "inactive"
+  args:
+    executable: /bin/bash
+  register: _snap_nfs_active
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if nfs-server active state backup file exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/nfs_server_active.txt"
+  register: _snap_nfs_active_file
+  tags: [snapshot]
+- name: "Snapshot - Save nfs-server active state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_nfs_active.stdout | trim }}"
+    dest: "{{ backup_dir }}/nfs_server_active.txt"
+  when: not _snap_nfs_active_file.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Capture nfs-server is-enabled state"
+  ansible.builtin.shell: systemctl is-enabled nfs-server 2>/dev/null || echo "unknown"
+  args:
+    executable: /bin/bash
+  register: _snap_nfs_enabled
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if nfs-server enabled state backup file exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/nfs_server_enabled.txt"
+  register: _snap_nfs_enabled_file
+  tags: [snapshot]
+- name: "Snapshot - Save nfs-server is-enabled state to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_nfs_enabled.stdout | trim }}"
+    dest: "{{ backup_dir }}/nfs_server_enabled.txt"
+  when: not _snap_nfs_enabled_file.stat.exists | default(false)
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      skip_all: false
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+    tags: [execute]
+
+  - name: "Prerequisite - Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    tags: [execute]
+
+  - name: "Prerequisite - Check if nfs-utils is installed"
+    set_fact:
+      skip_all: "{{ 'false' if 'nfs-utils' in ansible_facts.packages else 'true' }}"
+    tags: [execute]
+
+  - name: "Set overall result to SKIP if nfs-utils not installed"
+    set_fact:
+      cis_result: "SKIP"
+    when: "skip_all | bool"
+    tags: [execute]
+
+  - name: "Set requirement details to SKIP when remediation is skipped"
+    set_fact:
+      status_01: "SKIP"
+      status_02: "SKIP"
+      status_03: "SKIP"
+      status_04: "SKIP"
+      details_01: "Remediation skipped: nfs-utils not installed"
+      details_02: "Remediation skipped: nfs-utils not installed"
+      details_03: "Remediation skipped: nfs-utils not installed"
+      details_04: "Remediation skipped: nfs-utils not installed"
+      task_01_name: "Stop nfs-server service (skipped)"
+      task_02_name: "Remove nfs-utils package (skipped)"
+      task_03_name: "Mask nfs-server service (skipped)"
+      task_04_name: "Verify remediation (skipped)"
+      data_01: ""
+      data_02: ""
+      data_03: ""
+      data_04: ""
+      task_01_rc: 0
+      task_02_rc: 0
+      task_03_rc: 0
+      task_04_rc: 0
+      task_01_cmd: "systemctl stop nfs-server.service (skipped)"
+      task_02_cmd: "dnf remove nfs-utils (skipped)"
+      task_03_cmd: "systemctl mask nfs-server.service (skipped)"
+      task_04_cmd: "verification (skipped)"
+    when: "skip_all | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Stop nfs-server service"
+    ansible.builtin.shell: "systemctl stop nfs-server.service"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Stop nfs-server service"
+      task_01_cmd: "systemctl stop nfs-server.service"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if (result_01.rc | default(-1) == 0) else 'FAIL') | trim }}"
+      details_01: "{{ ('Service stopped successfully' if (result_01.rc | default(-1) == 0) else 'Failed to stop service') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Req 02 - Remove nfs-utils package"
+    ansible.builtin.dnf:
+      name: nfs-utils
+      state: absent
+    register: result_02
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remove nfs-utils package"
+      task_02_cmd: "dnf remove nfs-utils"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {%- set removed = (result_02 is not failed and result_02.changed) or (result_02 is not failed and not result_02.changed and 'nfs-utils' not in ansible_facts.packages) -%}
+        {{ 'PASS' if removed else 'FAIL' | trim }}
+      details_02: "{{ ('Package removed or not installed' if (result_02 is not failed) else 'Removal failed') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Req 03 - Mask nfs-server service if nfs-utils still present"
+    ansible.builtin.shell: |
+      if rpm -q nfs-utils &>/dev/null; then
+        systemctl mask nfs-server.service
+      else
+        echo "SKIP: nfs-utils not installed, no mask needed"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Mask nfs-server service if nfs-utils still present"
+      task_03_cmd: "systemctl mask nfs-server.service (conditional)"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ ('PASS' if (result_03.rc | default(-1) == 0) else 'FAIL') | trim }}"
+      details_03: "{{ ('Masked or not needed' if (result_03.rc | default(-1) == 0) else 'Masking failed') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Req 04 - Verify remediation"
+    ansible.builtin.shell: |
+      {% raw %}
+      if systemctl is-active nfs-server.service &>/dev/null; then
+        ACTIVE=active
+      else
+        ACTIVE=inactive
+      fi
+      if rpm -q nfs-utils &>/dev/null; then
+        RPM=installed
+      else
+        RPM=not_installed
+      fi
+      if [ "$ACTIVE" = "inactive" ] && { [ "$RPM" = "not_installed" ] || systemctl is-enabled nfs-server.service 2>/dev/null | grep -q masked; }; then
+        echo "PASS"
+      else
+        echo "FAIL"
+      fi
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify nfs-server service and nfs-utils package"
+      task_04_cmd: "combined verification command"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ ('PASS' if ('PASS' in result_04.stdout | default('')) else 'FAIL') | trim }}"
+      details_04: "{{ ('Verification succeeded' if ('PASS' in result_04.stdout | default('')) else 'Verification failed') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Req 05 - Store final remediation result (non-skip)"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    when: "not skip_all | bool"
+    tags: [execute]
+
+  - name: "Req 06 - Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.9"
+      - "Reference: CIS Benchmark checkpoint 2.1.9"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup directory exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}"
+    register: _restore_backup_dir_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read nfs-utils original state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/nfs_utils_state.txt"
+    register: _restore_utils_state_raw
+    when: _restore_backup_dir_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Install nfs-utils if originally present"
+    ansible.builtin.dnf:
+      name: nfs-utils
+      state: present
+    when:
+    - _restore_utils_state_raw.content is defined
+    - (_restore_utils_state_raw.content | b64decode | trim) == 'installed'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read nfs-server active state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/nfs_server_active.txt"
+    register: _restore_active_state_raw
+    when: _restore_backup_dir_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read nfs-server is-enabled state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/nfs_server_enabled.txt"
+    register: _restore_enabled_state_raw
+    when: _restore_backup_dir_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Unmask nfs-server (remove any mask we may have applied)"
+    ansible.builtin.shell: "systemctl unmask nfs-server 2>/dev/null || true"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_enabled_state_raw.content is defined
+    - (_restore_enabled_state_raw.content | b64decode | trim) != 'masked'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Mask nfs-server if originally masked"
+    ansible.builtin.shell: "systemctl mask nfs-server"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_enabled_state_raw.content is defined
+    - (_restore_enabled_state_raw.content | b64decode | trim) == 'masked'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Enable nfs-server if originally enabled"
+    ansible.builtin.shell: "systemctl enable nfs-server"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_enabled_state_raw.content is defined
+    - (_restore_enabled_state_raw.content | b64decode | trim) == 'enabled'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Disable nfs-server if originally disabled"
+    ansible.builtin.shell: "systemctl disable nfs-server"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_enabled_state_raw.content is defined
+    - (_restore_enabled_state_raw.content | b64decode | trim) == 'disabled'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Start nfs-server if originally active"
+    ansible.builtin.shell: "systemctl start nfs-server"
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_active_state_raw.content is defined
+    - (_restore_active_state_raw.content | b64decode | trim) == 'active'
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_backup_dir_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,151 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_22.yml
+
+- name: "Req 01 - Check if OpenSSH server is installed"
+  ansible.builtin.shell: "which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Set ssh_installed fact"
+  ansible.builtin.set_fact:
+    ssh_installed: "{{ result_01.rc == 0 }}"
+
+- name: "Req 02 - Check if sshd service is running"
+  ansible.builtin.shell: "systemctl is-active sshd || service sshd status"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: ssh_installed | default(false) | bool
+
+- name: "Req 03 - Check if UsePAM is enabled in sshd configuration"
+  ansible.builtin.shell: "sshd -T | grep -i usepam"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: ssh_installed | default(false) | bool
+
+- name: "Compute audit results for requirements 1-4"
+  ansible.builtin.set_fact:
+    status_01: "{{ 'PASS' if (result_01.rc | default(-1) == 0) else 'NOT_APPLICABLE' }}"
+    status_02: >-
+      {{ 'NOT_APPLICABLE' if not (ssh_installed | default(false))
+      else ('PASS' if ('active' in (result_02.stdout | default('') | lower) or 'running' in (result_02.stdout | default('') | lower))
+      else 'FAIL') }}
+    status_03: >-
+      {{ 'NOT_APPLICABLE' if not (ssh_installed | default(false))
+      else ('PASS' if ('usepam yes' in (result_03.stdout | default('') | lower))
+      else 'FAIL') }}
+    status_04: >-
+      {{ 'NOT_APPLICABLE' if not (ssh_installed | default(false))
+      else ('PASS' if (
+        (result_01.rc | default(-1) == 0) and
+        ('active' in (result_02.stdout | default('') | lower) or 'running' in (result_02.stdout | default('') | lower)) and
+        ('usepam yes' in (result_03.stdout | default('') | lower))
+      ) else 'FAIL') }}
+
+    cmd_01: "which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server"
+    cmd_02: "systemctl is-active sshd || service sshd status"
+    cmd_03: "sshd -T | grep -i usepam"
+    cmd_04: "N/A"
+    cmd_05: "N/A"
+
+    exit_code_01: "{{ result_01.rc | default(-1) }}"
+    exit_code_02: "{{ result_02.rc | default(-1) if result_02 is defined and not (result_02.skipped | default(false)) else -1 }}"
+    exit_code_03: "{{ result_03.rc | default(-1) if result_03 is defined and not (result_03.skipped | default(false)) else -1 }}"
+    exit_code_04: "0"
+    exit_code_05: "0"
+
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    data_02: "{{ (result_02.stdout | default('') | trim) if result_02 is defined and not (result_02.skipped | default(false)) else 'N/A' }}"
+    data_03: "{{ (result_03.stdout | default('') | trim) if result_03 is defined and not (result_03.skipped | default(false)) else 'N/A' }}"
+    data_04: "Compliance determined"
+    data_05: "Overall compliance derived from requirements"
+
+    task_01_name: "Check if OpenSSH server is installed"
+    task_02_name: "Check if sshd service is running"
+    task_03_name: "Check if UsePAM is enabled in sshd configuration"
+    task_04_name: "Summarize overall compliance"
+    task_05_name: "Store final audit result in cis_result"
+
+    details_01: "{{ 'Package openssh-server is installed' if (result_01.rc | default(-1) == 0) else 'Package openssh-server is not installed' }}"
+    details_02: >-
+      {{ 'SSH server not installed, check skipped' if not (ssh_installed | default(false))
+      else ('Service sshd is active/running' if ('active' in (result_02.stdout | default('') | lower) or 'running' in (result_02.stdout | default('') | lower))
+      else 'Service sshd is not active/running') }}
+    details_03: >-
+      {{ 'SSH server not installed, check skipped' if not (ssh_installed | default(false))
+      else ('UsePAM is enabled (yes)' if ('usepam yes' in (result_03.stdout | default('') | lower))
+      else 'UsePAM is not set to yes') }}
+    details_04: >-
+      {{ 'SSH server not installed, check not applicable' if not (ssh_installed | default(false))
+      else ('All checks passed - compliant' if (
+        (result_01.rc | default(-1) == 0) and
+        ('active' in (result_02.stdout | default('') | lower) or 'running' in (result_02.stdout | default('') | lower)) and
+        ('usepam yes' in (result_03.stdout | default('') | lower))
+      ) else 'Some checks failed') }}
+
+- name: "Req 05 - Store final audit result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_04 }}"
+    status_05: "{{ status_04 }}"
+    details_05: "Final result stored in cis_result: {{ status_04 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.22"
+    - "Reference: CIS Benchmark checkpoint 5.1.22"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ cmd_01 | default('N/A') }}"
+    - "  Exit code: {{ exit_code_01 | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ cmd_02 | default('N/A') }}"
+    - "  Exit code: {{ exit_code_02 | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ cmd_03 | default('N/A') }}"
+    - "  Exit code: {{ exit_code_03 | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ cmd_04 | default('N/A') }}"
+    - "  Exit code: {{ exit_code_04 | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ cmd_05 | default('N/A') }}"
+    - "  Exit code: {{ exit_code_05 | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

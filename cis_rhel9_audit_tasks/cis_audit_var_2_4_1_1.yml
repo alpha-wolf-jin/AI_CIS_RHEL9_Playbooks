@@ -1,0 +1,8 @@
+req_01: |
+  Check if cron is installed using command: `systemctl list-unit-files | awk '$1~/^crond?\\.service/{print $2}'`. Expected result: enabled
+req_02: |
+  Check if cron daemon is enabled using command: `systemctl list-unit-files | awk '$1~/^crond?\\.service/{print $2}'`. Expected result: enabled
+req_03: |
+  Check if cron daemon is active using command: `systemctl list-units | awk '$1~/^crond?\\.service/{print $3}'`. Expected result: active
+req_04: "Summarize overall compliance: cron daemon must be installed, enabled, and active. Expected result: all checks pass"
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

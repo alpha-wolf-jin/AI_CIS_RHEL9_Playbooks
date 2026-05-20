@@ -1,0 +1,186 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snap_rules_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-time-change.rules.orig"
+    remote_src: true
+  when: "_snap_rules_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if auditd is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Write audit rules for time-change events"
+    ansible.builtin.copy:
+      dest: "{{ audit_rules_file }}"
+      content: |
+        -a always,exit -F arch=b64 -S adjtimex,settimeofday -k time-change
+        -a always,exit -F arch=b32 -S adjtimex,settimeofday -k time-change
+        -a always,exit -F arch=b64 -S clock_settime -F a0=0x0 -k time-change
+        -a always,exit -F arch=b32 -S clock_settime -F a0=0x0 -k time-change
+        -w /etc/localtime -p wa -k time-change
+      mode: '0640'
+    when: "auditd_installed | default(false)"
+    register: result_01_write
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules with augenrules"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false)"
+    register: result_01_load
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Check if reboot is required"
+    ansible.builtin.shell: |
+      set -o pipefail
+      if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then
+        echo "Reboot required to load rules"
+      else
+        echo "No reboot required"
+      fi
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false)"
+    register: result_01_reboot
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify audit rules for time-change are active"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -l | grep -E 'adjtimex|settimeofday|clock_settime|/etc/localtime' || echo 'VERIFY_FAILED'
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false)"
+    register: result_02
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Write and load audit rules for time-change events"
+      task_01_cmd: "augenrules --load"
+      task_01_rc: "{{ result_01_load.rc | default(-1) }}"
+      data_01: "{{ result_01_load.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if not (auditd_installed | default(false)) else ('APPLIED' if (result_01_load.rc | default(-1)) == 0 else 'FAILED') }}"
+      details_01: "{{ 'auditd not installed' if not (auditd_installed | default(false)) else ('Rules loaded successfully' if (result_01_load.rc | default(-1)) == 0 else 'Failed to load rules') }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify audit rules for time-change events"
+      task_02_cmd: "auditctl -l | grep -E 'adjtimex|settimeofday|clock_settime|/etc/localtime'"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if not (auditd_installed | default(false)) else ('PASS' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'FAIL') }}"
+      details_02: "{{ 'auditd not installed' if not (auditd_installed | default(false)) else ('Rules verified active' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'Verification failed - rules not found') }}"
+    tags: [execute]
+
+  - name: "Set cis_result variable"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Set cis_result variable"
+      task_03_cmd: "set_fact cis_result = {{ status_02 | default('ERROR') | trim }}"
+      task_03_rc: 0
+      data_03: "cis_result = {{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 6.3.3.4"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if audit rules backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-time-change.rules.orig"
+    register: _restore_rules_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite audit rules with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-time-change.rules.orig"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: "_restore_rules_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload audit rules after restore"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: "_restore_rules_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

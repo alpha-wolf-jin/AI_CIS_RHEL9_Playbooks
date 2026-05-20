@@ -1,0 +1,88 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_20.yml
+
+- name: "Req 01 - Check if auditd is installed"
+  ansible.builtin.shell: "{{ audit_cmd_01 }}"
+  args:
+    executable: /bin/bash
+  register: pkg_result
+  failed_when: false
+  changed_when: false
+
+- name: "Set auditd_installed fact"
+  set_fact:
+    auditd_installed: "{{ pkg_result.rc == 0 }}"
+
+- name: "Req 02 - Check if audit rules directory exists and contains .rules files"
+  ansible.builtin.shell: "{{ audit_cmd_02 }}"
+  args:
+    executable: /bin/bash
+  register: dir_result
+  failed_when: false
+  changed_when: false
+  when: auditd_installed | bool
+
+- name: "Req 03 - Check immutable flag is set"
+  ansible.builtin.shell: "{{ audit_cmd_03 }}"
+  args:
+    executable: /bin/bash
+  register: imm_result
+  failed_when: false
+  changed_when: false
+  when: auditd_installed | bool
+
+- name: "Set overall compliance status (cis_result)"
+  ansible.builtin.set_fact:
+    cis_result: "{{ 'NOT_APPLICABLE' if not auditd_installed else 'PASS' if ( ('auditd_installed' is defined and auditd_installed) and (dir_result is defined and dir_result.rc | default(1) == 0 and (dir_result.stdout_lines | default([]) | length > 0)) and (imm_result is defined and imm_result.stdout | default('') | trim == '-e 2') ) else 'FAIL' | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.20"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.20"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Req 01 - Check if auditd is installed"
+    - "  Command: {{ audit_cmd_01 }}"
+    - "  Exit code: {{ pkg_result.rc | default(-1) }}"
+    - "  Data: {{ pkg_result.stdout | default('') | trim }}"
+    - "  Status: {{ 'PASS' if auditd_installed else 'FAIL' }}"
+    - "  Details: {{ 'package is installed' if auditd_installed else 'package not installed' }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Req 02 - Check if audit rules directory exists and contains .rules files"
+    - "  Command: {{ audit_cmd_02 }}"
+    - "  Exit code: {{ (dir_result.rc if dir_result is defined else 1) }}"
+    - "  Data: {{ (dir_result.stdout | default('') if dir_result is defined else '') }}"
+    - "  Status: {{ 'PASS' if (auditd_installed and dir_result is defined and dir_result.rc | default(1) == 0 and (dir_result.stdout_lines | default([]) | length > 0)) else ('NOT_APPLICABLE' if not auditd_installed else 'FAIL') }}"
+    - "  Details: {{ 'directory exists and contains .rules files' if (auditd_installed and dir_result is defined and dir_result.rc | default(1) == 0 and (dir_result.stdout_lines | default([]) | length > 0)) else ('auditd not installed, check skipped' if not auditd_installed else 'directory missing or no .rules files') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Req 03 - Check immutable flag is set"
+    - "  Command: {{ audit_cmd_03 }}"
+    - "  Exit code: {{ (imm_result.rc if imm_result is defined else 1) }}"
+    - "  Data: {{ (imm_result.stdout | default('') | trim if imm_result is defined else '') }}"
+    - "  Status: {{ 'PASS' if (auditd_installed and imm_result is defined and imm_result.stdout | default('') | trim == '-e 2') else ('NOT_APPLICABLE' if not auditd_installed else 'FAIL') }}"
+    - "  Details: {{ 'immutable flag is set' if (auditd_installed and imm_result is defined and imm_result.stdout | default('') | trim == '-e 2') else ('auditd not installed, check skipped' if not auditd_installed else 'immutable flag not set') }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Set overall compliance status (cis_result)"
+    - "  Command: N/A"
+    - "  Exit code: 0"
+    - "  Data: {{ cis_result }}"
+    - "  Status: {{ cis_result }}"
+    - "  Details: Overall compliance derived from previous checks"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: Store final audit result in cis_result"
+    - "  Command: N/A"
+    - "  Exit code: 0"
+    - "  Data: {{ cis_result }}"
+    - "  Status: {{ cis_result }}"
+    - "  Details: Stored in cis_result variable"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "========================================================"

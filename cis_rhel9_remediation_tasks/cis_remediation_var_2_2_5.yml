@@ -1,0 +1,5 @@
+playbook_name: "remediate_cis_2_2_5"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply removal of the tftp client package using command: `dnf remove -y tftp`. Expected result: The tftp package is removed from the system."
+req_02: "Verify that the tftp client is not installed using command: `rpm -q tftp`. Expected result: The command returns 'package tftp is not installed' or a non-zero exit code."
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

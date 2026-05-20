@@ -1,0 +1,5 @@
+playbook_name: "cis_6_3_3_11_session_init"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_rules_file: "/etc/audit/rules.d/50-session.rules"
+req_01: "Apply remediation for: Ensure session initiation information is collected. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure session initiation information is collected is properly configured. Expected result: Compliant"

@@ -1,0 +1,13 @@
+playbook_name: "cis_6_3_2_1"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/audit/auditd.conf"
+config_param: "max_log_file"
+config_value: "8"
+package_name: "audit"
+service_name: "auditd"
+req_01: "Apply prerequisite check for auditd package using command: dpkg -l auditd || rpm -q auditd. Expected result: package is installed."
+req_02: |
+  Apply configuration of maximum audit log file size using command: sed -i 's/^max_log_file\\s*=.*/max_log_file = <MB>/' /etc/audit/auditd.conf. Expected result: parameter set to site policy value.
+req_03: "Apply restart of auditd service using command: systemctl restart auditd. Expected result: service restarts with new configuration."
+req_04: "Verify audit log storage size configuration using command: grep '^max_log_file' /etc/audit/auditd.conf. Expected result: displays configured size in megabytes."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,263 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_2.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+
+- name: "Req 01 - Check if sudo is installed"
+  ansible.builtin.shell:
+    cmd: which sudo || dpkg -l sudo || rpm -q sudo
+    executable: /bin/bash
+  register: sudo_check
+  failed_when: false
+  changed_when: false
+
+- name: "Set sudo installed fact"
+  ansible.builtin.set_fact:
+    sudo_installed: "{{ sudo_check.rc == 0 }}"
+
+- name: "Req 02-03 - Check on-disk audit rules for actions as another user"
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      awk '/^ *-a *always,exit/ &&/ -F *arch=b(32|64)/ &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) &&(/ -C *euid!=uid/||/ -C *uid!=euid/) &&/ -S *execve/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules 2>/dev/null || true
+    executable: /bin/bash
+  register: on_disk_result
+  failed_when: false
+  changed_when: false
+  when: sudo_installed | bool
+
+- name: "Req 04-05 - Check running audit rules for actions as another user"
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      auditctl -l 2>/dev/null | awk '/^ *-a *always,exit/ &&/ -F *arch=b(32|64)/ &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) &&(/ -C *euid!=uid/||/ -C *uid!=euid/) &&/ -S *execve/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' || true
+    executable: /bin/bash
+  register: running_result
+  failed_when: false
+  changed_when: false
+  when: sudo_installed | bool
+
+- name: "Evaluate requirement 01 details"
+  ansible.builtin.set_fact:
+    data_01: "{{ sudo_check.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if sudo_installed else 'FAIL' }}"
+    details_01: "{{ 'sudo found: ' ~ (sudo_check.stdout | default('') | trim) if sudo_installed else 'sudo not installed' }}"
+    task_01_name: "Check if sudo is installed"
+    task_01_cmd: "which sudo || dpkg -l sudo || rpm -q sudo"
+    task_01_rc: "{{ sudo_check.rc | default(-1) }}"
+
+- name: "Evaluate requirement 02-03 on-disk data"
+  ansible.builtin.set_fact:
+    data_02: "{{ (on_disk_result.stdout | default('') | regex_search('^.*arch=b64.*$', multiline=True) | default('') | trim) if sudo_installed else '' }}"
+    data_03: "{{ (on_disk_result.stdout | default('') | regex_search('^.*arch=b32.*$', multiline=True) | default('') | trim) if sudo_installed else '' }}"
+    task_02_name: "Check on-disk audit rules (64-bit)"
+    task_02_cmd: "awk '/^ *-a *always,exit/ ...' /etc/audit/rules.d/*.rules"
+    task_02_rc: "{{ on_disk_result.rc | default(-1) if sudo_installed else -1 }}"
+    task_03_name: "Check on-disk audit rules (32-bit)"
+    task_03_cmd: "awk '/^ *-a *always,exit/ ...' /etc/audit/rules.d/*.rules"
+    task_03_rc: "{{ on_disk_result.rc | default(-1) if sudo_installed else -1 }}"
+
+- name: "Set requirement 02-03 on-disk status"
+  ansible.builtin.set_fact:
+    status_02: >-
+      {%- if not sudo_installed -%} NOT_APPLICABLE
+      {%- elif data_02 | trim == expected_ondisk_b64 | trim -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+    status_03: >-
+      {%- if not sudo_installed -%} NOT_APPLICABLE
+      {%- elif data_03 | trim == expected_ondisk_b32 | trim -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+
+- name: "Set requirement 02-03 on-disk details"
+  ansible.builtin.set_fact:
+    details_02: >-
+      {%- if not sudo_installed -%} sudo not installed, check not applicable
+      {%- elif status_02 == 'PASS' -%} Found matching on-disk 64-bit rule
+      {%- else -%} Expected on-disk 64-bit rule not found or mismatch
+      {%- endif -%}
+    details_03: >-
+      {%- if not sudo_installed -%} sudo not installed, check not applicable
+      {%- elif status_03 == 'PASS' -%} Found matching on-disk 32-bit rule
+      {%- else -%} Expected on-disk 32-bit rule not found or mismatch
+      {%- endif -%}
+
+- name: "Evaluate requirement 04-05 running data"
+  ansible.builtin.set_fact:
+    data_04: "{{ (running_result.stdout | default('') | regex_search('^.*arch=b64.*$', multiline=True) | default('') | trim) if sudo_installed else '' }}"
+    data_05: "{{ (running_result.stdout | default('') | regex_search('^.*arch=b32.*$', multiline=True) | default('') | trim) if sudo_installed else '' }}"
+    task_04_name: "Check running audit rules (64-bit)"
+    task_04_cmd: "auditctl -l | awk '/^ *-a *always,exit/ ...'"
+    task_04_rc: "{{ running_result.rc | default(-1) if sudo_installed else -1 }}"
+    task_05_name: "Check running audit rules (32-bit)"
+    task_05_cmd: "auditctl -l | awk '/^ *-a *always,exit/ ...'"
+    task_05_rc: "{{ running_result.rc | default(-1) if sudo_installed else -1 }}"
+
+- name: "Set requirement 04-05 running status"
+  ansible.builtin.set_fact:
+    status_04: >-
+      {%- if not sudo_installed -%} NOT_APPLICABLE
+      {%- elif data_04 | trim == expected_running_b64 | trim -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+    status_05: >-
+      {%- if not sudo_installed -%} NOT_APPLICABLE
+      {%- elif data_05 | trim == expected_running_b32 | trim -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+
+- name: "Set requirement 04-05 running details"
+  ansible.builtin.set_fact:
+    details_04: >-
+      {%- if not sudo_installed -%} sudo not installed, check not applicable
+      {%- elif status_04 == 'PASS' -%} Found matching running 64-bit rule
+      {%- else -%} Expected running 64-bit rule not found or mismatch
+      {%- endif -%}
+    details_05: >-
+      {%- if not sudo_installed -%} sudo not installed, check not applicable
+      {%- elif status_05 == 'PASS' -%} Found matching running 32-bit rule
+      {%- else -%} Expected running 32-bit rule not found or mismatch
+      {%- endif -%}
+
+- name: "Evaluate overall compliance status"
+  ansible.builtin.set_fact:
+    status_06: >-
+      {%- if not sudo_installed -%} NOT_APPLICABLE
+      {%- elif status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' -%} PASS
+      {%- else -%} FAIL
+      {%- endif -%}
+
+- name: "Set requirement 06 details and data"
+  ansible.builtin.set_fact:
+    details_06: >-
+      {%- if not sudo_installed -%} sudo not installed, all checks skipped
+      {%- elif status_06 == 'PASS' -%} All on-disk and running rules match expected output
+      {%- else -%} One or more rules do not match expected output
+      {%- endif -%}
+    data_06: "{{ status_06 | trim }}"
+    task_06_name: "Summarize overall compliance"
+    task_06_cmd: "N/A (evaluation)"
+    task_06_rc: "0"
+
+- name: "Req 07 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_06 | trim }}"
+    data_07: "{{ status_06 | trim }}"
+    status_07: "PASS"
+    details_07: "Overall compliance stored as cis_result: {{ status_06 | trim }}"
+    task_07_name: "Store cis_result using set_fact"
+    task_07_cmd: "set_fact: cis_result = status_06"
+    task_07_rc: "0"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.2"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

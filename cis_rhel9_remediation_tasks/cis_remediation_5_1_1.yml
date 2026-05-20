@@ -1,0 +1,164 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_1.yml
+
+- name: "Snapshot - Check if remediation script exists from prior runs"
+  ansible.builtin.stat:
+    path: "{{ remediation_script }}"
+  register: snap_remediation_script
+  tags:
+  - snapshot
+
+- name: "Snapshot - Check if verification script exists from prior runs"
+  ansible.builtin.stat:
+    path: "{{ verify_script }}"
+  register: snap_verification_script
+  tags:
+  - snapshot
+
+
+- block:
+  - name: "Pre-check - Check if /etc/ssh/sshd_config exists"
+    ansible.builtin.stat:
+      path: /etc/ssh/sshd_config
+    register: sshd_config_stat
+    changed_when: false
+    failed_when: false
+
+  - name: "Set sshd present fact"
+    set_fact:
+      sshd_present: "{{ sshd_config_stat.stat.exists | default(false) }}"
+
+  - name: "Initialize data and skip state when sshd not present"
+    set_fact:
+      status_01: "SKIP"
+      details_01: "sshd_config not found; remediation skipped"
+      task_01_name: "Remediation script execution"
+      task_01_cmd: "/bin/bash {{ remediation_script }}"
+      task_01_rc: -1
+      data_01: ""
+      status_02: "SKIP"
+      details_02: "sshd_config not found; verification skipped"
+      task_02_name: "Verification script execution"
+      task_02_cmd: "/bin/bash {{ verify_script }}"
+      task_02_rc: -1
+      data_02: ""
+      status_03: "SKIP"
+      details_03: "sshd_config not found; cis_result set to SKIP"
+      task_03_name: "Set cis_result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: ""
+      cis_result: "SKIP"
+    when: not sshd_present
+
+  - name: "Block when sshd is present"
+    block:
+    - name: "Req 1 - Copy remediation script"
+      ansible.builtin.copy:
+        dest: "{{ remediation_script }}"
+        mode: '0700'
+        content: "{{ remediation_script_content }}"
+      changed_when: false
+
+    - name: "Req 1 - Execute remediation script"
+      ansible.builtin.shell: "/bin/bash {{ remediation_script }}"
+      args:
+        executable: /bin/bash
+      register: remediate_result
+      failed_when: false
+      changed_when: false
+
+    - name: "Req 1 - Store remediation details"
+      set_fact:
+        task_01_name: "Remediation script execution"
+        task_01_cmd: "/bin/bash {{ remediation_script }}"
+        task_01_rc: "{{ remediate_result.rc | default(-1) }}"
+        data_01: "{{ remediate_result.stdout | default('') | trim }}"
+        status_01: "{{ 'PASS' if remediate_result.rc | default(-1) == 0 else 'FAIL' }}"
+        details_01: "{{ 'Remediation script completed successfully' if remediate_result.rc | default(-1) == 0 else 'Remediation script failed' }}"
+
+    - name: "Req 2 - Copy verification script"
+      ansible.builtin.copy:
+        dest: "{{ verify_script }}"
+        mode: '0700'
+        content: "{{ verify_script_content }}"
+      changed_when: false
+
+    - name: "Req 2 - Execute verification script"
+      ansible.builtin.shell: "/bin/bash {{ verify_script }}"
+      args:
+        executable: /bin/bash
+      register: verify_result
+      failed_when: false
+      changed_when: false
+
+    - name: "Req 2 - Store verification details"
+      set_fact:
+        task_02_name: "Verification script execution"
+        task_02_cmd: "/bin/bash {{ verify_script }}"
+        task_02_rc: "{{ verify_result.rc | default(-1) }}"
+        data_02: "{{ verify_result.stdout | default('') | trim }}"
+        status_02: "{{ 'PASS' if (verify_result.rc | default(-1)) == 0 else 'FAIL' if (verify_result.rc | default(-1)) != 0 else 'ERROR' }}"
+        details_02: "{{ 'Verification passed' if (verify_result.rc | default(-1)) == 0 else 'Verification failed' if (verify_result.rc | default(-1)) != 0 else 'Verification error' }}"
+
+    - name: "Req 3 - Set cis_result from verification status"
+      set_fact:
+        task_03_name: "Set cis_result"
+        task_03_cmd: "set_fact"
+        task_03_rc: 0
+        data_03: "{{ status_02 }}"
+        status_03: "{{ status_02 }}"
+        details_03: "Overall remediation result derived from verification step"
+        cis_result: "{{ status_02 }}"
+    when: sshd_present
+  tags:
+  - execute
+  always:
+  - name: "Restore - Remove temporary remediation script"
+    ansible.builtin.file:
+      path: "{{ remediation_script }}"
+      state: absent
+    tags:
+    - restore
+
+  - name: "Restore - Remove temporary verification script"
+    ansible.builtin.file:
+      path: "{{ verify_script }}"
+      state: absent
+    tags:
+    - restore
+
+- name: "Req 4 - Generate remediation report"
+  debug:
+    msg:
+    - "REMEDIATION REPORT — CIS 5.1.1"
+    - "Reference: CIS Benchmark checkpoint 5.1.1"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL REMEDIATION:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

@@ -1,0 +1,7 @@
+req_01: "Check if rsyslog is installed using command: `dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null`. Expected result: package is installed."
+req_02: "Check if rsyslog configuration file exists using command: `test -f /etc/rsyslog.conf && echo 'EXISTS'`. Expected result: EXISTS."
+req_03: "Check if rsyslog.d directory exists using command: `test -d /etc/rsyslog.d && echo 'EXISTS'`. Expected result: EXISTS or directory may be absent."
+req_04: |
+  Check $FileCreateMode is configured with 0640 or more restrictive using command: `grep -Ps '^\\h*\\$FileCreateMode\\h+0[0,2,4,6][0,2,4]0\\b' /etc/rsyslog.conf /etc/rsyslog.d/*.conf`. Expected result: output includes $FileCreateMode 0640 or more restrictive (e.g., 0600).
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if rsyslog is not installed, FAIL if rsyslog is installed but $FileCreateMode is not 0640 or more restrictive."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,164 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_8_5.yml
+
+- name: "Check if audit script already exists before execution"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: pre_script_stat
+  failed_when: false
+  changed_when: false
+
+- name: "Record pre-existing script existence marker"
+  set_fact:
+    pre_script_existed: "{{ pre_script_stat.stat.exists | default(false) }}"
+
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+
+# ===== gdm_check group =====
+  - name: "gdm_check - Determine GDM applicability"
+    block:
+    - name: "Check if GDM package is installed"
+      ansible.builtin.package_facts:
+        manager: auto
+      failed_when: false
+
+    - name: "Set GDM installation status"
+      set_fact:
+        gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
+
+# ===== gdm_audit group =====
+  - name: "gdm_audit - Run audit script"
+    block:
+    - name: "Copy audit script to remote"
+      ansible.builtin.copy:
+        dest: "{{ audit_script }}"
+        mode: '0700'
+        content: "{{ audit_script_content }}"
+      changed_when: false
+      failed_when: false
+
+    - name: "Req 1 - Run audit script to verify GDM screen lock cannot be overridden"
+      ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+      args:
+        executable: /bin/bash
+      register: audit_result
+      failed_when: false
+      changed_when: false
+
+    - name: "Set requirement 1 details"
+      set_fact:
+        task_01_name: "Req 1 - Run audit script to verify GDM screen lock cannot be overridden"
+        task_01_cmd: "/bin/bash {{ audit_script }}"
+        task_01_rc: "{{ audit_result.rc | default(-1) }}"
+        data_01: "{{ audit_result.stdout | default('') | trim }}"
+        status_01: "{{ ('PASS' if audit_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
+        details_01: "{{ ('Script executed successfully' if audit_result.rc | default(-1) == 0 else 'Script execution failed') | trim }}"
+
+# ===== gdm_report group =====
+  - name: "gdm_report - Evaluate and report"
+    block:
+    - name: "Req 2 - Determine compliance status from audit output"
+      set_fact:
+        data_02: "{{ audit_result.stdout | default('') | trim }}"
+        status_02: "{{ 'PASS' if not gdm_installed else ('PASS' if '** PASS **' in audit_result.stdout else ('FAIL' if '** FAIL **' in audit_result.stdout else 'UNKNOWN')) }}"
+        details_02: "{{ 'GDM not installed - recommendation not applicable (PASS)' if not gdm_installed else ('Compliance check passed' if '** PASS **' in audit_result.stdout else ('Compliance check failed' if '** FAIL **' in audit_result.stdout else 'Unable to determine compliance')) }}"
+        task_02_name: "Req 2 - Verify compliance status"
+        task_02_cmd: "N/A (audit analysis)"
+        task_02_rc: 0
+
+    - name: "Req 3 - Store overall compliance in cis_result"
+      set_fact:
+        cis_result: "{{ status_02 }}"
+        task_03_name: "Req 3 - Store overall compliance result"
+        task_03_cmd: "set_fact cis_result = status_02"
+        task_03_rc: 0
+        data_03: "{{ status_02 }}"
+        status_03: "PASS"
+        details_03: "cis_result stored as {{ status_02 }}"
+
+    - name: "Req 4 - Set report generation details"
+      set_fact:
+        task_04_name: "Generate audit report"
+        task_04_cmd: "debug msg module"
+        task_04_rc: 0
+        data_04: "Report generated"
+        status_04: "PASS"
+        details_04: "Audit report generated successfully"
+
+    - name: "Generate audit report"
+      debug:
+        msg:
+        - "AUDIT REPORT — CIS 1.8.5"
+        - "Reference: CIS Benchmark checkpoint 1.8.5"
+        - "REQUIREMENT 01 - {{ req_01 }}:"
+        - "  Task: {{ task_01_name | default('Not recorded') }}"
+        - "  Command: {{ task_01_cmd | default('N/A') }}"
+        - "  Exit code: {{ task_01_rc | default(-1) }}"
+        - "  Data: {{ data_01 | default('') | trim }}"
+        - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+        - "  Details: {{ details_01 | default('') | trim }}"
+        - ""
+        - "REQUIREMENT 02 - {{ req_02 }}:"
+        - "  Task: {{ task_02_name | default('Not recorded') }}"
+        - "  Command: {{ task_02_cmd | default('N/A') }}"
+        - "  Exit code: {{ task_02_rc | default(-1) }}"
+        - "  Data: {{ data_02 | default('') | trim }}"
+        - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+        - "  Details: {{ details_02 | default('') | trim }}"
+        - ""
+        - "REQUIREMENT 03 - {{ req_03 }}:"
+        - "  Task: {{ task_03_name | default('Not recorded') }}"
+        - "  Command: {{ task_03_cmd | default('N/A') }}"
+        - "  Exit code: {{ task_03_rc | default(-1) }}"
+        - "  Data: {{ data_03 | default('') | trim }}"
+        - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+        - "  Details: {{ details_03 | default('') | trim }}"
+        - ""
+        - "REQUIREMENT 04 - {{ req_04 }}:"
+        - "  Task: {{ task_04_name | default('Not recorded') }}"
+        - "  Command: {{ task_04_cmd | default('N/A') }}"
+        - "  Exit code: {{ task_04_rc | default(-1) }}"
+        - "  Data: {{ data_04 | default('') | trim }}"
+        - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+        - "  Details: {{ details_04 | default('') | trim }}"
+        - ""
+        - "========================================================"
+        - "OVERALL COMPLIANCE:"
+        - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+        - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+        - "========================================================"
+  always:
+  - name: "Cleanup temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    failed_when: false
+    changed_when: false

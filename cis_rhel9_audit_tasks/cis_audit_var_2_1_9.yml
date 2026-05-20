@@ -1,0 +1,4 @@
+req_01: "Check if nfs-utils package is installed using command: `rpm -q nfs-utils`. Expected result: package nfs-utils is not installed"
+req_02: "If nfs-utils is installed and required for dependencies, check if nfs-server.service is enabled using command: `systemctl is-enabled nfs-server.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If nfs-utils is installed and required for dependencies, check if nfs-server.service is active using command: `systemctl is-active nfs-server.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "Summarize overall compliance: Ensure that either nfs-utils is not installed, or if installed for dependencies, the nfs-server service is not enabled and not active, and local site policy approvals are in place."

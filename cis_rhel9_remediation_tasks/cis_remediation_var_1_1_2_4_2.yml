@@ -1,0 +1,6 @@
+playbook_name: "cis_1_1_2_4_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if /var is a separate partition using command: `mount | grep ' /var '`. Expected result: output showing /var partition details."
+req_02: "Edit /etc/fstab to add nodev to the mounting options for /var partition using command: `replace` module with backrefs to append ',nodev' to the options field. Expected result: nodev option added to /var entry in /etc/fstab."
+req_03: "Remount /var with updated options using command: `mount -o remount /var`. Expected result: no error output."
+req_04: "Verify nodev option is set on /var partition using command: `mount | grep ' /var ' | grep nodev`. Expected result: output showing nodev in mount options."

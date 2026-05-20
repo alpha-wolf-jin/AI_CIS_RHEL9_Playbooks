@@ -1,0 +1,8 @@
+playbook_name: "cis_3_3_6_secure_icmp_redirects"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+target_sysctl_file: "/etc/sysctl.d/60-netipv4_sysctl.conf"
+sysctl_params:
+  - name: "net.ipv4.conf.all.secure_redirects"
+    value: "0"
+  - name: "net.ipv4.conf.default.secure_redirects"
+    value: "0"

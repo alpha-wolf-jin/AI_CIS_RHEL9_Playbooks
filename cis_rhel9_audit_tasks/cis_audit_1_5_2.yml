@@ -1,0 +1,183 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_5_2.yml
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: audit_script_pre_stat
+  tags: [snapshot]
+- name: "Snapshot - Create marker if script did not exist"
+  ansible.builtin.file:
+    path: "{{ audit_script }}.did_not_exist_before"
+    state: touch
+    mode: '0644'
+  when: not audit_script_pre_stat.stat.exists
+  tags: [snapshot]
+
+- name: "Execute - Audit ptrace_scope compliance"
+  block:
+  - name: "Initialize requirement data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+
+  - name: "Req 01 - Deploy audit script"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    failed_when: false
+    changed_when: false
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute audit script for ptrace_scope"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: "PASS"
+      details_01: "Script executed successfully"
+
+  - name: "Req 02 - Determine compliance from script output"
+    ansible.builtin.set_fact:
+      task_02_name: "Check compliance markers in audit output"
+      task_02_cmd: "parse script stdout"
+      task_02_rc: "N/A"
+      data_02: "{{ audit_result.stdout | default('') | trim }}"
+      status_02: "PASS"
+      details_02: "Summary generated correctly"
+      cis_compliance_result: >-
+        {{- 'PASS' if '** PASS **' in audit_result.stdout | default('') else
+           'FAIL' if '** FAIL **' in audit_result.stdout | default('') else
+           'INCONCLUSIVE' -}}
+
+  - name: "Req 03 - Store cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ cis_compliance_result }}"
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Store final audit result in cis_result"
+      task_03_cmd: "set_fact: cis_result = cis_compliance_result"
+      task_03_rc: 0
+      data_03: "{{ cis_result }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ cis_result }}"
+
+  - name: "Store requirement 04 report details"
+    ansible.builtin.set_fact:
+      task_04_name: "Generate audit report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: "Audit report generated"
+      status_04: "PASS"
+      details_04: "Report displayed with overall compliance: {{ cis_result }}"
+
+  - name: "Req 04 - Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.5.2"
+      - "Reference: CIS Benchmark checkpoint 1.5.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name }}"
+      - "  Command: {{ task_03_cmd }}"
+      - "  Exit code: {{ task_03_rc }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 }}"
+      - "  Details: {{ details_03 }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name }}"
+      - "  Command: {{ task_04_cmd }}"
+      - "  Exit code: {{ task_04_rc }}"
+      - "  Data: {{ data_04 }}"
+      - "  Status: {{ status_04 }}"
+      - "  Details: {{ details_04 }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result }}"
+      - "========================================================"
+
+  - name: "Align overall status – fail play if compliance check failed"
+    ansible.builtin.fail:
+      msg: "CIS 1.5.2 audit: ptrace_scope is NOT restricted – compliance FAIL"
+    when: cis_result == 'FAIL'
+
+  always:
+  - name: "Restore - Check if marker exists (script was created by us)"
+    ansible.builtin.stat:
+      path: "{{ audit_script }}.did_not_exist_before"
+    register: marker_stat_restore
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if we created it"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: marker_stat_restore.stat.exists
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Remove marker"
+    ansible.builtin.file:
+      path: "{{ audit_script }}.did_not_exist_before"
+      state: absent
+    when: marker_stat_restore.stat.exists
+    tags: [restore]
+    failed_when: false

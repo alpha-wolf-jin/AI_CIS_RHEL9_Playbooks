@@ -1,0 +1,38 @@
+req_01: "Run the provided audit script to verify Ensure journald log file access is configured. First determine if there is an override file /etc/tmpfiles.d/systemd.conf. If so, this file will override all default settings as defined in /usr/lib/tmpfiles.d/systemd.conf and should be inspected. If no override file exists, inspect the default /usr/lib/tmpfiles.d/systemd.conf against the site specific requirements. Ensure that file permissions are mode 0640 or more restrictive. Run the following script to verify if an override file exists or not and if the files permissions are mode 640 or more restrictive:"
+req_02: "VERIFY: Summarise compliance status for Ensure journald log file access is configured. Expected result: PASS if compliant, FAIL otherwise"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+
+  {
+      l_output="" file_path=""
+      # Check for the existence of an override file
+      if [ -f /etc/tmpfiles.d/systemd.conf ]; then
+          file_path="/etc/tmpfiles.d/systemd.conf"
+      elif [ -f /usr/lib/tmpfiles.d/systemd.conf ]; then
+          file_path="/usr/lib/tmpfiles.d/systemd.conf"
+      fi
+      if [ -n "$file_path" ]; then # Ensure a file path is found
+          higher_permissions_found=false  # Initialize a flag to check if higher permissions are found
+          # Read the file line by line and check for permissions higher than 0640
+          while IFS= read -r line; do
+              if echo "$line" | grep -Piq '^\s*[a-z]+\s+[^\s]+\s+0*([6-7][4- 7][1-7]|7[0-7][0-7])\s+'; then
+                  higher_permissions_found=true
+                  break
+              fi
+          done < "$file_path"
+          if $higher_permissions_found; then
+              echo -e "\n - permissions other than 0640 found in $file_path"
+     l_output="$l_output\n - Inspect $file_path"
+          else
+              echo -e "All permissions inside $file_path are 0640 or more restrictive."
+          fi
+      fi
+     if [ -z "$l_output" ]; then # Provide output from checks
+        echo -e "\n- Audit Result:\n  ** PASS **\n$file_path exists and has correct permissions set\n"
+     else
+        echo -e "\n- Audit Result:\n  ** REVIEW **\n$l_output\n - Review permissions to ensure they are set IAW site policy"
+     fi
+  }
+  {% endraw %}

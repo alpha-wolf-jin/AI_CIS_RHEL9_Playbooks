@@ -1,0 +1,167 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_7_1_11.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      dest: "{{ script_path }}"
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+           l_smask='01000'
+           a_file=(); a_dir=()
+           a_path=(! -path "/run/user/*" -a ! -path "/proc/*" -a ! -path "*/containerd/*" -a ! -path "*/kubelet/pods/*" -a ! -path "*/kubelet/plugins/*" -a ! -path "/sys/*" -a ! -path "/snap/*")
+           while IFS= read -r l_mount; do
+              while IFS= read -r -d $'\0' l_file; do
+                 if [ -e "$l_file" ]; then
+                    l_mode="$(stat -Lc '%#a' "$l_file")"
+                    if [ -f "$l_file" ]; then
+                       echo -e " - File: \"$l_file\" is mode: \"$l_mode\"\n  - removing write permission on \"$l_file\" from \"other\""
+                       chmod o-w "$l_file"
+                    fi
+                    if [ -d "$l_file" ]; then
+                       if [ ! $(( $l_mode & $l_smask )) -gt 0 ]; then
+                          echo -e " - Directory: \"$l_file\" is mode: \"$l_mode\" and doesn't have the sticky bit set\n  - Adding the sticky bit"
+                          chmod a+t "$l_file"
+                       fi
+                    fi
+                 fi
+              done < <(find "$l_mount" -xdev \( "${a_path[@]}" \) \( -type f -o -type d \) -perm -0002 -print0 2> /dev/null)
+           done < <(findmnt -Dkerno fstype,target | awk '($1 !~ /^\s*(nfs|proc|smb|vfat|iso9660|efivarfs|selinuxfs)/ && $2 !~ /^(\/run\/user\/|\/tmp|\/var\/tmp)/){print $2}')
+        }
+        {% endraw %}
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: "/bin/bash {{ script_path }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify no unsecured world-writable files/directories remain"
+    ansible.builtin.shell: |
+      findmnt -Dkerno fstype,target | awk '($1 !~ /^\s*(nfs|proc|smb|vfat|iso9660|efivarfs|selinuxfs)/ && $2 !~ /^(\/run\/user\/|\/tmp|\/var\/tmp)/){print $2}' | while read -r l_mount; do
+        find "$l_mount" -xdev \( ! -path "/run/user/*" -a ! -path "/proc/*" -a ! -path "*/containerd/*" -a ! -path "*/kubelet/pods/*" -a ! -path "*/kubelet/plugins/*" -a ! -path "/sys/*" -a ! -path "/snap/*" \) \
+          \( -type f -perm -0002 -o \( -type d -perm -0002 ! -perm -1000 \) \) -print 2>/dev/null
+      done
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Execute remediation script"
+      task_01_cmd: "/bin/bash {{ script_path }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ ('Script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Script execution failed') | trim }}"
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify world-writable files and directories (sticky bit aware)"
+      task_02_cmd: |
+        find ... -type f -perm -0002 -o \( -type d -perm -0002 ! -perm -1000 \)
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL') | trim }}"
+      details_02: "{{ ('System is compliant - no unsecured world-writable files/directories found' if (result_02.stdout | default('') | trim) == '' else 'FAIL: Unsecured world-writable files/directories still exist') | trim }}"
+
+  - name: "Req 03 - Set final remediation result variable"
+    set_fact:
+      cis_result: "{{ status_02 | trim }}"
+      task_03_name: "Set final remediation result variable"
+      task_03_cmd: "set_fact: cis_result = status_02"
+      task_03_rc: 0
+      data_03: "{{ status_02 | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ status_02 | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug: msg: REMEDIATION REPORT"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Remediation report generated successfully"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 7.1.11"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 7.1.11"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove remediation script"
+    ansible.builtin.file:
+      path: "{{ script_path }}"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

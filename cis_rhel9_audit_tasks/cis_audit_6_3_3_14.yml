@@ -1,0 +1,197 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_14.yml
+
+- name: "Req 01 - Check if SELinux or Mandatory Access Control is installed"
+  ansible.builtin.shell: "which selinuxenabled || dpkg -l selinux* 2>/dev/null || rpm -qa selinux* 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store facts for requirement 01"
+  ansible.builtin.set_fact:
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (result_01.stdout | default('') | trim | length > 0) else 'FAIL' }}"
+    details_01: "{{ 'MAC installed' if (result_01.stdout | default('') | trim | length > 0) else 'MAC not installed' }}"
+    mac_installed: "{{ (result_01.stdout | default('') | trim | length > 0) | bool }}"
+    task_01_name: "Req 01 - Check MAC installed"
+    task_01_cmd: "which selinuxenabled || dpkg -l selinux* 2>/dev/null || rpm -qa selinux* 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+
+- name: "Req 02 - Check on-disk audit rules for MAC policy directories"
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk '/^ *-w/ \
+      &&(/\/etc\/selinux/ \
+        ||/\/usr\/share\/selinux/) \
+      &&/ +-p *wa/ \
+      &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+  args:
+    executable: /bin/bash
+  register: result_ondisk
+  failed_when: false
+  changed_when: false
+  when: "mac_installed | default(false) | bool"
+
+- name: "Req 04 - Check running audit rules for MAC policy directories"
+  ansible.builtin.shell: |
+    set -o pipefail
+    auditctl -l | awk '/^ *-w/ \
+      &&(/\/etc\/selinux/ \
+        ||/\/usr\/share\/selinux/) \
+      &&/ +-p *wa/ \
+      &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+  args:
+    executable: /bin/bash
+  register: result_running
+  failed_when: false
+  changed_when: false
+  when: "mac_installed | default(false) | bool"
+
+- name: "Store facts for requirements 02-05"
+  ansible.builtin.set_fact:
+    data_02: "{{ result_ondisk.stdout | default('') | trim if result_ondisk is defined else '' }}"
+    status_02: >-
+      {{ 'SKIPPED' if not (mac_installed | default(false))
+      else 'PASS' if result_ondisk is defined and result_ondisk.stdout | default('') | regex_search('^-w /etc/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'FAIL' }}
+    details_02: >-
+      {{ 'MAC not installed, check skipped' if not (mac_installed | default(false))
+      else 'Expected pattern found for /etc/selinux in on-disk rules' if result_ondisk is defined and result_ondisk.stdout | default('') | regex_search('^-w /etc/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'Expected pattern not found for /etc/selinux in on-disk rules' }}
+    data_03: "{{ result_ondisk.stdout | default('') | trim if result_ondisk is defined else '' }}"
+    status_03: >-
+      {{ 'SKIPPED' if not (mac_installed | default(false))
+      else 'PASS' if result_ondisk is defined and result_ondisk.stdout | default('') | regex_search('^-w /usr/share/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'FAIL' }}
+    details_03: >-
+      {{ 'MAC not installed, check skipped' if not (mac_installed | default(false))
+      else 'Expected pattern found for /usr/share/selinux in on-disk rules' if result_ondisk is defined and result_ondisk.stdout | default('') | regex_search('^-w /usr/share/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'Expected pattern not found for /usr/share/selinux in on-disk rules' }}
+    data_04: "{{ result_running.stdout | default('') | trim if result_running is defined else '' }}"
+    status_04: >-
+      {{ 'SKIPPED' if not (mac_installed | default(false))
+      else 'PASS' if result_running is defined and result_running.stdout | default('') | regex_search('^-w /etc/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'FAIL' }}
+    details_04: >-
+      {{ 'MAC not installed, check skipped' if not (mac_installed | default(false))
+      else 'Expected pattern found for /etc/selinux in running rules' if result_running is defined and result_running.stdout | default('') | regex_search('^-w /etc/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'Expected pattern not found for /etc/selinux in running rules' }}
+    data_05: "{{ result_running.stdout | default('') | trim if result_running is defined else '' }}"
+    status_05: >-
+      {{ 'SKIPPED' if not (mac_installed | default(false))
+      else 'PASS' if result_running is defined and result_running.stdout | default('') | regex_search('^-w /usr/share/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'FAIL' }}
+    details_05: >-
+      {{ 'MAC not installed, check skipped' if not (mac_installed | default(false))
+      else 'Expected pattern found for /usr/share/selinux in running rules' if result_running is defined and result_running.stdout | default('') | regex_search('^-w /usr/share/selinux -p wa -k MAC-policy$', multiline=True)
+      else 'Expected pattern not found for /usr/share/selinux in running rules' }}
+    task_02_name: "Req 02 - Check on-disk audit rules for MAC policy directories (combined)"
+    task_02_cmd: |
+      awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_02_rc: "{{ result_ondisk.rc | default(-1) if result_ondisk is defined else -1 }}"
+    task_03_name: "Req 03 - Check on-disk audit rules for MAC policy directories (combined)"
+    task_03_cmd: |
+      awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+    task_03_rc: "{{ result_ondisk.rc | default(-1) if result_ondisk is defined else -1 }}"
+    task_04_name: "Req 04 - Check running audit rules for MAC policy directories (combined)"
+    task_04_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_04_rc: "{{ result_running.rc | default(-1) if result_running is defined else -1 }}"
+    task_05_name: "Req 05 - Check running audit rules for MAC policy directories (combined)"
+    task_05_cmd: |
+      auditctl -l | awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+    task_05_rc: "{{ result_running.rc | default(-1) if result_running is defined else -1 }}"
+
+- name: "Set overall compliance fact (requirement 06)"
+  ansible.builtin.set_fact:
+    status_06: >-
+      {%- if not (mac_installed | default(false)) -%}NOT_APPLICABLE
+      {%- elif status_01 | default('FAIL') == 'PASS' and status_02 | default('FAIL') == 'PASS' and status_03 | default('FAIL') == 'PASS' and status_04 | default('FAIL') == 'PASS' and status_05 | default('FAIL') == 'PASS' -%}PASS
+      {%- else -%}FAIL
+      {%- endif %}
+    details_06: "Overall compliance evaluated based on all checks"
+    data_06: "N/A"
+    task_06_name: "Overall compliance evaluation"
+    task_06_cmd: "N/A"
+    task_06_rc: 0
+
+- name: "Req 07 - Store final audit result in cis_result variable"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_06 | default('UNKNOWN') | trim }}"
+    data_07: "{{ status_06 | default('UNKNOWN') | trim }}"
+    status_07: "PASS"
+    details_07: "cis_result set to overall compliance status"
+    task_07_name: "Req 07 - Store final audit result in cis_result variable"
+    task_07_cmd: "set_fact cis_result = {{ status_06 | default('UNKNOWN') | trim }}"
+    task_07_rc: 0
+
+- name: "Generate audit report for CIS checkpoint 6.3.3.14"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.14"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.14"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL RESULT:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

@@ -1,0 +1,5 @@
+req_01: "Check if /etc/login.defs exists using command: `test -f /etc/login.defs && echo 'EXISTS' || echo 'NOT FOUND'`. Expected result: EXISTS"
+req_02: |
+  Check if the ENCRYPT_METHOD is set to SHA512 or yescrypt in /etc/login.defs using command: `grep -Pi -- '^\\h*ENCRYPT_METHOD\\h+(SHA512|yescrypt)\\b' /etc/login.defs`. Expected result: ENCRYPT_METHOD SHA512 or ENCRYPT_METHOD YESCRYPT
+req_03: "Summarize overall compliance status: If the command in step 2 returns a matching line, the system is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

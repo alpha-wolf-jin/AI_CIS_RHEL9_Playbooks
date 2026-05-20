@@ -1,0 +1,8 @@
+playbook_name: "remediate_cis_2_1_4"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply stop named.service using command: `systemctl stop named.service`. Expected result: The named service is stopped."
+req_02: "Apply remove bind package using command: `dnf remove bind`. Expected result: The bind package is removed from the system."
+req_03: "Apply mask named.service using command: `systemctl mask named.service`. Expected result: The named service is masked and cannot be started."
+req_04: "Verify that named.service is not running using command: `systemctl is-active named.service`. Expected result: inactive"
+req_05: "Verify that named.service is masked (if applicable) using command: `systemctl is-enabled named.service`. Expected result: masked"
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

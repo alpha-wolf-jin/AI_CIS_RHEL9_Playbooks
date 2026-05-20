@@ -1,0 +1,117 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_2_1.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+  tags: [execute]
+- name: "Req 01 - Check sudo installation with dnf list sudo"
+  ansible.builtin.shell: dnf list sudo
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  tags: [execute]
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check sudo installation with dnf list sudo"
+    task_01_cmd: "dnf list sudo"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: >-
+      {%- set rc = result_01.rc | default(-1) | int %}
+      {%- set stdout = result_01.stdout | default('') %}
+      {%- if rc == 0 and 'Installed Packages' in stdout and stdout | regex_search('sudo.*x86_64') -%}
+      PASS
+      {%- elif rc != 0 -%}
+      SKIP
+      {%- else -%}
+      FAIL
+      {%- endif -%}
+    details_01: >-
+      {%- set rc = result_01.rc | default(-1) | int %}
+      {%- set stdout = result_01.stdout | default('') %}
+      {%- if rc == 0 and 'Installed Packages' in stdout and stdout | regex_search('sudo.*x86_64') -%}
+      Sudo package is installed
+      {%- elif rc != 0 -%}
+      Command cannot be executed - package manager not available or command failed
+      {%- else -%}
+      Sudo package is not installed
+      {%- endif -%}
+  tags: [execute]
+- name: "Req 02 - Determine overall compliance status"
+  set_fact:
+    task_02_name: "Req 02 - Determine overall compliance status"
+    task_02_cmd: "N/A"
+    task_02_rc: 0
+    data_02: "N/A"
+    status_02: "{{ status_01 | trim }}"
+    details_02: "{{ ('System is compliant because sudo is installed' if status_01 | trim == 'PASS' else ('System is non-compliant because sudo is not installed' if status_01 | trim == 'FAIL' else 'Could not determine compliance because package manager is not available or command failed')) | trim }}"
+  tags: [execute]
+- name: "Set cis_result variable"
+  set_fact:
+    cis_result: "{{ status_02 | trim }}"
+  tags: [execute]
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Set cis_result variable"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "{{ cis_result | default('ERROR') | trim }}"
+    status_03: "PASS"
+    details_03: "Stored cis_result variable as {{ cis_result | default('ERROR') | trim }}"
+  tags: [execute]
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.2.1"
+    - "Reference: CIS Benchmark checkpoint 5.2.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"
+  tags: [always]

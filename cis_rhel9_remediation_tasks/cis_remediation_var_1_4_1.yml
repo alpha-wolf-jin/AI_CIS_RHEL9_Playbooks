@@ -1,0 +1,8 @@
+playbook_name: "cis_1_4_1"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for grub2-setpassword using command: `which grub2-setpassword`. Expected result: path to grub2-setpassword binary."
+req_02: "Apply bootloader password by running grub2-setpassword interactively using command: `grub2-setpassword`. Expected result: password prompt appears and password is set."
+req_03: "Verify bootloader password is set using command: `grep -q '^GRUB2_PASSWORD' /boot/grub2/user.cfg`. Expected result: exit code 0."
+bootloader_password: "CIS_1_4_1_password"
+config_file: "/boot/grub2/user.cfg"
+grep_pattern: "^GRUB2_PASSWORD"

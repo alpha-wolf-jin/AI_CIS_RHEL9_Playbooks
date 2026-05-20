@@ -1,0 +1,7 @@
+checkpoint_id: "cis_1_1_1_8"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+kernel_module: "usb-storage"
+script_path: "/tmp/cis_usb_storage_remediation.sh"
+req_01: "Run the provided remediation script to unload and disable the usb-storage module"
+req_02: "VERIFY: Run audit check to confirm usb-storage is not available and properly configured"

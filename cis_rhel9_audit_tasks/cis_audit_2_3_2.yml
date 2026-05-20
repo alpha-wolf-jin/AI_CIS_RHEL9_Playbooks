@@ -1,0 +1,208 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_3_2.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "ERROR"
+    details_07: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+- name: "Req 01 - Check if chrony package is installed"
+  ansible.builtin.shell: dpkg -l chrony 2>/dev/null || rpm -q chrony 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Record installation status"
+  ansible.builtin.set_fact:
+    chrony_installed: "{{ result_01.rc == 0 }}"
+    chrony_skipped: "{{ result_01.rc != 0 }}"
+    task_01_name: "Check if chrony package is installed"
+    task_01_cmd: "dpkg -l chrony 2>/dev/null || rpm -q chrony 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc == 0 else 'SKIP') | trim }}"
+    details_01: "{{ ('chrony package is installed' if result_01.rc == 0 else 'chrony package not installed - audit skipped') | trim }}"
+
+- name: "Req 02 - Check if chrony service is active"
+  ansible.builtin.shell: systemctl is-active chronyd 2>/dev/null || systemctl is-active chrony 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Record service status"
+  ansible.builtin.set_fact:
+    task_02_name: "Check if chrony service is active"
+    task_02_cmd: "systemctl is-active chronyd 2>/dev/null || systemctl is-active chrony 2>/dev/null"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'SKIP' if chrony_skipped else ('PASS' if result_02.rc == 0 and (result_02.stdout | default('') | trim) == 'active' else 'FAIL') | trim }}"
+    details_02: "{{ 'chrony is not installed' if chrony_skipped else ('chronyd/chrony service is active' if result_02.rc == 0 and (result_02.stdout | default('') | trim) == 'active' else 'chronyd/chrony service is not active') | trim }}"
+
+- name: "Req 03 - Check if /etc/chrony.conf exists"
+  ansible.builtin.stat:
+    path: /etc/chrony.conf
+  register: result_03
+  failed_when: false
+
+- name: "Req 03 - Record config file status"
+  ansible.builtin.set_fact:
+    task_03_name: "Check if /etc/chrony.conf exists"
+    task_03_cmd: "stat /etc/chrony.conf"
+    task_03_rc: 0
+    data_03: "{{ 'exists' if result_03.stat.exists else 'absent' }}"
+    status_03: "{{ 'SKIP' if chrony_skipped else ('PASS' if result_03.stat.exists else 'FAIL') | trim }}"
+    details_03: "{{ 'chrony is not installed' if chrony_skipped else ('/etc/chrony.conf exists' if result_03.stat.exists else '/etc/chrony.conf not found') | trim }}"
+
+- name: "Req 04 - Check for remote NTP server configuration"
+  ansible.builtin.shell: |
+    grep -Prs -- '^\h*(server|pool)\h+[^#\n\r]+' /etc/chrony.conf /etc/chrony.d/ 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+
+- name: "Req 04 - Record NTP server configuration status"
+  ansible.builtin.set_fact:
+    task_04_name: "Check for remote NTP server configuration"
+    task_04_cmd: |
+      grep -Prs -- '^\\h*(server|pool)\\h+[^#\\n\\r]+' /etc/chrony.conf /etc/chrony.d/ 2>/dev/null || true
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: "{{ 'SKIP' if chrony_skipped else ('PASS' if (result_04.stdout | default('') | trim) != '' else 'FAIL') | trim }}"
+    details_04: "{{ 'chrony is not installed' if chrony_skipped else ('remote NTP server(s) configured' if (result_04.stdout | default('') | trim) != '' else 'no remote NTP server configured') | trim }}"
+
+- name: "Req 05 - Verify reachable NTP server"
+  ansible.builtin.shell: chronyc sources -v 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+
+- name: "Req 05 - Record NTP reachability status"
+  ansible.builtin.set_fact:
+    task_05_name: "Verify reachable NTP server"
+    task_05_cmd: "chronyc sources -v 2>/dev/null"
+    task_05_rc: "{{ result_05.rc | default(-1) }}"
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+        # corrected regex to match chronyc lines starting with '^*' or '^+'
+    status_05: >-
+      {{ 'SKIP' if chrony_skipped else
+         ('PASS' if (result_05.stdout | default('') | regex_search('(?m)^\^[*+]')) else
+         'FAIL') | trim }}
+    details_05: >-
+      {{ 'chrony is not installed' if chrony_skipped else
+         ('at least one reachable NTP source found' if (result_05.stdout | default('') | regex_search('(?m)^\^[*+]')) else
+         'no reachable NTP source found or chronyc failed') | trim }}
+
+- name: "Req 06 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_06_name: "Summarize overall compliance status"
+    task_06_cmd: "N/A"
+    task_06_rc: 0
+    data_06: ""
+    status_06: "{{ 'SKIP' if chrony_skipped else ('PASS' if status_02 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' else 'FAIL') | trim }}"
+    details_06: "{{ 'chrony is not installed - audit not applicable' if chrony_skipped else ('chrony is installed, active, and configured with a valid remote NTP server' if status_02 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' else 'chrony does not meet all requirements') | trim }}"
+
+- name: "Req 07 - Store cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_06 | trim }}"
+    task_07_name: "Store cis_result"
+    task_07_cmd: "N/A"
+    task_07_rc: 0
+    data_07: "{{ status_06 | trim }}"
+    status_07: "{{ status_06 | trim }}"
+    details_07: "{{ details_06 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.3.2"
+    - "Reference: CIS Benchmark checkpoint 2.3.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"

@@ -1,0 +1,14 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd || rpm -q audit`. Expected result: package is installed."
+req_02: |
+  Check on-disk audit rules for /var/run/utmp using command: `awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: output includes `-w /var/run/utmp -p wa -k session`.
+req_03: |
+  Check on-disk audit rules for /var/log/wtmp using command: `awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: output includes `-w /var/log/wtmp -p wa -k session`.
+req_04: |
+  Check on-disk audit rules for /var/log/btmp using command: `awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules`. Expected result: output includes `-w /var/log/btmp -p wa -k session`.
+req_05: |
+  Check running audit rules for /var/run/utmp using command: `auditctl -l | awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: output includes `-w /var/run/utmp -p wa -k session`.
+req_06: |
+  Check running audit rules for /var/log/wtmp using command: `auditctl -l | awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: output includes `-w /var/log/wtmp -p wa -k session`.
+req_07: |
+  Check running audit rules for /var/log/btmp using command: `auditctl -l | awk '/^ *-w/ &&(/\\/var\\/run\\/utmp/ ||/\\/var\\/log\\/wtmp/ ||/\\/var\\/log\\/btmp/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: output includes `-w /var/log/btmp -p wa -k session`.
+req_08: "Summarize overall compliance status: all on-disk and running audit rules for session initiation files must match the expected rules. Expected result: all checks pass."

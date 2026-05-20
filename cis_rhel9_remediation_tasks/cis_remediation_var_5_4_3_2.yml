@@ -1,0 +1,10 @@
+playbook_name: "cis_5_4_3_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for bash and printf using command: `which bash && which printf`. Expected result: Paths to bash and printf are displayed."
+req_02: "Apply removal of existing TMOUT entries from /etc/bashrc using command: `sudo sed -i '/^TMOUT=/d; /^readonly TMOUT/d; /^export TMOUT/d' /etc/bashrc`. Expected result: No TMOUT lines remain in /etc/bashrc."
+req_03: "Apply removal of existing TMOUT entries from /etc/profile using command: `sudo sed -i '/^TMOUT=/d; /^readonly TMOUT/d; /^export TMOUT/d' /etc/profile`. Expected result: No TMOUT lines remain in /etc/profile."
+req_04: "Apply removal of existing TMOUT entries from all *.sh files in /etc/profile.d/ using command: `sudo find /etc/profile.d/ -name '*.sh' -exec sed -i '/^TMOUT=/d; /^readonly TMOUT/d; /^export TMOUT/d' {} +`. Expected result: No TMOUT lines remain in any /etc/profile.d/*.sh file."
+req_05: |
+  Apply configuration of TMOUT to 900 seconds in /etc/profile.d/50-tmout.sh using command: `printf '%s\\n' '# Set TMOUT to 900 seconds' 'typeset -xr TMOUT=900' | sudo tee /etc/profile.d/50-tmout.sh > /dev/null`. Expected result: File /etc/profile.d/50-tmout.sh is created with the specified content.
+req_06: "Apply verification that TMOUT is set correctly using command: `grep -r 'TMOUT' /etc/bashrc /etc/profile /etc/profile.d/*.sh 2>/dev/null`. Expected result: Only the line 'typeset -xr TMOUT=900' appears in /etc/profile.d/50-tmout.sh, and no other TMOUT entries exist."
+req_07: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

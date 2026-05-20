@@ -1,0 +1,8 @@
+req_01: "Check if libpwquality is installed using command: `rpm -q libpwquality 2>/dev/null || dpkg -l libpwquality 2>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check maxrepeat setting in /etc/security/pwquality.conf using command: `grep -Psi -- '^\h*maxrepeat\h*=\h*[1-3]\b' /etc/security/pwquality.conf`. Expected result: output contains maxrepeat = 3 or less, not 0, and meets local site policy.
+req_03: |
+  Check maxrepeat setting in /etc/security/pwquality.conf.d/*.conf using command: `grep -Psi -- '^\h*maxrepeat\h*=\h*[1-3]\b' /etc/security/pwquality.conf.d/*.conf`. Expected result: output contains maxrepeat = 3 or less, not 0, and meets local site policy.
+req_04: |
+  Verify that maxrepeat is not set to 0 or a value greater than 3 in PAM configuration using command: `grep -Psi -- '^\h*password\h+(requisite|required|sufficient)\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?maxrepeat\h*=\h*(0|[4-9]|[1-9][0-9]+)\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: no output returned.
+req_05: "Summarize overall compliance status: all checks passed (maxrepeat is set to 3 or less, not 0, and no conflicting PAM arguments)."

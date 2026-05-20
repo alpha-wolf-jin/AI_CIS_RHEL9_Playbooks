@@ -1,0 +1,207 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_3_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script exists before execution"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: audit_script_pre
+  tags: [snapshot]
+- name: "Snapshot - Mark that audit script did not exist originally"
+  ansible.builtin.copy:
+    dest: "{{ audit_script_marker }}"
+    content: ''
+    mode: '0600'
+  when: not audit_script_pre.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+    tags: [audit, execute]
+
+  - name: "Req 01 - Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [audit, execute]
+
+  - name: "Req 01 - Set bash installed fact"
+    set_fact:
+      bash_installed: "{{ 'bash' in ansible_facts.packages }}"
+    tags: [audit, execute]
+
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    when: bash_installed | bool
+    tags: [audit, execute]
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    changed_when: false
+    when: bash_installed | bool
+    tags: [audit, execute]
+
+  - name: "Req 01 - Store requirement 01 details"
+    set_fact:
+      task_01_name: "Execute audit script to verify default user umask"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: >-
+        {{ 'SKIPPED' if not (bash_installed | default(false))
+           else ('PASS' if audit_result.stdout is defined
+                 else 'FAIL') }}
+      details_01: >-
+        {{ 'bash package not installed, audit skipped' if not (bash_installed | default(false))
+           else ('Audit script executed successfully' if audit_result.stdout is defined
+                 else 'Audit script execution failed') }}
+    tags: [audit, execute]
+
+  - name: "Req 02 - Parse compliance result from script output"
+    set_fact:
+      compliance_result: >-
+        {{ 'NOT_APPLICABLE' if not (bash_installed | default(false))
+           else ('PASS' if '** PASS **' in ((audit_result | default({})).stdout | default(''))
+                 else ('FAIL' if '** FAIL **' in ((audit_result | default({})).stdout | default(''))
+                       else 'UNKNOWN')) }}
+    tags: [audit, compliance, execute]
+
+  - name: "Req 02 - Evaluate verification status"
+    set_fact:
+      status_02: "{{ compliance_result }}"
+      details_02: >-
+        {{ 'System is compliant' if compliance_result == 'PASS'
+           else ('System is not compliant' if compliance_result == 'FAIL'
+                 else 'Unable to determine compliance status from script output') }}
+    tags: [audit, compliance, execute]
+
+  - name: "Req 02 - Store requirement 02 details"
+    set_fact:
+      task_02_name: "Summarise compliance status from audit script"
+      task_02_cmd: "set_fact evaluation"
+      task_02_rc: "N/A"
+      data_02: "Compliance determination: {{ compliance_result }}"
+    tags: [audit, execute]
+
+  - name: "Req 03 - Store cis_result"
+    set_fact:
+      cis_result: "{{ 'SKIPPED' if compliance_result == 'NOT_APPLICABLE' else compliance_result }}"
+    tags: [audit, compliance, execute]
+
+  - name: "Req 03 - Store requirement 03 details"
+    set_fact:
+      task_03_name: "Store cis_result from compliance evaluation"
+      task_03_cmd: "set_fact cis_result: {{ cis_result }}"
+      task_03_rc: "N/A"
+      data_03: "cis_result set to {{ cis_result }}"
+      status_03: "{{ 'PASS' if cis_result in ['PASS','FAIL','SKIPPED'] else 'FAIL' }}"
+      details_03: "{{ 'cis_result stored successfully' if cis_result in ['PASS','FAIL','SKIPPED'] else 'Unable to store cis_result due to unknown compliance status' }}"
+    tags: [audit, execute]
+
+  - name: "Req 04 - Store requirement 04 details"
+    set_fact:
+      task_04_name: "Generate audit report"
+      task_04_cmd: "debug module"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Audit report produced"
+    tags: [audit, execute]
+
+  - name: "Req 04 - Generate audit report"
+    debug:
+      msg:
+      - "AUDIT REPORT — CIS 5.4.3.3"
+      - "Reference: CIS Benchmark checkpoint 5.4.3.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01_text }}:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02_text }}:"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03_text }}:"
+      - "  Task: {{ task_03_name }}"
+      - "  Command: {{ task_03_cmd }}"
+      - "  Exit code: {{ task_03_rc }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 }}"
+      - "  Details: {{ details_03 }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04_text }}:"
+      - "  Task: {{ task_04_name }}"
+      - "  Command: {{ task_04_cmd }}"
+      - "  Exit code: {{ task_04_rc }}"
+      - "  Data: {{ data_04 }}"
+      - "  Status: {{ status_04 }}"
+      - "  Details: {{ details_04 }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result }}"
+      - "========================================================"
+    tags: [audit, report, execute]
+
+  always:
+  - name: "Restore - Check if marker file exists"
+    ansible.builtin.stat:
+      path: "{{ audit_script_marker }}"
+    register: marker_stat
+    tags: [restore]
+
+  - name: "Restore - Remove temporary audit script if it was created"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: marker_stat.stat.exists
+    failed_when: false
+    tags: [restore]

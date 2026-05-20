@@ -1,0 +1,7 @@
+req_01: "Check if systemd-journal-remote is installed using command: `dpkg -l systemd-journal-remote 2>/dev/null || rpm -q systemd-journal-remote 2>/dev/null`. Expected result: package is not installed (command returns non-zero exit code or empty output)."
+req_02: "Check if systemd-journal-remote.socket is not enabled using command: `systemctl is-enabled systemd-journal-remote.socket 2>/dev/null | grep -P -- '^enabled'`. Expected result: nothing should be returned."
+req_03: "Check if systemd-journal-remote.service is not enabled using command: `systemctl is-enabled systemd-journal-remote.service 2>/dev/null | grep -P -- '^enabled'`. Expected result: nothing should be returned."
+req_04: "Check if systemd-journal-remote.socket is not active using command: `systemctl is-active systemd-journal-remote.socket 2>/dev/null | grep -P -- '^active'`. Expected result: nothing should be returned."
+req_05: "Check if systemd-journal-remote.service is not active using command: `systemctl is-active systemd-journal-remote.service 2>/dev/null | grep -P -- '^active'`. Expected result: nothing should be returned."
+req_06: "Summarize overall compliance: PASS if all checks pass, SKIP if systemd-journal-remote package is not installed, FAIL if any check fails."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

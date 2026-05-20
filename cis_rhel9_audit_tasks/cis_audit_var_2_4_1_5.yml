@@ -1,0 +1,6 @@
+req_01: "Check if cron is installed on the system using command: `dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null`. Expected result: package is installed."
+req_02: "Check permissions on /etc/cron.weekly using command: `stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.weekly/`. Expected result: Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)"
+req_03: "Summarize overall compliance status: if both checks pass, the system is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+expected_perms: "Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)"
+stat_cmd: "stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.weekly/"

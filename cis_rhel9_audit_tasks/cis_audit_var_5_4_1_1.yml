@@ -1,0 +1,8 @@
+req_01: "Check if /etc/login.defs exists using command: `test -f /etc/login.defs`. Expected result: file exists."
+req_02: "Check if /etc/shadow exists using command: `test -f /etc/shadow`. Expected result: file exists."
+req_03: |
+  Check PASS_MAX_DAYS in /etc/login.defs is set to 365 or less using command: `grep -Pi -- '^\\h*PASS_MAX_DAYS\\h+\\d+\\b' /etc/login.defs`. Expected result: output shows PASS_MAX_DAYS with a value ≤ 365 and conforming to local site policy.
+req_04: |
+  Check all users in /etc/shadow have PASS_MAX_DAYS greater than 0 and less than or equal to 365 using command: `awk -F: '($2~/^\\$.+\\$/) {if($5 > 365 || $5 < 1)print \"User: \" $1 \" PASS_MAX_DAYS: \" $5}' /etc/shadow`. Expected result: no output (nothing returned).
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/login.defs or /etc/shadow does not exist, FAIL if any check fails."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

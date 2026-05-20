@@ -1,0 +1,300 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_4_1_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if login.defs exists"
+  ansible.builtin.stat:
+    path: "{{ login_defs_file }}"
+  register: _snap_login_defs
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup login.defs if exists"
+  ansible.builtin.copy:
+    src: "{{ login_defs_file }}"
+    dest: "{{ backup_dir }}/login.defs.backup"
+    remote_src: true
+  when: "_snap_login_defs.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if common-password exists"
+  ansible.builtin.stat:
+    path: "/etc/pam.d/common-password"
+  register: _snap_pam_pw_common
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup common-password if exists"
+  ansible.builtin.copy:
+    src: "/etc/pam.d/common-password"
+    dest: "{{ backup_dir }}/common-password.backup"
+    remote_src: true
+  when: "_snap_pam_pw_common.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if password-auth exists"
+  ansible.builtin.stat:
+    path: "/etc/pam.d/password-auth"
+  register: _snap_pam_pw_auth
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup password-auth if exists"
+  ansible.builtin.copy:
+    src: "/etc/pam.d/password-auth"
+    dest: "{{ backup_dir }}/password-auth.backup"
+    remote_src: true
+  when: "_snap_pam_pw_auth.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Check if system-auth exists"
+  ansible.builtin.stat:
+    path: "/etc/pam.d/system-auth"
+  register: _snap_pam_pw_sys
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup system-auth if exists"
+  ansible.builtin.copy:
+    src: "/etc/pam.d/system-auth"
+    dest: "{{ backup_dir }}/system-auth.backup"
+    remote_src: true
+  when: "_snap_pam_pw_sys.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if shadow-utils not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ package_name not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Verify shadow-utils package via rpm"
+    ansible.builtin.shell: "rpm -q {{ package_name }}"
+    args:
+      executable: /bin/bash
+    register: rpm_check
+    failed_when: false
+    changed_when: false
+    when: "playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Override skip if rpm confirms package installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: false
+    when:
+    - "playbook_skipped | default(false) | bool"
+    - "rpm_check.rc | default(1) == 0"
+    tags: [execute]
+
+  - name: "Req 01 - Detect PAM password file"
+    ansible.builtin.stat:
+      path: "{{ item }}"
+    loop:
+    - "/etc/pam.d/common-password"
+    - "/etc/pam.d/password-auth"
+    - "/etc/pam.d/system-auth"
+    register: pam_file_check
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 01 - Set PAM password file fact"
+    ansible.builtin.set_fact:
+      pam_password_file: "{{ item.item }}"
+    loop: "{{ pam_file_check.results }}"
+    when:
+    - "not (playbook_skipped | default(false) | bool)"
+    - "item.stat.exists | default(false)"
+    tags: [execute]
+
+  - name: "Req 01 - Set ENCRYPT_METHOD to SHA512 in login.defs"
+    ansible.builtin.lineinfile:
+      path: "{{ login_defs_file }}"
+      regexp: |
+        ^\s*{{ encrypt_method }}\s+
+      line: "{{ encrypt_method }} {{ encrypt_value }}"
+      backup: false
+    register: result_login_defs
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 01 - Check if sha512 already in pam_unix.so line"
+    ansible.builtin.shell: |
+      grep -E '^\s*password\s+\S+\s+pam_unix\.so\s+.*sha512' {{ pam_password_file }}
+    args:
+      executable: /bin/bash
+    register: _pam_sha512_check
+    failed_when: false
+    changed_when: false
+    when:
+    - "not (playbook_skipped | default(false) | bool)"
+    - "pam_password_file is defined"
+    tags: [execute]
+
+  - name: "Req 01 - Add sha512 to pam_unix.so if missing"
+    ansible.builtin.lineinfile:
+      path: "{{ pam_password_file }}"
+      regexp: |
+        ^(\s*password\s+\S+\s+pam_unix\.so)(\s+.*)?$
+      line: |
+        \1\2 sha512
+      backrefs: true
+    register: result_pam_pw
+    failed_when: false
+    when:
+    - "not (playbook_skipped | default(false) | bool)"
+    - "pam_password_file is defined"
+    - "_pam_sha512_check.rc | default(1) != 0"
+    tags: [execute]
+
+  - name: "Req 02 - Verify ENCRYPT_METHOD in login.defs"
+    ansible.builtin.shell: |
+      grep -E '^\s*{{ encrypt_method }}\s+{{ encrypt_value }}\s*$' {{ login_defs_file }}
+    args:
+      executable: /bin/bash
+    register: result_verify_login_defs
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 02 - Verify pam_unix.so uses sha512 in PAM password file"
+    ansible.builtin.shell: |
+      grep -E '^\s*password\s+\S+\s+pam_unix\.so\s+.*sha512' {{ pam_password_file }}
+    args:
+      executable: /bin/bash
+    register: result_verify_pam_pw
+    failed_when: false
+    changed_when: false
+    when:
+    - "not (playbook_skipped | default(false) | bool)"
+    - "pam_password_file is defined"
+    tags: [execute]
+
+  - name: "Set cis_result fact"
+    ansible.builtin.set_fact:
+      cis_result: "{{ (playbook_skipped | default(false) | bool) | ternary('SKIPPED', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL'))) }}"
+    tags: [execute]
+
+  - name: "Req 03 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 5.4.1.4"
+      - "Reference: CIS Benchmark checkpoint 5.4.1.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Set ENCRYPT_METHOD in login.defs and pam_unix.so in PAM password file"
+      - "  Command: lineinfile modules"
+      - "  Exit code: {{ result_login_defs is defined | ternary(0, -1) }}"
+      - "  Data: {{ (result_login_defs is defined and result_login_defs.changed) | ternary('Config updated', 'No change needed') }}"
+      - "  Status: {{ (playbook_skipped | default(false) | bool) | ternary('SKIPPED', 'PASS') }}"
+      - "  Details: {{ (playbook_skipped | default(false) | bool) | ternary('shadow-utils package not installed', ((result_login_defs.changed or result_pam_pw.changed) | ternary('Configuration applied', 'Configuration already present'))) }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify ENCRYPT_METHOD and pam_unix.so configuration"
+      - "  Command: grep verification"
+      - "  --- login.defs check ---"
+      - "    Exit code: {{ result_verify_login_defs.rc | default(-1) }}"
+      - "    Data: {{ result_verify_login_defs.stdout | default('') | trim }}"
+      - "    Status: {{ (result_verify_login_defs.rc | default(-1) == 0) | ternary('PASS', 'FAIL') }}"
+      - "  --- pam_unix.so check ---"
+      - "    Exit code: {{ result_verify_pam_pw.rc | default(-1) }}"
+      - "    Data: {{ result_verify_pam_pw.stdout | default('') | trim }}"
+      - "    Status: {{ (result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL') }}"
+      - "  Combined Status: {{ (playbook_skipped | default(false) | bool) | ternary('SKIPPED', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL'))) }}"
+      - "  Details: {{ (playbook_skipped | default(false) | bool) | ternary('Skipped - package not installed', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('Compliant - SHA512 configured', 'Non-compliant - SHA512 not properly configured'))) }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Set cis_result fact"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result }}"
+      - "  Status: PASS"
+      - "  Details: Remediation result stored in cis_result"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ (playbook_skipped | default(false) | bool) | ternary('shadow-utils not installed - no remediation applied', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('All checks passed', 'One or more checks failed'))) }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if login.defs backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/login.defs.backup"
+    register: _restore_login_defs
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore login.defs from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/login.defs.backup"
+      dest: "{{ login_defs_file }}"
+      remote_src: true
+    when: "_restore_login_defs.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if common-password backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/common-password.backup"
+    register: _restore_pam_pw_common
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore common-password from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/common-password.backup"
+      dest: "/etc/pam.d/common-password"
+      remote_src: true
+    when: "_restore_pam_pw_common.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if password-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/password-auth.backup"
+    register: _restore_pam_pw_auth
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore password-auth from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/password-auth.backup"
+      dest: "/etc/pam.d/password-auth"
+      remote_src: true
+    when: "_restore_pam_pw_auth.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if system-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/system-auth.backup"
+    register: _restore_pam_pw_sys
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore system-auth from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/system-auth.backup"
+      dest: "/etc/pam.d/system-auth"
+      remote_src: true
+    when: "_restore_pam_pw_sys.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

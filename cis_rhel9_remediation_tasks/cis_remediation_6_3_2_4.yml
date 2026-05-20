@@ -1,0 +1,284 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_2_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snap_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/{{ config_file | basename }}.present"
+    remote_src: true
+  when: "_snap_config_stat.stat.exists"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+  tags: [execute]
+- block:
+  - name: "Check auditd package installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Skip remediation if auditd is not present"
+    meta: end_play
+    when: "'audit' not in ansible_facts.packages"
+    tags: [execute]
+
+        # ============================================================
+        # Requirement 01 – MTA prerequisite check
+# ============================================================
+  - name: "Req 01 - Check if MTA is installed and operational"
+    ansible.builtin.shell: |
+      if command -v sendmail >/dev/null 2>&1 || command -v mail >/dev/null 2>&1; then
+        echo "MTA_AVAILABLE"
+      else
+        echo "MTA_NOT_FOUND"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check MTA availability"
+      task_01_cmd: "command -v sendmail || command -v mail"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.stdout | default('') | trim) == 'MTA_AVAILABLE' else 'SKIP' if (result_01.stdout | default('') | trim) == 'MTA_NOT_FOUND' else 'FAIL' }}"
+      details_01: "{{ 'MTA is operational' if (result_01.stdout | default('') | trim) == 'MTA_AVAILABLE' else 'MTA not found - email action may not work' if (result_01.stdout | default('') | trim) == 'MTA_NOT_FOUND' else 'Failed to check MTA' }}"
+    tags: [execute]
+
+        # ============================================================
+        # Fallback: use 'halt' action when MTA missing and email was intended
+# ============================================================
+  - name: "Fallback - Use 'halt' action when MTA missing and email was intended"
+    set_fact:
+      space_left_action_value: "halt"
+    when:
+    - space_left_action_value == 'email'
+    - result_01.stdout | default('') | trim == 'MTA_NOT_FOUND'
+    tags: [execute]
+
+        # ============================================================
+        # Requirement 02 – space_left_action (single lineinfile with regexp)
+# ============================================================
+  - name: "Req 02 - Replace or add space_left_action parameter"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^space_left_action\s*=.*
+      line: "space_left_action = {{ space_left_action_value }}"
+      state: present
+    register: result_02_set
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Replace or add space_left_action in auditd.conf"
+      task_02_cmd: |
+        lineinfile regexp '^space_left_action\\s*=.*' line 'space_left_action = {{ space_left_action_value }}'
+      task_02_rc: "{{ 0 if (result_02_set is defined and result_02_set is not failed) else 1 }}"
+      data_02: "space_left_action = {{ space_left_action_value }}"
+      status_02: "{{ 'PASS' if (result_02_set is defined and result_02_set is not failed) else 'FAIL' }}"
+      details_02: "{{ 'Parameter set successfully' if (result_02_set is defined and result_02_set is not failed) else 'Failed to set parameter' }}"
+    tags: [execute]
+
+        # ============================================================
+        # Requirement 03 – admin_space_left_action (single lineinfile with regexp)
+# ============================================================
+  - name: "Req 03 - Replace or add admin_space_left_action parameter"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^admin_space_left_action\s*=.*
+      line: "admin_space_left_action = {{ admin_space_left_action_value }}"
+      state: present
+    register: result_03_set
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Replace or add admin_space_left_action in auditd.conf"
+      task_03_cmd: |
+        lineinfile regexp '^admin_space_left_action\\s*=.*' line 'admin_space_left_action = {{ admin_space_left_action_value }}'
+      task_03_rc: "{{ 0 if (result_03_set is defined and result_03_set is not failed) else 1 }}"
+      data_03: "admin_space_left_action = {{ admin_space_left_action_value }}"
+      status_03: "{{ 'PASS' if (result_03_set is defined and result_03_set is not failed) else 'FAIL' }}"
+      details_03: "{{ 'Parameter set successfully' if (result_03_set is defined and result_03_set is not failed) else 'Failed to set parameter' }}"
+    tags: [execute]
+
+        # ============================================================
+        # Requirement 04 – Verification
+# ============================================================
+  - name: "Req 04 - Verify configuration parameters precisely"
+    ansible.builtin.shell: |
+      set -o pipefail
+      expected_space="space_left_action = {{ space_left_action_value }}"
+      expected_admin="admin_space_left_action = {{ admin_space_left_action_value }}"
+      if grep -c '^space_left_action' {{ config_file }} | grep -qx 1 && \
+         grep -c '^admin_space_left_action' {{ config_file }} | grep -qx 1 && \
+         grep -qx "$expected_space" {{ config_file }} && \
+         grep -qx "$expected_admin" {{ config_file }} ; then
+        echo "CONFIG_OK"
+      else
+        echo "CONFIG_FAIL"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify auditd configuration"
+      task_04_cmd: "grep -c checks for both parameters"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (result_04.stdout | default('') | trim) == 'CONFIG_OK' else 'FAIL' }}"
+      details_04: "{{ 'Both parameters correctly set' if (result_04.stdout | default('') | trim) == 'CONFIG_OK' else 'Verification failed – parameters missing, duplicated or wrong values' }}"
+    tags: [execute]
+
+        # ============================================================
+        # Requirement 05 – Store final cis_result (derived from status_04)
+# ============================================================
+  - name: "Store final remediation result (Req 05)"
+    set_fact:
+      cis_result: "{{ 'PASS' if (status_04 | default('FAIL') | trim) == 'PASS' else 'FAIL' }}"
+      task_05_name: "Set cis_result from final verification"
+      task_05_cmd: "set_fact based on status_04"
+      task_05_rc: 0
+      data_05: "cis_result = {{ ('PASS' if (status_04 | default('FAIL') | trim) == 'PASS' else 'FAIL') }}"
+      status_05: "{{ 'PASS' if (status_04 | default('FAIL') | trim) == 'PASS' else 'FAIL' }}"
+      details_05: "Overall remediation status derived from requirement 04"
+    tags: [execute]
+
+        # ============================================================
+        # Final report
+# ============================================================
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.3.2.4"
+      - "Reference: CIS Benchmark checkpoint 6.3.2.4"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/{{ config_file | basename }}.present"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/{{ config_file | basename }}.present"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: "_restore_backup_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

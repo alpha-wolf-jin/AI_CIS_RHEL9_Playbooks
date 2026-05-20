@@ -1,0 +1,14 @@
+req_01: "Run the provided audit script to verify Ensure all users last password change date is in the past."
+req_02: "VERIFY: Summarise compliance status for Ensure all users last password change date is in the past. Expected result: PASS if compliant, FAIL otherwise"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     while IFS= read -r l_user; do
+        l_change=$(date -d "$(chage --list $l_user | grep '^Last password change' | cut -d: -f2 | grep -v 'never$')" +%s)
+        if [[ "$l_change" -gt "$(date +%s)" ]]; then
+           echo "User: \"$l_user\" last password change was \"$(chage --list $l_user | grep '^Last password change' | cut -d: -f2)\""
+        fi
+     done < <(awk -F: '$2~/^\$.+\$/{print $1}' /etc/shadow)
+  }
+  {% endraw %}

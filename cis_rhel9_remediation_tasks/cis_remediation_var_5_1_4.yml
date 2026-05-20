@@ -1,0 +1,17 @@
+playbook_name: "cis_5_1_4_sshd_ciphers"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+pmod_file: "/etc/crypto-policies/policies/modules/NO-SSHWEAKCIPHERS.pmod"
+policy_backup_file: "{{ backup_dir }}/crypto_policy_show.txt"
+pmod_backup_file: "{{ backup_dir }}/NO-SSHWEAKCIPHERS.pmod.bak"
+pmod_absent_marker: "{{ backup_dir }}/pmod_absent.marker"
+expected_subpolicies: ["NO-SHA1", "NO-WEAKMAC", "NO-SSHCBC", "NO-SSHCHACHA20"]
+pmod_expected_content: |
+  # This is a subpolicy to disable weak ciphers
+  # for the SSH protocol (libssh and OpenSSH)
+  cipher@SSH = -3DES-CBC -AES-128-CBC -AES-192-CBC -AES-256-CBC -CHACHA20-POLY1305
+req_01: "Apply prerequisite check: Ensure system-wide-crypto-policy is installed and configured. Expected result: The command `update-crypto-policies --show` returns a valid policy string."
+req_02: |
+  Apply creation of a custom crypto policy module to disable weak SSH ciphers using command - `printf '%s\\n' \"# This is a subpolicy to disable weak ciphers\" \"# for the SSH protocol (libssh and OpenSSH)\" \"cipher@SSH = -3DES-CBC -AES-128-CBC -AES-192-CBC -AES-256-CBC -CHACHA20-POLY1305\" >> /etc/crypto-policies/policies/modules/NO-SSHWEAKCIPHERS.pmod`. Expected result - file created with correct content.
+req_03: "Apply update of system-wide cryptographic policy to include the new module using command - `update-crypto-policies --set DEFAULT:NO-SHA1:NO-WEAKMAC:NO-SSHCBC:NO-SSHCHACHA20:NO-SSHWEAKCIPHERS`. Expected result - policy updated successfully."
+req_04: "Apply reload of OpenSSH server to apply cryptographic settings using command - `systemctl reload-or-restart sshd`. Expected result - sshd service reloaded or restarted."
+req_05: "Verify that the SSH server is using the configured ciphers by checking the effective configuration using command - `sshd -T | grep -i ciphers`. Expected result - output shows only allowed ciphers (aes256-gcm@openssh.com, aes128-gcm@openssh.com, aes256-ctr, aes192-ctr, aes128-ctr) and no weak ciphers."

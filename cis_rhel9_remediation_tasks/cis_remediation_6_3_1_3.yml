@@ -1,0 +1,344 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_1_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/default/grub exists"
+  ansible.builtin.stat:
+    path: /etc/default/grub
+  register: _grub_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/default/grub if exists"
+  ansible.builtin.copy:
+    src: /etc/default/grub
+    dest: "{{ backup_dir }}/etc-default-grub.present"
+    remote_src: true
+  when: _grub_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /boot/grub2/grub.cfg exists"
+  ansible.builtin.stat:
+    path: /boot/grub2/grub.cfg
+  register: _grub_cfg_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /boot/grub2/grub.cfg if exists"
+  ansible.builtin.copy:
+    src: /boot/grub2/grub.cfg
+    dest: "{{ backup_dir }}/grub.cfg.present"
+    remote_src: true
+  when: _grub_cfg_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+    tags: [execute]
+
+        # -------------------------------------------------------------------
+        # Requirement 01 – Check grubby
+# -------------------------------------------------------------------
+  - name: "Req 01 - Check grubby installation"
+    ansible.builtin.shell: command -v grubby
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store Req 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if grubby is installed"
+      task_01_cmd: "command -v grubby"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+      details_01: "{{ 'grubby found at ' ~ (result_01.stdout | default('') | trim) if result_01.rc | default(-1) == 0 else 'grubby not installed' }}"
+    tags: [execute]
+
+  - name: "Set grubby available fact"
+    ansible.builtin.set_fact:
+      grubby_available: "{{ result_01.rc == 0 }}"
+    tags: [execute]
+
+        # -------------------------------------------------------------------
+        # Requirement 02 – Apply audit_backlog_limit to all kernels
+# -------------------------------------------------------------------
+  - name: "Req 02 - Apply audit_backlog_limit to all kernel command lines"
+    ansible.builtin.shell: grubby --update-kernel ALL --args 'audit_backlog_limit=8192'
+    args:
+      executable: /bin/bash
+    register: result_02
+    when: grubby_available
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store Req 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Apply audit_backlog_limit to all kernels via grubby"
+      task_02_cmd: "grubby --update-kernel ALL --args 'audit_backlog_limit=8192'"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIP' if not grubby_available else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
+      details_02: "{{ 'Skipped because grubby is not installed' if not grubby_available else ('Parameters applied successfully' if result_02.rc | default(-1) == 0 else 'Failed to apply parameters') }}"
+    tags: [execute]
+
+        # -------------------------------------------------------------------
+        # Requirement 03 – Add parameter to /etc/default/grub
+# -------------------------------------------------------------------
+  - name: "Check if audit_backlog_limit already present in /etc/default/grub"
+    ansible.builtin.shell: grep -q 'audit_backlog_limit=8192' /etc/default/grub
+    args:
+      executable: /bin/bash
+    register: grub_param_present
+    when: grubby_available
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Capture /etc/default/grub before modification"
+    ansible.builtin.shell: cat /etc/default/grub
+    args:
+      executable: /bin/bash
+    register: grub_before
+    when: grubby_available
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 03 - Edit GRUB_CMDLINE_LINUX in /etc/default/grub"
+    ansible.builtin.lineinfile:
+      path: /etc/default/grub
+      regexp: '^(GRUB_CMDLINE_LINUX=".*)"$'
+      line: '\1 audit_backlog_limit=8192"'
+      backrefs: true
+    when:
+    - grubby_available
+    - grub_param_present.rc | default(1) != 0
+    register: lineinfile_res
+    failed_when: false
+    tags: [execute]
+
+  - name: "Capture /etc/default/grub after modification"
+    ansible.builtin.shell: cat /etc/default/grub
+    args:
+      executable: /bin/bash
+    register: grub_after
+    when: grubby_available
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store Req 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Add audit_backlog_limit to GRUB_CMDLINE_LINUX in /etc/default/grub"
+      task_03_cmd: "lineinfile with backrefs"
+      task_03_rc: "0"
+      data_03: "{{ ('Before: ' ~ (grub_before.stdout | default('') | trim)) ~ ' | After: ' ~ (grub_after.stdout | default('') | trim) if grubby_available else 'N/A' }}"
+      status_03: "{{ 'SKIP' if not grubby_available else ('PASS' if lineinfile_res is changed or grub_param_present.rc == 0 else 'FAIL') }}"
+      details_03: "{{ 'Skipped because grubby is not installed' if not grubby_available else ('Parameter added to GRUB_CMDLINE_LINUX' if lineinfile_res is changed or grub_param_present.rc == 0 else 'Failed to add parameter') }}"
+    tags: [execute]
+
+        # -------------------------------------------------------------------
+        # Regenerate bootloader config and flag reboot required
+# -------------------------------------------------------------------
+  - name: "Regenerate bootloader configuration"
+    ansible.builtin.shell: grub2-mkconfig -o /boot/grub2/grub.cfg
+    args:
+      executable: /bin/bash
+    when: grubby_available
+    register: mkconfig_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set reboot required flag"
+    ansible.builtin.set_fact:
+      reboot_required: true
+    when: grubby_available
+    tags: [execute]
+
+        # -------------------------------------------------------------------
+        # Requirement 04 – Verify audit_backlog_limit in current kernel cmdline
+# -------------------------------------------------------------------
+  - name: "Req 04 - Verify audit_backlog_limit in current kernel command line"
+    ansible.builtin.shell: "cat /proc/cmdline | grep -o 'audit_backlog_limit=[0-9]*'"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store Req 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify audit_backlog_limit in current kernel cmdline"
+      task_04_cmd: "cat /proc/cmdline | grep -o 'audit_backlog_limit=[0-9]*'"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (result_04.stdout | default('') | trim) == 'audit_backlog_limit=8192' else 'FAIL' }}"
+      details_04: "{{ 'Kernel currently has audit_backlog_limit=8192' if (result_04.stdout | default('') | trim) == 'audit_backlog_limit=8192' else 'Kernel does not have audit_backlog_limit=8192 (reboot required for the change to take effect)' }}"
+    tags: [execute]
+
+        # -------------------------------------------------------------------
+        # Requirement 05 – Compute and store overall remediation result
+# -------------------------------------------------------------------
+  - name: "Req 05 - Compute overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {% if not (grubby_available | default(false) | bool) %}
+        SKIP
+        {% elif reboot_required | default(false) | bool %}
+        SKIP
+        {% else %}
+        {{ status_04 | default('ERROR') | trim }}
+        {% endif %}
+    tags: [execute]
+
+  - name: "Store Req 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Store overall remediation status"
+      task_05_cmd: "set_fact"
+      task_05_rc: "0"
+      data_05: "{{ cis_result }}"
+      status_05: "{{ cis_result }}"
+      details_05: >-
+        {% if not (grubby_available | default(false) | bool) %}
+        grubby not installed
+        {% elif reboot_required | default(false) | bool %}
+        Reboot required to apply changes
+        {% else %}
+        Status derived from verification
+        {% endif %}
+    tags: [execute]
+
+        # -------------------------------------------------------------------
+        # Requirement 06 – Generate report
+# -------------------------------------------------------------------
+  - name: "Req 06 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 6.3.1.3"
+      - "Reference: CIS Benchmark checkpoint 6.3.1.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # ---------------------------------------------------------------
+        # RESTORE PHASE – guaranteed to run
+# ---------------------------------------------------------------
+  - name: "Restore - Check if /etc/default/grub backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/etc-default-grub.present"
+    register: _restore_grub_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/default/grub from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/etc-default-grub.present"
+      dest: /etc/default/grub
+      remote_src: true
+    when: _restore_grub_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if grub.cfg backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/grub.cfg.present"
+    register: _restore_grub_cfg_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /boot/grub2/grub.cfg from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/grub.cfg.present"
+      dest: /boot/grub2/grub.cfg
+      remote_src: true
+    when: _restore_grub_cfg_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

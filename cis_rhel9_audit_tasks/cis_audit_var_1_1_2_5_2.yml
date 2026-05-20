@@ -1,0 +1,3 @@
+req_01: "Check if a separate partition exists for /var/tmp using command: `findmnt -kn /var/tmp`. Expected result: output should show a mount point for /var/tmp."
+req_02: "Check if the nodev option is set on the /var/tmp partition using command: `findmnt -kn /var/tmp | grep -v nodev`. Expected result: no output should be returned."
+req_03: "Summarize overall compliance: if both checks pass, the system is compliant; otherwise, it is non-compliant."

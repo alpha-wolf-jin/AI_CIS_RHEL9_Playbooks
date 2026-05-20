@@ -1,0 +1,215 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_2_5.yml
+
+- name: "Snapshot - Check if audit script exists before playbook run"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: audit_script_pre_stat
+
+- name: "Snapshot - Record that script did NOT pre-exist"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  when: not audit_script_pre_stat.stat.exists | bool
+
+- name: "Snapshot - Write marker file indicating script did not exist"
+  ansible.builtin.copy:
+    dest: "{{ pre_exist_marker }}"
+    content: "not pre-existed"
+    mode: '0600'
+  when: not audit_script_pre_stat.stat.exists | bool
+
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_00: "Not collected yet"
+      status_00: "UNKNOWN"
+      details_00: "Not evaluated"
+      task_00_name: "Not executed"
+      task_00_cmd: "N/A"
+      task_00_rc: -1
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+
+  - name: "Req 00 - Verify system prerequisites for duplicate GID check"
+    ansible.builtin.stat:
+      path: /etc/group
+    register: result_00
+    failed_when: false
+
+  - name: "Store requirement 00 details"
+    set_fact:
+      task_00_name: "Req 00 - Verify system prerequisites for duplicate GID check"
+      task_00_cmd: "stat /etc/group"
+      task_00_rc: "{{ result_00.stat.exists | ternary(0, 1) }}"
+      data_00: "{{ result_00.stat.exists | ternary('Present', 'Missing') }}"
+      status_00: "{{ (result_00.stat.exists | default(false)) | ternary('PASS','SKIPPED') | trim }}"
+      details_00: "{{ (result_00.stat.exists | default(false)) | ternary('/etc/group file found','Required file /etc/group is missing, check not applicable') | trim }}"
+
+  - name: "Set applicability flag"
+    set_fact:
+      system_applicable: "{{ result_00.stat.exists | default(false) | bool }}"
+
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+    when: "system_applicable | default(false) | bool"
+
+  - name: "Req 01 - Execute audit script to detect duplicate GIDs"
+    ansible.builtin.shell: "/bin/bash '{{ audit_script }}'"
+    args:
+      executable: /bin/bash
+    register: result_01
+    changed_when: false
+    failed_when: false
+    when: "system_applicable | default(false) | bool"
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Req 01 - Execute audit script to detect duplicate GIDs"
+      task_01_cmd: "/bin/bash '{{ audit_script }}'"
+      task_01_rc: "{{ result_01.rc | default(-1) if system_applicable | default(false) else -1 }}"
+      data_01: "{{ result_01.stdout | default('') | trim if system_applicable | default(false) else 'Not applicable' }}"
+      status_01: >-
+        {%- if not (system_applicable | default(false)) -%}
+          SKIPPED
+        {%- elif (result_01.rc | default(-1) | int) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_01: >-
+        {%- if not (system_applicable | default(false)) -%}
+          Skipped because prerequisites not met
+        {%- elif (result_01.rc | default(-1) | int) == 0 -%}
+          Audit script executed successfully
+        {%- else -%}
+          Script execution failed
+        {%- endif -%}
+    when: true
+
+  - name: "Set defaults for skipped requirements if not applicable"
+    set_fact:
+      status_02: "SKIPPED"
+      details_02: "Not applicable – prerequisite check failed"
+      data_02: "Not collected"
+      task_02_name: "Req 02 - Verify compliance status for duplicate GIDs"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      status_03: "SKIPPED"
+      details_03: "cis_result derived from skipped compliance status"
+      data_03: "SKIPPED"
+      task_03_name: "Req 03 - Store final cis_result"
+      task_03_cmd: "N/A (set_fact)"
+      task_03_rc: 0
+      cis_result: "SKIPPED"
+    when: not (system_applicable | default(false) | bool)
+
+  - block:
+    - name: "Store requirement 02 details - compliance evaluation"
+      set_fact:
+        task_02_name: "Req 02 - Verify compliance status for duplicate GIDs"
+        task_02_cmd: "N/A (set_fact evaluation)"
+        task_02_rc: 0
+        data_02: "{{ result_01.stdout | default('') | trim }}"
+        status_02: "{{ (result_01.rc | default(-1) | int == 0 and (result_01.stdout | default('') | trim) == '') | ternary('PASS','FAIL') | trim }}"
+        details_02: >-
+          {{ 'No duplicate GIDs found' if (result_01.rc | default(-1) | int == 0 and (result_01.stdout | default('') | trim) == '')
+             else ('Duplicate GIDs detected' if (result_01.stdout | default('') | trim) != ''
+             else 'Script execution error') }}
+
+    - name: "Req 03 - Store final cis_result"
+      set_fact:
+        task_03_name: "Req 03 - Store final cis_result"
+        task_03_cmd: "N/A (set_fact)"
+        task_03_rc: 0
+        data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+        status_03: "PASS"
+        details_03: "cis_result variable set to overall compliance status derived from requirement 02"
+        cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    when: "system_applicable | default(false) | bool"
+
+  always:
+  - name: "Restore - Check if pre-exist marker exists"
+    ansible.builtin.stat:
+      path: "{{ pre_exist_marker }}"
+    register: marker_stat
+
+  - name: "Restore - Remove audit script if it did not pre-exist"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: marker_stat.stat.exists | default(false) | bool
+
+  - name: "Restore - Remove pre-exist marker file"
+    ansible.builtin.file:
+      path: "{{ pre_exist_marker }}"
+      state: absent
+    when: marker_stat.stat.exists | default(false) | bool
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 7.2.5"
+    - "Reference: CIS Benchmark checkpoint 7.2.5"
+    - ""
+    - "REQUIREMENT 00 - {{ req_00 }}:"
+    - "  Task: {{ task_00_name | default('Not recorded') }}"
+    - "  Command: {{ task_00_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_00_rc | default(-1) }}"
+    - "  Data: {{ data_00 | default('') | trim }}"
+    - "  Status: {{ status_00 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_00 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

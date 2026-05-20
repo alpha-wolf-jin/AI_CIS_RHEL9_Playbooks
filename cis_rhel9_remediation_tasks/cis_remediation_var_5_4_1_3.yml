@@ -1,0 +1,10 @@
+playbook_name: "cis_5_4_1_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check: Ensure `awk` and `chage` are available using command: `which awk && which chage`. Expected result: Both commands return paths."
+req_02: "Apply PASS_WARN_AGE configuration in /etc/login.defs using command: `sed -i 's/^PASS_WARN_AGE.*/PASS_WARN_AGE 7/' /etc/login.defs || echo 'PASS_WARN_AGE 7' >> /etc/login.defs`. Expected result: The file contains `PASS_WARN_AGE 7`."
+req_03: |
+  Apply password warning days for all users with a password set using command: `awk -F: '($2~/^\\$.+\\$/) {if($6 < 7) system(\"chage --warndays 7 \" $1)}' /etc/shadow`. Expected result: All applicable users have warning days set to 7 or more.
+req_04: "Verify the configuration using command: `grep ^PASS_WARN_AGE /etc/login.defs`. Expected result: Output shows `PASS_WARN_AGE 7`."
+req_05: |
+  Verify user warning days using command: `awk -F: '($2~/^\\$.+\\$/) {print $1, $6}' /etc/shadow | awk '$2 < 7 {print \"FAIL: \" $1 \" has warning days \" $2; found=1} END {if(!found) print \"All users have warning days >= 7\"}'`. Expected result: No users with warning days less than 7.
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,105 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_16.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set auditd installation status"
+  ansible.builtin.set_fact:
+    auditd_installed: "{{ 'audit' in ansible_facts.packages or 'auditd' in ansible_facts.packages }}"
+
+- name: "Req 01 - Run on-disk audit procedure for setfacl"
+  ansible.builtin.shell: |
+    {% raw %}
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && awk "/^ *-a *always,exit/ &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) &&/ -F *auid>=${UID_MIN}/ &&/ -F *perm=x/ &&/ -F *path=\/usr\/bin\/setfacl/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+    {% endraw %}
+  args:
+    executable: /bin/bash
+  register: ondisk_result
+  when: auditd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Audit on-disk rules check"
+    task_01_cmd: "{{ ondisk_result.cmd | default('N/A') }}"
+    task_01_rc: "{{ ondisk_result.rc | default(-1) }}"
+    data_01: "{{ ondisk_result.stdout | default('') | trim }}"
+    status_01: "{{ 'SKIPPED' if not auditd_installed | bool else 'PASS' }}"
+    details_01: >-
+      {{ 'auditd package not installed, audit skipped' if not auditd_installed | bool
+         else 'Audit procedure executed successfully' }}
+
+- name: "Evaluate on-disk rule presence"
+  ansible.builtin.set_fact:
+    rule_found: >-
+      {{ (ondisk_result.stdout | default('') | trim | length > 0)
+         and ('ERROR' not in ondisk_result.stdout | default('')) }}
+  when: auditd_installed | bool
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Compliance summary"
+    task_02_cmd: "N/A"
+    task_02_rc: "{{ task_01_rc | default(-1) }}"
+    data_02: "{{ data_01 | default('') | trim }}"
+    status_02: >-
+      {{ 'SKIPPED' if not auditd_installed | bool
+         else ('PASS' if rule_found | default(false) | bool else 'FAIL') }}
+    details_02: >-
+      {{ 'auditd package not installed' if not auditd_installed | bool
+         else ('Compliant: audit rule for setfacl found' if rule_found | default(false) | bool
+               else 'Non-compliant: audit rule for setfacl not found') }}
+
+- name: "Store requirement 03 details and final result"
+  ansible.builtin.set_fact:
+    task_03_name: "Store cis_result"
+    task_03_cmd: "N/A"
+    task_03_rc: "{{ task_02_rc | default(-1) }}"
+    data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
+    status_03: "{{ 'SKIPPED' if not auditd_installed | bool else 'PASS' }}"
+    details_03: >-
+      {{ 'Compliance status stored in cis_result' if auditd_installed | bool
+         else 'Skipped' }}
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.16"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.16"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "========================================================"

@@ -1,0 +1,161 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_2_5.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+# Requirement 1: Check prerequisite and run the audit script (without creating temporary files)
+- name: "Req 01 - Gather package facts for sudo availability"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [execute]
+- name: "Req 01 - Execute root path integrity audit script via stdin"
+  ansible.builtin.shell:
+    cmd: /bin/bash
+    stdin: "{{ audit_script_content }}"
+  args:
+    executable: /bin/bash
+  register: audit_result
+  when: "'sudo' in ansible_facts.packages"
+  failed_when: false
+  changed_when: false
+  tags: [execute]
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Execute root path integrity audit script via stdin"
+    task_01_cmd: "echo 'script' | /bin/bash"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: >-
+      {%- if audit_result is defined and audit_result.rc | default(-1) in [0, 1] -%}
+        PASS
+      {%- elif audit_result is defined -%}
+        FAIL
+      {%- else -%}
+        SKIP
+      {%- endif -%}
+    details_01: >-
+      {%- if audit_result is defined and audit_result.rc | default(-1) in [0, 1] -%}
+        Audit script executed successfully.
+      {%- elif audit_result is defined -%}
+        Audit script failed with rc {{ audit_result.rc | default(-1) }}.
+      {%- else -%}
+        Skipped: sudo package not installed, audit script could not be run.
+      {%- endif -%}
+
+# Requirement 2: Parse audit script output to determine compliance
+- name: "Req 02 - Summarise compliance status"
+  set_fact:
+    status_02: >-
+      {%- if 'sudo' not in ansible_facts.packages -%}
+        SKIP
+      {%- elif audit_result.stdout is defined and '*** PASS ***' in audit_result.stdout -%}
+        PASS
+      {%- elif audit_result.stdout is defined and '** FAIL **' in audit_result.stdout -%}
+        FAIL
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_02: >-
+      {%- if 'sudo' not in ansible_facts.packages -%}
+        Skipped: sudo package not installed.
+      {%- elif audit_result.stdout is defined and '*** PASS ***' in audit_result.stdout -%}
+        Root path integrity is correctly configured.
+      {%- elif audit_result.stdout is defined and '** FAIL **' in audit_result.stdout -%}
+        Root path integrity check failed.
+      {%- else -%}
+        Unable to determine compliance from audit output.
+      {%- endif -%}
+    task_02_name: "Parse audit script output for compliance"
+    task_02_cmd: "N/A"
+    task_02_rc: "-1"
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+
+# Requirement 3: Store final audit result
+- name: "Req 03 - Store final audit result"
+  set_fact:
+    cis_result: "{{ status_02 | default('ERROR') | trim }}"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Store final audit result in cis_result"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "cis_result = {{ cis_result | default('ERROR') | trim }}"
+    status_03: "{{ 'PASS' if cis_result | default('ERROR') | trim in ['PASS','FAIL','SKIP'] else 'ERROR' }}"
+    details_03: "Final compliance result stored."
+
+# Requirement 4: Generate audit report
+- name: "Req 04 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.4.2.5"
+    - ""
+    - "Reference: CIS Benchmark checkpoint 5.4.2.5"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: N/A"
+    - "  Exit code: 0"
+    - "  Data: Report displayed"
+    - "  Status: PASS"
+    - "  Details: Audit report generated successfully."
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

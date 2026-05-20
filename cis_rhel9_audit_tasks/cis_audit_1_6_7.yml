@@ -1,0 +1,146 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_6_7.yml
+
+- name: "Req 01 - Check if OpenSSH server package is installed"
+  ansible.builtin.shell: "dpkg -l openssh-server 2>/dev/null || rpm -q openssh-server 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Check CBC ciphers disabled in sshd"
+  ansible.builtin.shell: "sshd -T 2>/dev/null | grep -i 'cipher.*cbc' || echo 'NO_CBC'"
+  args:
+    executable: /bin/bash
+  register: result_02a
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc == 0"
+
+- name: "Req 02 - Check ChaCha20-Poly1305 KEX disabled in sshd"
+  ansible.builtin.shell: "sshd -T 2>/dev/null | grep -i 'kex.*chacha20-poly1305' || echo 'NO_CHACHA'"
+  args:
+    executable: /bin/bash
+  register: result_02b
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc == 0"
+
+- name: "Req 03 - Check OS version (RHEL >= 9.3 for EtM disable support)"
+  ansible.builtin.shell: "cat /etc/redhat-release 2>/dev/null | grep -oP '\\d+\\.\\d+' | head -1"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc == 0"
+
+- name: "Req 04 - Check EtM disabled for SSH in crypto policy"
+  ansible.builtin.shell: "grep -Psi -- '^\\h*etm\\b' /etc/crypto-policies/state/CURRENT.pol"
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc == 0"
+
+- name: "Determine per-check statuses"
+  ansible.builtin.set_fact:
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'FAIL' }}"
+    details_01: "{{ 'Package found' if result_01.rc == 0 else 'Package not found' }}"
+    status_02: >-
+      {{ 'SKIPPED' if result_01.rc != 0 else
+         ('PASS' if ('NO_CBC' in result_02a.stdout | default('')) or ('NO_CHACHA' in result_02b.stdout | default('')) else 'FAIL') }}
+    details_02: >-
+      {{ 'SKIPPED' if result_01.rc != 0 else
+         ('CBC or ChaCha disabled' if ('NO_CBC' in result_02a.stdout | default('')) or ('NO_CHACHA' in result_02b.stdout | default('')) else 'Neither CBC disabled nor CVE patched') }}
+    status_03: >-
+      {{ 'SKIPPED' if result_01.rc != 0 else
+         ('PASS' if (result_03.stdout | default('') | trim) is version('9.3', '>=') else 'FAIL') }}
+    details_03: >-
+      {{ 'SKIPPED' if result_01.rc != 0 else
+         ('Version ' ~ (result_03.stdout | default('') | trim) ~ ' is >= 9.3' if (result_03.stdout | default('') | trim) is version('9.3', '>=') else 'Version ' ~ (result_03.stdout | default('') | trim) ~ ' is < 9.3 or could not be determined') }}
+    status_04: >-
+      {{ 'SKIPPED' if result_01.rc != 0 else
+         ('PASS' if 'DISABLE_ETM' in result_04.stdout | default('') else 'FAIL') }}
+    details_04: >-
+      {{ 'SKIPPED' if result_01.rc != 0 else
+         ('EtM disabled for SSH' if 'DISABLE_ETM' in result_04.stdout | default('') else 'EtM not disabled') }}
+
+- name: "Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: >-
+      {%- if result_01.rc != 0 -%}
+        NOT_APPLICABLE
+      {%- elif status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif %}
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.6.7"
+    - "Reference: CIS Benchmark checkpoint 1.6.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Check Openssh server package installed"
+    - "  Command: dpkg -l openssh-server 2>/dev/null || rpm -q openssh-server 2>/dev/null"
+    - "  Exit code: {{ result_01.rc | default(-1) }}"
+    - "  Data: {{ result_01.stdout | default('') | trim }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Sub-check A - CBC ciphers"
+    - "  Task: Check CBC ciphers disabled"
+    - "  Command: sshd -T 2>/dev/null | grep -i 'cipher.*cbc' || echo 'NO_CBC'"
+    - "  Exit code: {{ 'N/A' if result_01.rc != 0 else result_02a.rc }}"
+    - "  Data: {{ (result_02a.stdout | default('') | trim) if result_01.rc == 0 else 'N/A' }}"
+    - "  Status: {{ 'SKIPPED' if result_01.rc != 0 else ('PASS' if 'NO_CBC' in result_02a.stdout | default('') else 'FAIL') }}"
+    - "  Details: {{ 'Not applicable' if result_01.rc != 0 else ('CBC disabled' if 'NO_CBC' in result_02a.stdout | default('') else 'CBC ciphers found') }}"
+    - "  Sub-check B - ChaCha20 KEX"
+    - "  Task: Check ChaCha20 KEX disabled"
+    - "  Command: sshd -T 2>/dev/null | grep -i 'kex.*chacha20-poly1305' || echo 'NO_CHACHA'"
+    - "  Exit code: {{ 'N/A' if result_01.rc != 0 else result_02b.rc }}"
+    - "  Data: {{ (result_02b.stdout | default('') | trim) if result_01.rc == 0 else 'N/A' }}"
+    - "  Status: {{ 'SKIPPED' if result_01.rc != 0 else ('PASS' if 'NO_CHACHA' in result_02b.stdout | default('') else 'FAIL') }}"
+    - "  Details: {{ 'Not applicable' if result_01.rc != 0 else ('ChaCha KEX disabled' if 'NO_CHACHA' in result_02b.stdout | default('') else 'ChaCha found') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Check OS version (RHEL >= 9.3 for EtM support)"
+    - "  Command: cat /etc/redhat-release | grep -oP '\\d+\\.\\d+' | head -1"
+    - "  Exit code: {{ 'N/A' if result_01.rc != 0 else result_03.rc }}"
+    - "  Data: {{ (result_03.stdout | default('') | trim) if result_01.rc == 0 else 'N/A' }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Check EtM disabled for SSH"
+    - "  Command: grep -Psi -- '^\\h*etm\\b' /etc/crypto-policies/state/CURRENT.pol"
+    - "  Exit code: {{ 'N/A' if result_01.rc != 0 else result_04.rc }}"
+    - "  Data: {{ (result_04.stdout | default('') | trim) if result_01.rc == 0 else 'N/A' }}"
+    - "  Status: {{ status_04 }}"
+    - "  Details: {{ details_04 }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: Summarize compliance"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: N/A"
+    - "  Status: {{ cis_result }}"
+    - "  Details: Overall compliance status"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: Store cis_result"
+    - "  Command: set_fact"
+    - "  Exit code: N/A"
+    - "  Data: {{ cis_result }}"
+    - "  Status: {{ cis_result }}"
+    - "  Details: Stored in cis_result variable"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"

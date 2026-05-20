@@ -1,0 +1,81 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_4_1_3.yml
+
+- name: "Req 1 - Check if cron is installed"
+  ansible.builtin.shell: "which cron || dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_cron
+  failed_when: false
+  changed_when: false
+
+- name: "Set fact for cron installed status"
+  ansible.builtin.set_fact:
+    cron_installed: "{{ result_cron.rc == 0 }}"
+
+- name: "Req 2 - Check permissions on /etc/cron.hourly/"
+  ansible.builtin.shell: |
+    stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.hourly/
+  args:
+    executable: /bin/bash
+  register: result_perm
+  failed_when: false
+  changed_when: false
+  when: cron_installed
+
+- name: "Set facts for requirements compliance"
+  ansible.builtin.set_fact:
+    req_01_data: "{{ result_cron.stdout | default('') | trim }}"
+    req_01_rc: "{{ result_cron.rc }}"
+    req_01_status: "{{ 'PASS' if cron_installed else 'SKIP' }}"
+    req_01_details: "{{ 'cron is installed' if cron_installed else 'cron not installed, audit not applicable' }}"
+    req_02_data: "{{ (result_perm.get('stdout', 'N/A') if result_perm is defined else 'N/A') | trim }}"
+    req_02_rc: "{{ (result_perm.get('rc', 'N/A') if result_perm is defined else 'N/A') | trim }}"
+    req_02_status: "{{ 'SKIP' if not cron_installed else ('PASS' if ((result_perm.stdout | default('') | trim) == 'Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)') else 'FAIL') }}"
+    req_02_details: "{{ 'cron not installed, audit not applicable' if not cron_installed else ('Permissions correct' if ((result_perm.stdout | default('') | trim) == 'Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)') else 'Permissions incorrect') }}"
+    req_03_status: "{{ 'SKIP' if not cron_installed else ('PASS' if ((result_perm.stdout | default('') | trim) == 'Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)') else 'FAIL') }}"
+    req_03_details: "{{ 'cron not installed, audit not applicable' if not cron_installed else ('All checks passed' if ((result_perm.stdout | default('') | trim) == 'Access: (700/drwx------) Uid: ( 0/ root) Gid: ( 0/ root)') else 'Permissions incorrect') }}"
+    req_03_data: "N/A"
+    req_03_rc: "N/A"
+  run_once: true
+
+- name: "Set cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ req_03_status }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.4.1.3"
+    - "Reference: CIS Benchmark checkpoint 2.4.1.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Check if cron is installed"
+    - "  Command: which cron || dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null"
+    - "  Exit code: {{ req_01_rc }}"
+    - "  Data: {{ req_01_data }}"
+    - "  Status: {{ req_01_status }}"
+    - "  Details: {{ req_01_details }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Check permissions on /etc/cron.hourly/"
+    - "  Command: stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.hourly/"
+    - "  Exit code: {{ req_02_rc }}"
+    - "  Data: {{ req_02_data }}"
+    - "  Status: {{ req_02_status }}"
+    - "  Details: {{ req_02_details }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Evaluate overall compliance"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: {{ req_03_data }}"
+    - "  Status: {{ req_03_status }}"
+    - "  Details: {{ req_03_details }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ req_03_details }}"
+    - "========================================================"

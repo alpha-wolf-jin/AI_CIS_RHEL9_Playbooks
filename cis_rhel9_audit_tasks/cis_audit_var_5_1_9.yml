@@ -1,0 +1,7 @@
+req_01: "Check if OpenSSH server is installed using command: `dpkg -l openssh-server 2>/dev/null || rpm -q openssh-server 2>/dev/null`. Expected result: package is installed."
+req_02: "Check ClientAliveInterval is greater than zero using command: `sshd -T | grep -Pi -- 'clientaliveinterval' | awk '{print $2}'`. Expected result: a numeric value greater than 0."
+req_03: "Check ClientAliveCountMax is greater than zero using command: `sshd -T | grep -Pi -- 'clientalivecountmax' | awk '{print $2}'`. Expected result: a numeric value greater than 0."
+req_04: "If Match blocks exist, check ClientAliveInterval for a specific user (e.g., sshuser) using command: `sshd -T -C user=sshuser | grep -Pi -- 'clientaliveinterval' | awk '{print $2}'`. Expected result: a numeric value greater than 0."
+req_05: "If Match blocks exist, check ClientAliveCountMax for a specific user (e.g., sshuser) using command: `sshd -T -C user=sshuser | grep -Pi -- 'clientalivecountmax' | awk '{print $2}'`. Expected result: a numeric value greater than 0."
+req_06: "Summarize overall compliance: PASS if all checks pass, SKIP if OpenSSH server is not installed, FAIL if any check fails."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

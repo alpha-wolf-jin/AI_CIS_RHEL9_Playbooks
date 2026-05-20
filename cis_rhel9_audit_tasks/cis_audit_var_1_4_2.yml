@@ -1,0 +1,56 @@
+playbook_name: "cis_1_4_2_bootloader_audit"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_script: "/tmp/cis_1_4_2_audit.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     l_output="" l_output2=""
+     file_mug_chk()
+     {
+        l_out="" l_out2=""
+        [[ "$(dirname "$l_file")" =~ ^\/boot\/efi\/EFI ]] && l_pmask="0077" || l_pmask="0177"
+        l_maxperm="$( printf '%o' $(( 0777 & ~$l_pmask )) )"
+        if [ $(( $l_mode & $l_pmask )) -gt 0 ]; then
+           l_out2="$l_out2\n   - Is mode \"$l_mode\" and should be mode: \"$l_maxperm\" or more restrictive"
+        else
+           l_out="$l_out\n   - Is correctly mode: \"$l_mode\" which is mode: \"$l_maxperm\" or more restrictive"
+        fi
+        if [ "$l_user" = "root" ]; then
+           l_out="$l_out\n   - Is correctly owned by user: \"$l_user\""
+        else
+           l_out2="$l_out2\n   - Is owned by user: \"$l_user\" and should be owned by user: \"root\""
+        fi
+        if [ "$l_group" = "root" ]; then
+           l_out="$l_out\n   - Is correctly group-owned by group: \"$l_user\""
+        else
+           l_out2="$l_out2\n   - Is group-owned by group: \"$l_user\" and should be group-owned by group: \"root\""
+        fi
+        [ -n "$l_out" ] && l_output="$l_output\n  - File: \"$l_file\"$l_out\n"
+        [ -n "$l_out2" ] && l_output2="$l_output2\n  - File: \"$l_file\"$l_out2\n"
+     }
+     while IFS= read -r -d $'\0' l_gfile; do
+        while read -r l_file l_mode l_user l_group; do
+           file_mug_chk
+        done <<< "$(stat -Lc '%n %#a %U %G' "$l_gfile")"
+     done < <(find /boot -type f \( -name 'grub*' -o -name 'user.cfg' \) -print0)
+     if [ -z "$l_output2" ]; then
+        echo -e "\n- Audit Result:\n  *** PASS ***\n- * Correctly set * :\n$l_output\n"
+     else
+        echo -e "\n- Audit Result:\n  ** FAIL **\n - * Reasons for audit failure * :\n$l_output2\n"
+        [ -n "$l_output" ] && echo -e " - * Correctly set * :\n$l_output\n"
+     fi
+  }
+  {% endraw %}
+req_01: "Run the provided audit script to verify Ensure access to bootloader config is configured."
+req_02: "VERIFY: Summarise compliance status for Ensure access to bootloader config is configured. Expected result: PASS if compliant, FAIL otherwise"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: |-
+  {% raw %}
+  Create a task named 'Generate audit report' using debug msg with EXACTLY this format:
+  AUDIT REPORT — CIS 1.4.2
+  Reference: CIS Benchmark checkpoint 1.4.2
+  Then for each requirement: REQUIREMENT NN - {{ req_NN }}:
+    With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIPPED/UNKNOWN), Details.
+  End with OVERALL COMPLIANCE: section containing Result: {{ cis_result }}
+  {% endraw %}

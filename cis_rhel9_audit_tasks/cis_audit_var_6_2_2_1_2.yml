@@ -1,0 +1,8 @@
+package_name: "systemd-journal-upload"
+config_file: "/etc/systemd/journal-upload.conf"
+grep_pattern: '^ *URL=|^ *ServerKeyFile=|^ *ServerCertificateFile=|^ *TrustedCertificateFile='
+req_01: "Check if systemd-journal-upload is installed using command: `dpkg -l | grep -i systemd-journal-upload || rpm -q systemd-journal-upload`. Expected result: package is installed."
+req_02: |
+  Check if systemd-journal-upload authentication is configured by verifying URL, ServerKeyFile, ServerCertificateFile, and TrustedCertificateFile in /etc/systemd/journal-upload.conf using command: `grep -P \"^ *URL=|^ *ServerKeyFile=|^ *ServerCertificateFile=|^ *TrustedCertificateFile=\" /etc/systemd/journal-upload.conf`. Expected result: output matches environment-specific certificate locations and the URL of the log server.
+req_03: "Summarize overall compliance status: all checks passed, systemd-journal-upload authentication is properly configured."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN)."

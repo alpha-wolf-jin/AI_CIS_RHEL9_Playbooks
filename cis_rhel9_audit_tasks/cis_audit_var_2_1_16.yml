@@ -1,0 +1,4 @@
+req_01: "Check if tftp-server package is installed using command: `rpm -q tftp-server`. Expected result: package tftp-server is not installed"
+req_02: "If the package is required for dependencies, check if tftp.socket and tftp.service are enabled using command: `systemctl is-enabled tftp.socket tftp.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If the package is required for dependencies, check if tftp.socket and tftp.service are active using command: `systemctl is-active tftp.socket tftp.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "Summarize overall compliance status: Ensure tftp server services are not in use, with all checks passing as per the audit procedure."

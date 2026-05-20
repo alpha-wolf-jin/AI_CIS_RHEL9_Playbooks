@@ -1,0 +1,182 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_6.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    task_01_name: "Execute on-disk and running audit scripts"
+    task_01_cmd: "See script content"
+    task_01_rc: -1
+    data_02: "Not collected"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    task_02_name: "Compliance evaluation"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    prereqs_ok: false
+    auditd_installed: false
+
+- block:
+  - name: "Check if required commands are available"
+    ansible.builtin.shell: command -v findmnt && command -v awk && command -v grep && command -v paste && command -v find && command -v auditctl
+    args:
+      executable: /bin/bash
+    register: prereq_check
+    failed_when: false
+    changed_when: false
+
+  - name: "Set prerequisite status"
+    ansible.builtin.set_fact:
+      prereqs_ok: "{{ prereq_check.rc == 0 }}"
+
+  - name: "Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    changed_when: false
+
+  - name: "Set auditd installation status"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+
+  - name: "Req 01 - Execute on-disk audit script"
+    ansible.builtin.shell: |
+      {% raw %}
+      #!/usr/bin/env bash
+      {
+         for PARTITION in $(findmnt -n -l -k -it $(awk '/nodev/ { print $2 }' /proc/filesystems | paste -sd,) | grep -Pv "noexec|nosuid" | awk '{print $1}'); do
+            for PRIVILEGED in $(find "${PARTITION}" -xdev -perm /6000 -type f); do
+               grep -qr "${PRIVILEGED}" /etc/audit/rules.d && printf "OK: '${PRIVILEGED}' found in auditing rules.\n" || printf "Warning: '${PRIVILEGED}' not found in on disk configuration.\n"
+            done
+         done
+      }
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: ondisk_result
+    when: "auditd_installed | bool and prereqs_ok | bool"
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Execute running audit script"
+    ansible.builtin.shell: |
+      {% raw %}
+      #!/usr/bin/env bash
+      {
+         RUNNING=$(auditctl -l)
+         [ -n "${RUNNING}" ] && for PARTITION in $(findmnt -n -l -k -it $(awk '/nodev/ { print $2 }' /proc/filesystems | paste -sd,) | grep -Pv "noexec|nosuid" | awk '{print $1}'); do
+            for PRIVILEGED in $(find "${PARTITION}" -xdev -perm /6000 -type f); do
+               printf -- "${RUNNING}" | grep -q "${PRIVILEGED}" && printf "OK: '${PRIVILEGED}' found in auditing rules.\n" || printf "Warning: '${PRIVILEGED}' not found in running configuration.\n"
+            done
+         done \
+         || printf "ERROR: Variable 'RUNNING' is unset.\n"
+      }
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: running_result
+    when: "auditd_installed | bool and prereqs_ok | bool"
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Store audit script results"
+    ansible.builtin.set_fact:
+      data_01: >-
+        {%- if auditd_installed | bool and prereqs_ok | bool -%}
+        On-disk:\n{{ ondisk_result.stdout | default('') }}\n\nRunning:\n{{ running_result.stdout | default('') }}
+        {%- else -%}
+        SKIP - prerequisites not met (auditd: {{ auditd_installed }}, commands: {{ prereqs_ok }})
+        {%- endif -%}
+      task_01_cmd: "See script blocks"
+      task_01_rc: "{{ [ondisk_result.rc | default(-1), running_result.rc | default(-1)] | max }}"
+
+  - name: "Req 01 - Determine status and details"
+    ansible.builtin.set_fact:
+      status_01: >-
+        {%- if not prereqs_ok or not auditd_installed -%}
+        SKIP
+        {%- elif (ondisk_result.rc | default(-1)) != 0 or (running_result.rc | default(-1)) != 0 -%}
+        ERROR
+        {%- elif 'Warning' in (ondisk_result.stdout | default('')) or 'Warning' in (running_result.stdout | default('')) or 'ERROR' in (running_result.stdout | default('')) -%}
+        FAIL
+        {%- else -%}
+        PASS
+        {%- endif -%}
+      details_01: >-
+        {%- if not prereqs_ok or not auditd_installed -%}
+        Prerequisite commands not available or auditd not installed, skipping audit
+        {%- elif (ondisk_result.rc | default(-1)) != 0 or (running_result.rc | default(-1)) != 0 -%}
+        Audit script failed with non-zero exit code
+        {%- elif 'Warning' in (ondisk_result.stdout | default('')) or 'Warning' in (running_result.stdout | default('')) or 'ERROR' in (running_result.stdout | default('')) -%}
+        Some privileged commands are not audited
+        {%- else -%}
+        All privileged commands are audited
+        {%- endif -%}
+
+  - name: "Req 02 - Summarise compliance status"
+    ansible.builtin.set_fact:
+      status_02: "{{ status_01 | trim }}"
+      details_02: "{{ details_01 | trim }}"
+      task_02_name: "Compliance evaluation"
+      task_02_cmd: "N/A"
+      task_02_rc: 0
+      data_02: "{{ details_01 | trim }}"
+
+        # Overall compliance is derived from the audit verification (Req 02).
+# This matches the requirement "Store the final audit result … derived from the last requirement's status variable".
+  - name: "Req 03 - Store final audit result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | trim }}"
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 6.3.3.6"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.6"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 | trim }}"
+      - "  Status: {{ status_01 | trim }}"
+      - "  Details: {{ details_01 | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 | trim }}"
+      - "  Status: {{ status_02 | trim }}"
+      - "  Details: {{ details_02 | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Set final audit result"
+      - "  Command: set_fact cis_result"
+      - "  Exit code: 0"
+      - "  Data: cis_result = {{ cis_result | trim }}"
+      - "  Status: PASS"
+      - "  Details: Final compliance status stored"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Generate audit report"
+      - "  Command: debug msg"
+      - "  Exit code: 0"
+      - "  Data: Report generated"
+      - "  Status: PASS"
+      - "  Details: Audit report generated successfully"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+
+  always:
+  - name: "Cleanup - no temporary files to remove"
+    ansible.builtin.debug:
+      msg: "No temporary scripts were created"
+    changed_when: false

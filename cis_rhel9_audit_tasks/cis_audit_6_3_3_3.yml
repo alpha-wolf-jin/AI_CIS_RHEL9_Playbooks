@@ -1,0 +1,184 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_3.yml
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: _sg_script_pre
+
+
+- name: "Initialize data variables"
+  set_fact:
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- block:
+  - name: "Req 01a - Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+
+  - name: "Req 01b - Set package installed facts"
+    set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages | default({}) }}"
+      sudo_installed: "{{ 'sudo' in ansible_facts.packages | default({}) }}"
+
+  - name: "Req 01c - Extract sudo log file path and escape"
+    ansible.builtin.shell: |
+      LOG=$(grep -r logfile /etc/sudoers* 2>/dev/null | sed -e 's/.*logfile=//;s/,?.*//' -e 's/"//g' | head -1)
+      if [ -n "$LOG" ]; then
+        echo "$LOG"
+        echo "$LOG" | sed 's|/|\\/|g'
+      fi
+    args:
+      executable: /bin/bash
+    register: sudo_log_extract
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01d - Set sudo log configured facts"
+    set_fact:
+      sudo_log_path: "{{ sudo_log_extract.stdout_lines[0] | default('') | trim }}"
+      sudo_log_escaped: "{{ sudo_log_extract.stdout_lines[1] | default('') | trim }}"
+      sudo_log_configured: "{{ (sudo_log_extract.stdout_lines | default([]) | length > 0 and (sudo_log_extract.stdout_lines[1] | default('')) != '') | bool }}"
+
+  - name: "Req 01e - Deploy audit script"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+
+  - name: "Req 01f - Execute audit script to check audit rules"
+    ansible.builtin.shell: "/bin/bash {{ audit_script }}"
+    environment:
+      SUDO_LOG_ESCAPED: "{{ sudo_log_escaped }}"
+    args:
+      executable: /bin/bash
+    register: audit_rules_result
+    changed_when: false
+    failed_when: false
+    when:
+    - auditd_installed | bool
+    - sudo_installed | bool
+    - sudo_log_configured | bool
+
+  - name: "Req 01g - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+
+  - name: "Default audit_rules_result if task 01f was skipped"
+    set_fact:
+      audit_rules_result: "{{ audit_rules_result | default({'stdout': ''}) }}"
+    when: "audit_rules_result is not defined"
+
+  - name: "Req 02 - Determine compliance status"
+    set_fact:
+      status_02: >-
+        {%- if not auditd_installed | bool -%}
+        SKIP
+        {%- elif not sudo_installed | bool -%}
+        SKIP
+        {%- elif not sudo_log_configured | bool -%}
+        SKIP
+        {%- elif audit_rules_result.stdout | default('') | trim == 'COMPLIANT' -%}
+        PASS
+        {%- else -%}
+        FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if not (auditd_installed | bool) -%}
+        SKIP: auditd package not installed
+        {%- elif not (sudo_installed | bool) -%}
+        SKIP: sudo package not installed
+        {%- elif not (sudo_log_configured | bool) -%}
+        SKIP: sudo logfile not configured in sudoers
+        {%- elif audit_rules_result.stdout | default('') | trim == 'COMPLIANT' -%}
+        PASS: Audit rules for sudo log file modifications found in both disk and running configuration
+        {%- else -%}
+        FAIL: Audit rules for sudo log file modifications not found
+        {%- endif -%}
+      task_02_name: "Req 02 - Determine compliance status"
+      task_02_cmd: "Set fact based on audit rules check and prerequisites"
+      task_02_rc: "0"
+      data_02: "{{ audit_rules_result.stdout | default('No audit rules check output') | trim }}"
+
+  - name: "Req 03 - Store final audit result as cis_result"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Req 03 - Store final audit result"
+      task_03_cmd: "set_fact: cis_result = {{ status_02 | default('ERROR') | trim }}"
+      task_03_rc: "0"
+      status_03: "PASS"
+      data_03: "cis_result set to {{ status_02 | default('ERROR') | trim }}"
+      details_03: "Variable stored successfully"
+
+  - name: "Req 01 - Populate audit procedure details"
+    set_fact:
+      task_01_name: "Req 01 - Run audit procedure for 6.3.3.3"
+      task_01_cmd: "Audit script executed or skipped if prerequisites not met"
+      task_01_rc: "{{ audit_rules_result.rc | default(-1) }}"
+      data_01: "{{ audit_rules_result.stdout | default('Skipped: sudo log not configured') | trim }}"
+      status_01: "{{ status_02 | default('ERROR') | trim }}"
+      details_01: "{{ details_02 | default('') | trim }}"
+
+  - name: "Generate audit report"
+    debug:
+      msg:
+      - "AUDIT REPORT — CIS 6.3.3.3"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+  always:
+  - name: "Restore - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    failed_when: false

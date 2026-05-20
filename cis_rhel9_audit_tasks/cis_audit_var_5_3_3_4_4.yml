@@ -1,0 +1,11 @@
+req_01: "Check if PAM is installed using command: `dpkg -l | grep -E 'libpam-runtime|pam'` or `rpm -q pam`. Expected result: package is present."
+req_02: |
+  Check that use_authtok is set on pam_unix.so lines in the password stack of /etc/pam.d/password-auth using command: `grep -P -- '^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b' /etc/pam.d/password-auth`. Expected result: output includes 'use_authtok' on a pam_unix.so line.
+req_03: |
+  Check that use_authtok is set on pam_unix.so lines in the password stack of /etc/pam.d/system-auth using command: `grep -P -- '^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b' /etc/pam.d/system-auth`. Expected result: output includes 'use_authtok' on a pam_unix.so line.
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if PAM is not installed, FAIL if PAM is installed but use_authtok is missing from either file."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+grep_password_auth_cmd: |
+  grep -P -- '^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b' /etc/pam.d/password-auth
+grep_system_auth_cmd: |
+  grep -P -- '^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b' /etc/pam.d/system-auth

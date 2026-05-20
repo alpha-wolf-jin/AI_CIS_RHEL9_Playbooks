@@ -1,0 +1,625 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_4_2.yml
+
+- name: "Initialize report variables"
+  set_fact:
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    task_08_name: "Not executed"
+    task_08_cmd: "N/A"
+    task_08_rc: -1
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    task_09_name: "Not executed"
+    task_09_cmd: "N/A"
+    task_09_rc: -1
+    data_09: "Not collected yet"
+    status_09: "UNKNOWN"
+    details_09: "Not evaluated"
+    task_10_name: "Not executed"
+    task_10_cmd: "N/A"
+    task_10_rc: -1
+    data_10: "Not collected yet"
+    status_10: "UNKNOWN"
+    details_10: "Not evaluated"
+  tags: [snapshot]
+- name: "Snapshot - Create backup directory"
+  file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check /etc/fstab"
+  stat:
+    path: /etc/fstab
+  register: _fstab_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/fstab"
+  copy:
+    src: /etc/fstab
+    dest: "{{ backup_dir }}/fstab"
+    remote_src: true
+  when: _fstab_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check /boot/grub2/grub.cfg"
+  stat:
+    path: /boot/grub2/grub.cfg
+  register: _grub_cfg_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /boot/grub2/grub.cfg"
+  copy:
+    src: /boot/grub2/grub.cfg
+    dest: "{{ backup_dir }}/grub.cfg"
+    remote_src: true
+  when: _grub_cfg_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check /boot/grub2/grubenv"
+  stat:
+    path: /boot/grub2/grubenv
+  register: _grubenv_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /boot/grub2/grubenv"
+  copy:
+    src: /boot/grub2/grubenv
+    dest: "{{ backup_dir }}/grubenv"
+    remote_src: true
+  when: _grubenv_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check /boot/grub2/user.cfg"
+  stat:
+    path: /boot/grub2/user.cfg
+  register: _user_cfg_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /boot/grub2/user.cfg"
+  copy:
+    src: /boot/grub2/user.cfg
+    dest: "{{ backup_dir }}/user.cfg"
+    remote_src: true
+  when: _user_cfg_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check boot mode (UEFI / BIOS)"
+    ansible.builtin.stat:
+      path: /sys/firmware/efi
+    register: efi_check
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set detected boot mode"
+    set_fact:
+      boot_mode: "{{ 'uefi' if efi_check.stat.exists else 'bios' }}"
+    tags: [execute]
+
+  - name: "Store Req 01 details"
+    set_fact:
+      task_01_name: "Check boot mode"
+      task_01_cmd: "stat /sys/firmware/efi"
+      task_01_rc: "{{ efi_check.rc | default(0) }}"
+      data_01: "{{ 'UEFI' if efi_check.stat.exists else 'BIOS' }}"
+      status_01: "{{ 'PASS' if efi_check.rc | default(0) == 0 else 'FAIL' }}"
+      details_01: "{{ 'Boot mode identified as ' + ('UEFI' if efi_check.stat.exists else 'BIOS') }}"
+    tags: [execute]
+
+  - name: "Req 10 - Check if GRUB2 bootloader is installed"
+    ansible.builtin.stat:
+      path: /boot/grub2/grub.cfg
+    register: grub_cfg_presence
+    failed_when: false
+    when: boot_mode == 'bios'
+    tags: [execute]
+
+  - name: "Set GRUB2 installed fact"
+    set_fact:
+      grub2_installed: "{{ grub_cfg_presence.stat.exists | default(false) }}"
+    when: boot_mode == 'bios'
+    tags: [execute]
+
+  - name: "Store Req 10 details"
+    set_fact:
+      task_10_name: "Check GRUB2 bootloader presence"
+      task_10_cmd: "stat /boot/grub2/grub.cfg"
+      task_10_rc: "{{ grub_cfg_presence.rc | default(-1) }}"
+      data_10: "{{ 'GRUB2 installed' if grub2_installed | default(false) else 'GRUB2 not installed' }}"
+      status_10: "{{ 'PASS' if grub2_installed | default(false) else 'SKIPPED' }}"
+      details_10: "{{ 'GRUB2 bootloader found; BIOS remediation will proceed' if grub2_installed | default(false) else 'GRUB2 bootloader not detected; BIOS remediation skipped' }}"
+    when: boot_mode == 'bios'
+    tags: [execute]
+
+  - name: "Pre-set SKIPPED status for non-applicable requirements"
+    set_fact:
+      status_02: "{{ 'SKIPPED' if boot_mode != 'uefi' else status_02 }}"
+      details_02: "{{ 'UEFI not applicable' if boot_mode != 'uefi' else details_02 }}"
+      status_06: "{{ 'SKIPPED' if boot_mode != 'uefi' else status_06 }}"
+      details_06: "{{ 'UEFI not applicable' if boot_mode != 'uefi' else details_06 }}"
+      status_03: "{{ 'SKIPPED' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else status_03 }}"
+      details_03: "{{ 'BIOS not applicable or GRUB2 not installed' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else details_03 }}"
+      status_04: "{{ 'SKIPPED' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else status_04 }}"
+      details_04: "{{ 'BIOS not applicable or GRUB2 not installed' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else details_04 }}"
+      status_05: "{{ 'SKIPPED' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else status_05 }}"
+      details_05: "{{ 'BIOS not applicable or GRUB2 not installed' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else details_05 }}"
+      status_07: "{{ 'SKIPPED' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else status_07 }}"
+      details_07: "{{ 'BIOS not applicable or GRUB2 not installed' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else details_07 }}"
+      status_08: "{{ 'SKIPPED' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else status_08 }}"
+      details_08: "{{ 'BIOS not applicable or GRUB2 not installed' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else details_08 }}"
+      status_09: "{{ 'SKIPPED' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else status_09 }}"
+      details_09: "{{ 'BIOS not applicable or GRUB2 not installed' if (boot_mode != 'bios') or not (grub2_installed | default(false)) else details_09 }}"
+    tags: [execute]
+
+  - name: "Req 02 - Add secure mount options to /boot/efi in /etc/fstab"
+    ansible.builtin.lineinfile:
+      path: /etc/fstab
+      regexp: |
+        ^\s*(\S+\s+/boot/efi\s+vfat\s+)(?!\S*\bfmask=0077\b)(\S+)(\s+\S+\s+\S+\s*)$
+      line: |
+        \1\2,fmask=0077,uid=0,gid=0\3
+      backrefs: true
+    register: fstab_mod
+    failed_when: false
+    when: boot_mode == 'uefi'
+    tags: [execute]
+
+  - name: "Store Req 02 details"
+    set_fact:
+      task_02_name: "Add secure mount options to /boot/efi in /etc/fstab"
+      task_02_cmd: "lineinfile regexp add fmask=0077,uid=0,gid=0"
+      task_02_rc: "{{ fstab_mod.rc | default(0) }}"
+      data_02: "{{ 'fstab updated' if fstab_mod.changed else 'already configured' }}"
+      status_02: "{{ 'PASS' if (fstab_mod is defined and not fstab_mod.failed) else 'FAIL' }}"
+      details_02: "{{ 'Secure mount options applied' if fstab_mod.changed else 'Options already present' }}"
+    when: boot_mode == 'uefi'
+    tags: [execute]
+
+  - name: "Req 03 - Set ownership and permissions on /boot/grub2/grub.cfg"
+    ansible.builtin.file:
+      path: /boot/grub2/grub.cfg
+      owner: root
+      group: root
+      mode: '0400'
+    register: grub_cfg_file
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    - grub_cfg_presence.stat.exists
+    tags: [execute]
+
+  - name: "Store Req 03 details"
+    set_fact:
+      task_03_name: "Set permissions on /boot/grub2/grub.cfg"
+      task_03_cmd: "file module with mode=0400, owner=root, group=root"
+      task_03_rc: "0"
+      data_03: "{{ 'permissions set' if grub_cfg_file.changed else 'already compliant' }}"
+      status_03: "{{ 'PASS' if not grub_cfg_file.failed else 'FAIL' }}"
+      details_03: "{{ 'Permissions correctly set to 0400' if not grub_cfg_file.failed else 'Failed to set permissions' }}"
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    - grub_cfg_presence.stat.exists
+    tags: [execute]
+
+  - name: "Stat /boot/grub2/grubenv"
+    ansible.builtin.stat:
+      path: /boot/grub2/grubenv
+    register: grubenv_exec_stat
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 04 - Set ownership and permissions on /boot/grub2/grubenv"
+    ansible.builtin.file:
+      path: /boot/grub2/grubenv
+      owner: root
+      group: root
+      mode: '0400'
+    register: grubenv_file
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    - grubenv_exec_stat.stat.exists
+    tags: [execute]
+
+  - name: "Store Req 04 details"
+    set_fact:
+      task_04_name: "Set permissions on /boot/grub2/grubenv"
+      task_04_cmd: "file module with mode=0400, owner=root, group=root"
+      task_04_rc: "0"
+      data_04: "{{ 'permissions set' if grubenv_file.changed else 'already compliant' }}"
+      status_04: "{{ 'PASS' if not grubenv_file.failed else 'FAIL' }}"
+      details_04: "{{ 'Permissions correctly set to 0400' if not grubenv_file.failed else 'Failed to set permissions' }}"
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    - grubenv_exec_stat.stat.exists
+    tags: [execute]
+
+  - name: "Stat /boot/grub2/user.cfg"
+    ansible.builtin.stat:
+      path: /boot/grub2/user.cfg
+    register: user_cfg_exec_stat
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 05 - Set ownership and permissions on /boot/grub2/user.cfg"
+    ansible.builtin.file:
+      path: /boot/grub2/user.cfg
+      owner: root
+      group: root
+      mode: '0400'
+    register: user_cfg_file
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    - user_cfg_exec_stat.stat.exists
+    tags: [execute]
+
+  - name: "Store Req 05 details - file exists"
+    set_fact:
+      task_05_name: "Set permissions on /boot/grub2/user.cfg"
+      task_05_cmd: "file module with mode=0400, owner=root, group=root"
+      task_05_rc: "0"
+      data_05: "{{ 'permissions set' if user_cfg_file.changed else 'already compliant' }}"
+      status_05: "{{ 'PASS' if not user_cfg_file.failed else 'FAIL' }}"
+      details_05: "{{ 'Permissions correctly set to 0400' if not user_cfg_file.failed else 'Failed to set permissions' }}"
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    - user_cfg_exec_stat.stat.exists
+    tags: [execute]
+
+  - name: "Store Req 05 details - file not found"
+    set_fact:
+      task_05_name: "Set permissions on /boot/grub2/user.cfg"
+      task_05_cmd: "file module with mode=0400, owner=root, group=root"
+      task_05_rc: -1
+      data_05: "file not found"
+      status_05: "SKIPPED"
+      details_05: "File /boot/grub2/user.cfg does not exist; considered compliant"
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    - not user_cfg_exec_stat.stat.exists
+    tags: [execute]
+
+  - name: "Req 06 - Verify UEFI fstab contains secure options"
+    shell: grep -qE 'fmask=0077,uid=0,gid=0' /etc/fstab
+    args:
+      executable: /bin/bash
+    register: verify_uefi
+    failed_when: false
+    when: boot_mode == 'uefi'
+    tags: [execute]
+
+  - name: "Store Req 06 details"
+    set_fact:
+      task_06_name: "Verify UEFI fstab"
+      task_06_cmd: "grep -qE 'fmask=0077,uid=0,gid=0' /etc/fstab"
+      task_06_rc: "{{ verify_uefi.rc | default(-1) }}"
+      data_06: "{{ 'Entry found' if verify_uefi.rc == 0 else 'Entry missing' }}"
+      status_06: "{{ 'PASS' if verify_uefi.rc == 0 else 'FAIL' }}"
+      details_06: "{{ 'Secure options present' if verify_uefi.rc == 0 else 'Options not found in /etc/fstab' }}"
+    when: boot_mode == 'uefi'
+    tags: [execute]
+
+  - name: "Req 07 - Verify /boot/grub2/grub.cfg ownership and permissions"
+    shell: stat -c '%U:%G %a' /boot/grub2/grub.cfg
+    args:
+      executable: /bin/bash
+    register: verify_grub_cfg
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Store Req 07 details"
+    set_fact:
+      task_07_name: "Verify /boot/grub2/grub.cfg"
+      task_07_cmd: "stat -c '%U:%G %a' /boot/grub2/grub.cfg"
+      task_07_rc: "{{ verify_grub_cfg.rc | default(-1) }}"
+      data_07: "{{ verify_grub_cfg.stdout | default('') | trim }}"
+      status_07: "{{ 'PASS' if (verify_grub_cfg.stdout | default('') | trim) == 'root:root 400' else 'FAIL' }}"
+      details_07: "{{ 'Ownership and permissions correct' if (verify_grub_cfg.stdout | default('') | trim) == 'root:root 400' else 'Not compliant' }}"
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 08 - Verify /boot/grub2/grubenv ownership and permissions"
+    shell: stat -c '%U:%G %a' /boot/grub2/grubenv
+    args:
+      executable: /bin/bash
+    register: verify_grubenv
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Store Req 08 details"
+    set_fact:
+      task_08_name: "Verify /boot/grub2/grubenv"
+      task_08_cmd: "stat -c '%U:%G %a' /boot/grub2/grubenv"
+      task_08_rc: "{{ verify_grubenv.rc | default(-1) }}"
+      data_08: "{{ verify_grubenv.stdout | default('') | trim }}"
+      status_08: "{{ 'PASS' if (verify_grubenv.stdout | default('') | trim) == 'root:root 400' else 'FAIL' }}"
+      details_08: "{{ 'Ownership and permissions correct' if (verify_grubenv.stdout | default('') | trim) == 'root:root 400' else 'Not compliant' }}"
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 09 - Verify /boot/grub2/user.cfg ownership and permissions"
+    shell: |
+      if [ -f /boot/grub2/user.cfg ]; then
+        stat -c '%U:%G %a' /boot/grub2/user.cfg
+      else
+        echo "MISSING"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_user_cfg
+    failed_when: false
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Store Req 09 details"
+    set_fact:
+      task_09_name: "Verify /boot/grub2/user.cfg"
+      task_09_cmd: "stat -c '%U:%G %a' /boot/grub2/user.cfg"
+      task_09_rc: "{{ verify_user_cfg.rc | default(-1) }}"
+      data_09: "{{ verify_user_cfg.stdout | default('') | trim }}"
+      status_09: "{{ 'SKIPPED' if (verify_user_cfg.stdout | default('') | trim) == 'MISSING' else ('PASS' if (verify_user_cfg.stdout | default('') | trim) == 'root:root 400' else 'FAIL') }}"
+      details_09: "{{ 'File not present' if (verify_user_cfg.stdout | default('') | trim) == 'MISSING' else ('Ownership and permissions correct' if (verify_user_cfg.stdout | default('') | trim) == 'root:root 400' else 'Not compliant') }}"
+    when:
+    - boot_mode == 'bios'
+    - grub2_installed | default(false)
+    tags: [execute]
+
+  - name: "Collect statuses for overall result"
+    set_fact:
+      statuses_list:
+      - "{{ status_01 | default('UNKNOWN') }}"
+      - "{{ status_02 | default('UNKNOWN') }}"
+      - "{{ status_03 | default('UNKNOWN') }}"
+      - "{{ status_04 | default('UNKNOWN') }}"
+      - "{{ status_05 | default('UNKNOWN') }}"
+      - "{{ status_06 | default('UNKNOWN') }}"
+      - "{{ status_07 | default('UNKNOWN') }}"
+      - "{{ status_08 | default('UNKNOWN') }}"
+      - "{{ status_09 | default('UNKNOWN') }}"
+      - "{{ status_10 | default('UNKNOWN') }}"
+    tags: [execute]
+
+  - name: "Compute overall remediation result"
+    set_fact:
+      overall_status: >-
+        {% if 'FAIL' in statuses_list %}
+        FAIL
+        {% elif 'SKIPPED' in statuses_list and 'PASS' not in statuses_list %}
+        SKIPPED
+        {% else %}
+        PASS
+        {% endif %}
+      overall_details: >-
+        {{ 'Some requirements failed' if 'FAIL' in statuses_list
+           else ('All applicable requirements passed' if 'PASS' in statuses_list
+           else 'No requirements applied (all skipped)') }}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 1.4.2"
+      - "Reference: CIS Benchmark checkpoint 1.4.2"
+      - "========================================================"
+      - "REQUIREMENT 01 - {{ req_01 }}"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 08 - {{ req_08 }}"
+      - "  Task: {{ task_08_name | default('Task not recorded') }}"
+      - "  Command: {{ task_08_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_08_rc | default(-1) }}"
+      - "  Data: {{ data_08 | default('') | trim }}"
+      - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_08 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 09 - {{ req_09 }}"
+      - "  Task: {{ task_09_name | default('Task not recorded') }}"
+      - "  Command: {{ task_09_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_09_rc | default(-1) }}"
+      - "  Data: {{ data_09 | default('') | trim }}"
+      - "  Status: {{ status_09 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_09 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 10 - {{ req_10 }}"
+      - "  Task: {{ task_10_name | default('Task not recorded') }}"
+      - "  Command: {{ task_10_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_10_rc | default(-1) }}"
+      - "  Data: {{ data_10 | default('') | trim }}"
+      - "  Status: {{ status_10 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_10 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL RESULT:"
+      - "  Result: {{ overall_status | default('UNKNOWN') | trim }}"
+      - "  Details: {{ overall_details | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check for /etc/fstab backup"
+    stat:
+      path: "{{ backup_dir }}/fstab"
+    register: _restore_fstab
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/fstab from backup"
+    copy:
+      src: "{{ backup_dir }}/fstab"
+      dest: /etc/fstab
+      remote_src: true
+    when: _restore_fstab.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check for /boot/grub2/grub.cfg backup"
+    stat:
+      path: "{{ backup_dir }}/grub.cfg"
+    register: _restore_grub_cfg
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /boot/grub2/grub.cfg from backup"
+    copy:
+      src: "{{ backup_dir }}/grub.cfg"
+      dest: /boot/grub2/grub.cfg
+      remote_src: true
+    when: _restore_grub_cfg.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check for /boot/grub2/grubenv backup"
+    stat:
+      path: "{{ backup_dir }}/grubenv"
+    register: _restore_grubenv
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /boot/grub2/grubenv from backup"
+    copy:
+      src: "{{ backup_dir }}/grubenv"
+      dest: /boot/grub2/grubenv
+      remote_src: true
+    when: _restore_grubenv.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check for /boot/grub2/user.cfg backup"
+    stat:
+      path: "{{ backup_dir }}/user.cfg"
+    register: _restore_user_cfg
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /boot/grub2/user.cfg from backup"
+    copy:
+      src: "{{ backup_dir }}/user.cfg"
+      dest: /boot/grub2/user.cfg
+      remote_src: true
+    when: _restore_user_cfg.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

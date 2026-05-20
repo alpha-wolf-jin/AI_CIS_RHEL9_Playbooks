@@ -1,0 +1,6 @@
+service_name: "systemd-journal-upload"
+req_01: "Check if systemd-journal-upload is installed using command: `systemctl list-unit-files | grep systemd-journal-upload.service`. Expected result: unit file is listed."
+req_02: "Check if systemd-journal-upload is enabled using command: `systemctl is-enabled systemd-journal-upload.service`. Expected result: enabled"
+req_03: "Check if systemd-journal-upload is active using command: `systemctl is-active systemd-journal-upload.service`. Expected result: active"
+req_04: "Overall compliance: systemd-journal-upload is installed, enabled, and active."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

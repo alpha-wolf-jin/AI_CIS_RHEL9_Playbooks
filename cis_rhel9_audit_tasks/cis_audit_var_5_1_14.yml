@@ -1,0 +1,8 @@
+req_01: "Check if OpenSSH server is installed using command: `dpkg -l | grep openssh-server || rpm -q openssh-server`. Expected result: package is installed."
+req_02: "Check if sshd is running using command: `systemctl is-active sshd || service sshd status`. Expected result: active or running."
+req_03: "Check the LoginGraceTime setting using command: `sshd -T | grep logingracetime`. Expected result: logingracetime is between 1 and 60 seconds."
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if OpenSSH server is not installed or not running, FAIL if LoginGraceTime is not between 1 and 60 seconds."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+check_sshd_installed_cmd: "dpkg -l | grep openssh-server || rpm -q openssh-server"
+check_sshd_running_cmd: "systemctl is-active sshd || service sshd status"
+check_logingracetime_cmd: "sshd -T | grep logingracetime"

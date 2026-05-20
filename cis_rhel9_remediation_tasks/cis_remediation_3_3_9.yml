@@ -1,0 +1,284 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_9.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if sysctl config file exists"
+  ansible.builtin.stat:
+    path: "{{ sysctl_config_file }}"
+  register: _sg_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup sysctl config file if exists"
+  ansible.builtin.copy:
+    src: "{{ sysctl_config_file }}"
+    dest: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+    remote_src: true
+  when: _sg_config_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark config absent if file does not exist"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/config.absent"
+  when: not _sg_config_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Capture current all.log_martians"
+  ansible.builtin.shell: sysctl -n net.ipv4.conf.all.log_martians
+  args:
+    executable: /bin/bash
+  register: _curr_all
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save all.log_martians value"
+  ansible.builtin.copy:
+    content: "{{ _curr_all.stdout | default('') }}"
+    dest: "{{ backup_dir }}/all_log_martians.before"
+  when: _curr_all.stdout | default('') | trim != ''
+  tags: [snapshot]
+- name: "Snapshot - Capture current default.log_martians"
+  ansible.builtin.shell: sysctl -n net.ipv4.conf.default.log_martians
+  args:
+    executable: /bin/bash
+  register: _curr_default
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save default.log_martians value"
+  ansible.builtin.copy:
+    content: "{{ _curr_default.stdout | default('') }}"
+    dest: "{{ backup_dir }}/default_log_martians.before"
+  when: _curr_default.stdout | default('') | trim != ''
+  tags: [snapshot]
+- name: "Snapshot - Check if remediation temp script exists"
+  ansible.builtin.stat:
+    path: /tmp/remediate_339.sh
+  register: _sg_rem_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark remediation temp script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/remediate_339.absent"
+  when: not _sg_rem_script_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+# --- EXECUTE ---
+  - name: "Req 01 - Apply log_martians parameters to config file"
+    ansible.builtin.lineinfile:
+      path: "{{ sysctl_config_file }}"
+      regexp: |
+        ^{{ item.param | regex_escape() }}\s*=
+      line: "{{ item.param }} = {{ item.value }}"
+      create: yes
+      mode: '0644'
+    loop:
+    - {param: "net.ipv4.conf.all.log_martians", value: "1"}
+    - {param: "net.ipv4.conf.default.log_martians", value: "1"}
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Copy remediation script to remote"
+    ansible.builtin.copy:
+      dest: "/tmp/remediate_339.sh"
+      mode: '0700'
+      content: "{{ script_content }}"
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/remediate_339.sh
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary script"
+    ansible.builtin.file:
+      path: "/tmp/remediate_339.sh"
+      state: absent
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify log_martians parameters"
+    ansible.builtin.shell: |
+      all=$(sysctl -n net.ipv4.conf.all.log_martians)
+      default=$(sysctl -n net.ipv4.conf.default.log_martians)
+      if [ "$all" = "1" ] && [ "$default" = "1" ]; then
+        echo "PASS"
+      else
+        echo "FAIL: all=$all default=$default"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Execute remediation script"
+      task_01_cmd: "/bin/bash /tmp/remediate_339.sh"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' | trim }}"
+      details_01: "{{ 'Script executed successfully' if result_01.rc | default(-1) == 0 else 'Script failed with rc=' ~ result_01.rc | default(-1) | string | trim }}"
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify sysctl parameters"
+      task_02_cmd: "sysctl -n net.ipv4.conf.all.log_martians ; sysctl -n net.ipv4.conf.default.log_martians"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if (result_02.stdout | default('') | trim) == 'PASS' else 'FAIL' | trim }}"
+      details_02: "{{ 'Both parameters set to 1' if (result_02.stdout | default('') | trim) == 'PASS' else 'One or both parameters not set to 1' | trim }}"
+
+  - name: "Req 03 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "N/A"
+      task_04_rc: "0"
+      data_04: ""
+      status_04: "PASS"
+      details_04: "Report generated successfully"
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 3.3.9"
+      - "Reference: CIS Benchmark checkpoint 3.3.9"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Set cis_result fact"
+      - "  Command: N/A"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result | default('') }}"
+      - "  Status: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: Final result stored"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# --- RESTORE ---
+  - name: "Restore - Check if sysctl config backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+    register: _restore_config_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore sysctl config from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/60-netipv4_sysctl.conf.backup"
+      dest: "{{ sysctl_config_file }}"
+      remote_src: true
+    when: _restore_config_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/config.absent"
+    register: _restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete sysctl config if originally absent"
+    ansible.builtin.file:
+      path: "{{ sysctl_config_file }}"
+      state: absent
+    when: _restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if remediation temp script was absent before"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediate_339.absent"
+    register: _restore_absent_script
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete remediation temp script if created during execution"
+    ansible.builtin.file:
+      path: /tmp/remediate_339.sh
+      state: absent
+    when: _restore_absent_script.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved all.log_martians value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/all_log_martians.before"
+    register: _restore_all_val
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved default.log_martians value"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/default_log_martians.before"
+    register: _restore_default_val
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore kernel parameters to original"
+    ansible.builtin.shell: |
+      sysctl -w net.ipv4.conf.all.log_martians={{ _restore_all_val.content | b64decode | trim }}
+      sysctl -w net.ipv4.conf.default.log_martians={{ _restore_default_val.content | b64decode | trim }}
+      sysctl -w net.ipv4.route.flush=1
+    args:
+      executable: /bin/bash
+    when:
+    - _restore_all_val is not failed
+    - _restore_all_val.content is defined
+    - _restore_default_val is not failed
+    - _restore_default_val.content is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,8 @@
+req_01: "Check if firewalld is installed and enabled using command: `systemctl is-enabled firewalld.service | grep -q 'enabled'`. Expected result: exit code 0 (service is enabled)."
+req_02: "Check if nftables is in use (if so, skip this audit) using command: `systemctl is-enabled nftables.service 2>/dev/null | grep -q 'enabled'`. Expected result: exit code 1 (nftables not enabled)."
+req_03: |
+  Check the active zone and list allowed services and ports using command: `firewall-cmd --list-all --zone=\"$(firewall-cmd --list-all | awk '/\\(active\\)/ { print $1 }')\" | grep -P -- '^\\h*(services:|ports:)'`. Expected result: listed services and ports follow site policy (no unnecessary services/ports).
+req_04: |
+  Check that SSH (port 22) is restricted to only authorized systems per site policy using command: `firewall-cmd --list-all --zone=\"$(firewall-cmd --list-all | awk '/\\(active\\)/ { print $1 }')\" | grep -E 'services:.*ssh|ports:.*22'`. Expected result: SSH is listed only if required by site policy, and source restrictions are applied.
+req_05: "Summarize overall compliance status: Ensure that firewalld is enabled, nftables is not used, and the active zone's services and ports (including SSH) conform to site policy. Expected result: all checks pass."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

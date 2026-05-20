@@ -1,0 +1,321 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_1_1.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore faillock.conf from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/faillock.conf.present"
+    dest: "{{ faillock_conf }}"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if faillock.conf exists"
+  ansible.builtin.stat:
+    path: "{{ faillock_conf }}"
+  register: _sg_faillock_stat
+  tags: [snapshot]
+- name: "State Guard - Backup faillock.conf"
+  ansible.builtin.copy:
+    src: "{{ faillock_conf }}"
+    dest: "{{ state_guard_dir }}/faillock.conf.present"
+    remote_src: true
+  when: _sg_faillock_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark faillock.conf as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/faillock.conf.absent"
+  when: not _sg_faillock_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Check if PAM cleanup script exists"
+  ansible.builtin.stat:
+    path: "/tmp/cis_5_3_3_1_1_pam_cleanup.sh"
+  register: _sg_pam_script_stat
+  tags: [snapshot]
+- name: "State Guard - Backup PAM cleanup script (if present)"
+  ansible.builtin.copy:
+    src: "/tmp/cis_5_3_3_1_1_pam_cleanup.sh"
+    dest: "{{ state_guard_dir }}/pam_cleanup_script.present"
+    remote_src: true
+  when: _sg_pam_script_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark PAM cleanup script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/pam_cleanup_script.absent"
+  when: not _sg_pam_script_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE ===
+  - name: "Req 01 - Check if authselect package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set authselect installed fact"
+    ansible.builtin.set_fact:
+      authselect_installed: "{{ 'authselect' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Set deny option in faillock.conf"
+    ansible.builtin.lineinfile:
+      path: "{{ faillock_conf }}"
+      regexp: |
+        ^\s*#?\s*deny\s*=
+      line: "deny = {{ deny_value }}"
+      create: true
+      mode: '0644'
+    register: faillock_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Deploy PAM cleanup script"
+    ansible.builtin.copy:
+      content: |
+        #!/usr/bin/env bash
+        {
+           for l_pam_file in system-auth password-auth; do
+             l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+             sed -ri 's/(^\s*auth\s+(requisite|required|sufficient)\s+pam_faillock\.so.*)(\s+deny\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+           done
+           authselect apply-changes
+        }
+      dest: "/tmp/cis_5_3_3_1_1_pam_cleanup.sh"
+      mode: '0700'
+    when: "authselect_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 01 - Execute PAM cleanup script"
+    ansible.builtin.shell: /bin/bash /tmp/cis_5_3_3_1_1_pam_cleanup.sh
+    args:
+      executable: /bin/bash
+    register: pam_cleanup_result
+    failed_when: false
+    when: "authselect_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary script"
+    ansible.builtin.file:
+      path: "/tmp/cis_5_3_3_1_1_pam_cleanup.sh"
+      state: absent
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify deny option in faillock.conf"
+    ansible.builtin.shell: |
+      grep -E '^\s*deny\s*=\s*{{ deny_value }}\s*$' {{ faillock_conf }} 2>/dev/null || echo "NOT_FOUND"
+    args:
+      executable: /bin/bash
+    register: verify_faillock
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify no deny argument in PAM faillock module"
+    ansible.builtin.shell: |
+      grep -rP '^\s*auth\s+(requisite|required|sufficient)\s+pam_faillock\.so.*\s+deny\s*=\s*\S+' /etc/authselect/ 2>/dev/null || echo "CLEAN"
+    args:
+      executable: /bin/bash
+    register: verify_pam
+    failed_when: false
+    changed_when: false
+    when: "authselect_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Set deny option in faillock.conf and clean PAM modules"
+      task_01_cmd: "lineinfile + PAM cleanup script"
+      task_01_rc: "{{ 0 if (faillock_result is not failed and (pam_cleanup_result is skipped or pam_cleanup_result is not failed)) else 1 }}"
+      data_01: "{{ faillock_result | to_json + ' | ' + (pam_cleanup_result | to_json if pam_cleanup_result is defined else 'SKIPPED') }}"
+      status_01: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (faillock_result is not failed and (pam_cleanup_result is skipped or pam_cleanup_result is not failed)) else 'FAIL') }}"
+      details_01: "{{ 'Remediation skipped - authselect not installed' if (playbook_skipped | default(false) | bool) else ('Remediation applied successfully' if (faillock_result is not failed and (pam_cleanup_result is skipped or pam_cleanup_result is not failed)) else 'Failed to apply remediation') }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify deny option and PAM configuration"
+      task_02_cmd: "grep faillock.conf and PAM files"
+      task_02_rc: "{{ verify_faillock.rc | default(-1) if verify_faillock is defined else -1 }}"
+      data_02: "faillock={{ verify_faillock.stdout | default('NOT_FOUND') | trim }}, PAM={{ verify_pam.stdout | default('SKIPPED') | trim }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (verify_faillock.stdout | default('NOT_FOUND') | trim != 'NOT_FOUND' and (verify_pam.stdout | default('CLEAN') | trim == 'CLEAN' or verify_pam is skipped)) else 'FAIL') }}"
+      details_02: "{{ 'Verification skipped - authselect not installed' if (playbook_skipped | default(false) | bool) else ('System is compliant' if (verify_faillock.stdout | default('NOT_FOUND') | trim != 'NOT_FOUND' and (verify_pam.stdout | default('CLEAN') | trim == 'CLEAN' or verify_pam is skipped)) else 'System is NOT compliant') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Set cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else (status_02 | default('ERROR') | trim) }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: "cis_result={{ cis_result }}"
+      status_03: "PASS"
+      details_03: "Overall remediation status stored as cis_result"
+    tags: [execute]
+
+  - name: "Req 04 - Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Remediation report successfully generated"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 5.3.3.1.1"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.1.1"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if faillock.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/faillock.conf.present"
+    register: _sg_restore_faillock
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore faillock.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/faillock.conf.present"
+      dest: "{{ faillock_conf }}"
+      remote_src: true
+    when:
+    - "restore_after_test | bool"
+    - "_sg_restore_faillock.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/faillock.conf.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete faillock.conf (was absent before)"
+    ansible.builtin.file:
+      path: "{{ faillock_conf }}"
+      state: absent
+    when:
+    - "restore_after_test | bool"
+    - "_sg_restore_absent.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+# Restore PAM cleanup script state
+  - name: "State Guard Restore - Check if PAM script backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/pam_cleanup_script.present"
+    register: _sg_restore_script_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore PAM cleanup script from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/pam_cleanup_script.present"
+      dest: "/tmp/cis_5_3_3_1_1_pam_cleanup.sh"
+      remote_src: true
+    when: _sg_restore_script_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if PAM script absence marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/pam_cleanup_script.absent"
+    register: _sg_restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete PAM cleanup script (was absent before)"
+    ansible.builtin.file:
+      path: "/tmp/cis_5_3_3_1_1_pam_cleanup.sh"
+      state: absent
+    when: _sg_restore_script_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

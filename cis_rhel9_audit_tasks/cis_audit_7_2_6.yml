@@ -1,0 +1,136 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_2_6.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    status_01: "UNKNOWN"
+    details_01: ""
+    data_01: ""
+    task_01_name: ""
+    task_01_cmd: ""
+    task_01_rc: "-1"
+    status_02: "UNKNOWN"
+    details_02: ""
+    data_02: ""
+    task_02_name: ""
+    task_02_cmd: ""
+    task_02_rc: "-1"
+    status_03: "UNKNOWN"
+    details_03: ""
+    data_03: ""
+    task_03_name: ""
+    task_03_cmd: ""
+    task_03_rc: "-1"
+    status_04: "UNKNOWN"
+    details_04: ""
+    data_04: ""
+    task_04_name: ""
+    task_04_cmd: ""
+    task_04_rc: "-1"
+
+- name: "Req 01 - Execute audit script to detect duplicate user names"
+  ansible.builtin.shell:
+    cmd: |
+      {% raw %}
+      #!/usr/bin/env bash
+
+      {
+         while read -r l_count l_user; do
+            if [ "$l_count" -gt 1 ]; then
+               echo -e "Duplicate User: \"$l_user\" Users: \"$(awk -F: '($1 == n) { print $1 }' n=$l_user /etc/passwd | xargs)\""
+            fi
+         done < <(cut -f1 -d":" /etc/group | sort -n | uniq -c)
+      }
+      {% endraw %}
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+    details_01: "{{ 'Script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Script execution failed' }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    task_01_name: "Execute audit script to detect duplicate user names"
+    task_01_cmd: "bash script reading /etc/group and /etc/passwd"
+    task_01_rc: "{{ result_01.rc | default(-1) | string }}"
+
+- name: "Req 02 - Verify compliance status for duplicate user names"
+  ansible.builtin.set_fact:
+    status_02: >-
+      {% set output = result_01.stdout | default('') | trim %}
+      {{ 'PASS' if output == '' else 'FAIL' }}
+    details_02: >-
+      {% set output = result_01.stdout | default('') | trim %}
+      {{ 'No duplicate user names found' if output == '' else 'Duplicate user names detected: ' + output }}
+    data_02: "{{ result_01.stdout | default('') | trim }}"
+    task_02_name: "Verify duplicate user names"
+    task_02_cmd: "Evaluate audit script output for duplicate entries"
+    task_02_rc: "{{ result_01.rc | default(-1) | string }}"
+
+- name: "Req 03 - Set overall compliance variable cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Set overall compliance variable cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: "0"
+    data_03: "{{ cis_result }}"
+    status_03: "PASS"
+    details_03: "cis_result set to overall compliance status derived from requirement 2"
+
+- name: "Prepare requirement 04 details"
+  ansible.builtin.set_fact:
+    status_04: "PASS"
+    details_04: "Audit report generated successfully"
+    data_04: "N/A"
+    task_04_name: "Generate audit report"
+    task_04_cmd: "debug module"
+    task_04_rc: "0"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 7.2.6"
+    - "Reference: CIS Benchmark checkpoint 7.2.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

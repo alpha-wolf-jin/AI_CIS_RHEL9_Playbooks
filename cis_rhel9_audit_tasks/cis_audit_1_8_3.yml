@@ -1,0 +1,116 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_8_3.yml
+
+- name: "Run audit and evaluate compliance"
+  block:
+  - name: "Req 01 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Evaluate compliance status"
+    ansible.builtin.set_fact:
+      status_01: >-
+        {% set out = result_01.stdout | default('') %}
+        {% if '*** FAIL: ***' in out %}
+          FAIL
+        {% elif '*** PASS' in out %}
+          PASS
+        {% else %}
+          UNKNOWN
+        {% endif %}
+      details_01: >-
+        {% set out = result_01.stdout | default('') %}
+        {% if '*** FAIL: ***' in out %}
+          disable-user-list not enabled
+        {% elif '*** PASS' in out %}
+          disable-user-list enabled or GNOME not installed
+        {% else %}
+          Unable to determine compliance from script output
+        {% endif %}
+    tags: [execute]
+
+  - name: "Set report variables"
+    ansible.builtin.set_fact:
+      task_01_name: "Run audit script"
+      task_01_cmd: "/bin/bash {{ audit_script }} (script from CIS procedure)"
+      task_01_rc: "{{ result_01.rc | default(-1) | string }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      task_02_name: "Evaluate compliance from script output"
+      task_02_cmd: "set_fact based on PASS/FAIL markers"
+      task_02_rc: "N/A"
+      data_02: "{{ status_01 }}"
+      status_02: "{{ status_01 }}"
+      details_02: "{{ details_01 }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store final audit result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_01 | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Clean up temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    tags: [execute]
+
+- name: "Req 04 - Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.8.3"
+    - "Reference: CIS Benchmark checkpoint 1.8.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default('N/A') }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Store final audit result in cis_result"
+    - "  Command: set_fact"
+    - "  Exit code: N/A"
+    - "  Data: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Status: PASS"
+    - "  Details: cis_result set successfully"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug"
+    - "  Exit code: N/A"
+    - "  Data: Audit report generated"
+    - "  Status: PASS"
+    - "  Details: CIS 1.8.3 audit report"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+    - "========================================================"
+  tags: [execute, report]

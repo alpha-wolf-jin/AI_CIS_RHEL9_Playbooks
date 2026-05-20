@@ -1,0 +1,139 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_2_4.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: ""
+    status_01: "UNKNOWN"
+    details_01: ""
+    task_01_name: ""
+    task_01_cmd: ""
+    task_01_rc: -1
+    data_02: ""
+    status_02: "UNKNOWN"
+    details_02: ""
+    task_02_name: ""
+    task_02_cmd: ""
+    task_02_rc: -1
+    data_03: ""
+    status_03: "UNKNOWN"
+    details_03: ""
+    task_03_name: ""
+    task_03_cmd: ""
+    task_03_rc: -1
+
+- name: "Check if passwd file exists"
+  ansible.builtin.stat:
+    path: "{{ passwd_path }}"
+  register: passwd_stat
+  failed_when: false
+
+- name: "Store passwd existence fact"
+  set_fact:
+    passwd_exists: "{{ passwd_stat.stat.exists | default(false) }}"
+
+- name: "Req 01 - Execute audit script"
+  ansible.builtin.shell:
+    cmd: |
+      #!/usr/bin/env bash
+      {
+        while read -r l_count l_uid; do
+          if [ "$l_count" -gt 1 ]; then
+            echo -e "Duplicate UID: \"$l_uid\" Users: \"$(awk -F: '($3 == n) { print $1 }' n=$l_uid /etc/passwd | xargs)\""
+          fi
+        done < <(cut -f3 -d":" /etc/passwd | sort -n | uniq -c)
+      }
+    executable: /bin/bash
+  register: audit_result
+  failed_when: false
+  changed_when: false
+  when: passwd_exists
+
+- name: "Store requirement 01 details (passwd exists)"
+  set_fact:
+    task_01_name: "Audit duplicate UIDs"
+    task_01_cmd: "CIS shell script (duplicate UID detection)"
+    task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    data_01: "{{ audit_result.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if (audit_result.stdout | default('') | trim) == '' else 'FAIL') | trim }}"
+    details_01: "{{ ('No duplicate UIDs found' if (audit_result.stdout | default('') | trim) == '' else 'Duplicate UIDs detected: ' + (audit_result.stdout | default('') | trim)) | trim }}"
+  when: passwd_exists
+
+- name: "Store requirement 01 details (passwd missing)"
+  set_fact:
+    task_01_name: "Audit duplicate UIDs"
+    task_01_cmd: "SKIPPED (no /etc/passwd)"
+    task_01_rc: 0
+    data_01: ""
+    status_01: "SKIPPED"
+    details_01: "/etc/passwd does not exist on this system"
+  when: not passwd_exists
+
+- name: "Store requirement 02 details (passwd exists)"
+  set_fact:
+    task_02_name: "Compliance verification"
+    task_02_cmd: "Evaluate audit output"
+    task_02_rc: "{{ audit_result.rc | default(-1) }}"
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if (audit_result.stdout | default('') | trim) == '' else 'FAIL') | trim }}"
+    details_02: "{{ ('System is compliant (no duplicate UIDs)' if (audit_result.stdout | default('') | trim) == '' else 'Non-compliant: duplicate UIDs found') | trim }}"
+  when: passwd_exists
+
+- name: "Store requirement 02 details (passwd missing)"
+  set_fact:
+    task_02_name: "Compliance verification"
+    task_02_cmd: "N/A"
+    task_02_rc: 0
+    data_02: ""
+    status_02: "SKIPPED"
+    details_02: "/etc/passwd does not exist on this system"
+  when: not passwd_exists
+
+- name: "Req 03 - Store final compliance result"
+  set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Store cis_result"
+    task_03_cmd: "set_fact cis_result = {{ status_02 | default('UNKNOWN') | trim }}"
+    task_03_rc: 0
+    data_03: "{{ cis_result | default('Not set') | trim }}"
+    status_03: "PASS"
+    details_03: "cis_result set to compliance status from requirement 2"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 7.2.4"
+    - "Reference: CIS Benchmark checkpoint 7.2.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

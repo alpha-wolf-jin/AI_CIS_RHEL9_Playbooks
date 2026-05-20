@@ -1,0 +1,19 @@
+req_01: "Check if rsyslog is installed using command: `dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null`. Expected result: package is installed (if not, overall compliance is not applicable)."
+req_02: |
+  Check for advanced format imtcp module loading in /etc/rsyslog.conf using command: `grep -Psi -- '^\\h*module\\(load=\"?imtcp\"?\\)' /etc/rsyslog.conf`. Expected result: nothing should be returned.
+req_03: |
+  Check for advanced format imtcp module loading in /etc/rsyslog.d/*.conf using command: `grep -Psi -- '^\\h*module\\(load=\"?imtcp\"?\\)' /etc/rsyslog.d/*.conf`. Expected result: nothing should be returned.
+req_04: |
+  Check for advanced format imtcp input in /etc/rsyslog.conf using command: `grep -Psi -- '^\\h*input\\(type=\"?imtcp\"?\\b' /etc/rsyslog.conf`. Expected result: nothing should be returned.
+req_05: |
+  Check for advanced format imtcp input in /etc/rsyslog.d/*.conf using command: `grep -Psi -- '^\\h*input\\(type=\"?imtcp\"?\\b' /etc/rsyslog.d/*.conf`. Expected result: nothing should be returned.
+req_06: |
+  Check for obsolete legacy format ModLoad imtcp in /etc/rsyslog.conf using command: `grep -Psi -- '^\\h*\\$ModLoad\\h+imtcp\\b' /etc/rsyslog.conf`. Expected result: nothing should be returned.
+req_07: |
+  Check for obsolete legacy format ModLoad imtcp in /etc/rsyslog.d/*.conf using command: `grep -Psi -- '^\\h*\\$ModLoad\\h+imtcp\\b' /etc/rsyslog.d/*.conf`. Expected result: nothing should be returned.
+req_08: |
+  Check for obsolete legacy format InputTCPServerRun in /etc/rsyslog.conf using command: `grep -Psi -- '^\\h*\\$InputTCPServerRun\\b' /etc/rsyslog.conf`. Expected result: nothing should be returned.
+req_09: |
+  Check for obsolete legacy format InputTCPServerRun in /etc/rsyslog.d/*.conf using command: `grep -Psi -- '^\\h*\\$InputTCPServerRun\\b' /etc/rsyslog.d/*.conf`. Expected result: nothing should be returned.
+req_10: "Summarize overall compliance: if all above checks return no output, the system is compliant; otherwise, it is non-compliant."
+req_11: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

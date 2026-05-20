@@ -1,0 +1,113 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_2_3_6.yml
+
+- name: "Req 01 - Gather package facts to check if rsyslog is installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Req 01 - Determine if rsyslog is installed"
+  ansible.builtin.set_fact:
+    rsyslog_installed: "{{ 'rsyslog' in ansible_facts.packages }}"
+
+- name: "Req 01 & 02 - Set not applicable status when rsyslog not installed"
+  ansible.builtin.set_fact:
+    task_01_name: "Run audit greps"
+    task_01_cmd: "N/A"
+    task_01_rc: 0
+    data_01: "rsyslog not installed"
+    status_01: "NOT_APPLICABLE"
+    details_01: "rsyslog package not installed, audit not applicable"
+    task_02_name: "Evaluate compliance"
+    task_02_cmd: "N/A"
+    task_02_rc: 0
+    data_02: "N/A"
+    status_02: "NOT_APPLICABLE"
+    details_02: "rsyslog not installed, check not applicable"
+    cis_result: "NOT_APPLICABLE"
+  when:
+  - not rsyslog_installed | bool
+
+- name: "Req 01 - Run audit greps for remote log host configuration"
+  ansible.builtin.shell: |
+    # Basic format audit
+    grep '^\*.*[^I][^I]*@' {{ rsyslog_conf_files }} 2>/dev/null || true
+    # Advanced format audit
+    grep -Psi -- '^\s*([^#]+\s+)?action\(([^#]+\s+)?\btarget=\"?[^#"]+\"?\b' {{ rsyslog_conf_files }} 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: result_01_raw
+  failed_when: false
+  changed_when: false
+  when:
+  - rsyslog_installed | bool
+
+- name: "Req 01 - Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Run audit greps for remote log host configuration"
+    task_01_cmd: "grep basic and advanced patterns on rsyslog config files"
+    task_01_rc: "{{ result_01_raw.rc | default(-1) }}"
+    data_01: "{{ result_01_raw.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01_raw.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Audit executed successfully' if result_01_raw.rc | default(-1) == 0 else 'Audit command failed') | trim }}"
+  when:
+  - rsyslog_installed | bool
+
+- name: "Req 02 - Determine compliance status from audit output"
+  ansible.builtin.set_fact:
+    task_02_name: "Evaluate compliance status"
+    task_02_cmd: "Check if audit output contains remote host indicators"
+    task_02_rc: 0
+    data_02: "{{ ('COMPLIANT' if (data_01 | default('') | regex_search('@|target=')) else 'NONCOMPLIANT') | trim }}"
+    status_02: "{{ ('PASS' if (data_01 | default('') | regex_search('@|target=')) else 'FAIL') | trim }}"
+    details_02: "{{ ('Remote log host configured' if (data_01 | default('') | regex_search('@|target=')) else 'No remote log host configured') | trim }}"
+  when:
+  - rsyslog_installed | bool
+
+- name: "Req 03 - Store overall audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Req 04 - Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.2.3.6"
+    - "Reference: CIS Benchmark checkpoint 6.2.3.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Store final result in cis_result"
+    - "  Command: set_fact"
+    - "  Exit code: 0"
+    - "  Data: {{ cis_result | default('') | trim }}"
+    - "  Status: PASS"
+    - "  Details: cis_result set to {{ cis_result | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug message"
+    - "  Exit code: 0"
+    - "  Data: Report generated"
+    - "  Status: PASS"
+    - "  Details: Audit report displayed"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

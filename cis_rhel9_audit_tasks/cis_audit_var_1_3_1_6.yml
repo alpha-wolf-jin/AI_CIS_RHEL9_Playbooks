@@ -1,0 +1,4 @@
+selinux_context: "unconfined_service_t"
+req_01: "Check if the system has any unconfined services by running the command: `ps -eZ | grep unconfined_service_t`. Expected result: No output (empty result)."
+req_02: "Summarize overall compliance: If the command produces no output, the system is compliant with checkpoint 1.3.1.6. If output is present, unconfined services exist and the system is non-compliant."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

@@ -1,0 +1,227 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_19.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snap_rules_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-kernel_modules.rules.orig"
+    remote_src: true
+    creates: "{{ backup_dir }}/50-kernel_modules.rules.orig"
+  when: "_snap_rules_stat.stat.exists | default(false)"
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Record whether rules file existed"
+  ansible.builtin.copy:
+    content: "{{ _snap_rules_stat.stat.exists | default(false) }}"
+    dest: "{{ backup_dir }}/rules_existed"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Retrieve UID_MIN from login.defs"
+    ansible.builtin.shell: |
+      awk '/^\s*UID_MIN/{print $2}' /etc/login.defs
+    args:
+      executable: /bin/bash
+    register: _uid_min_result
+    failed_when: false
+    changed_when: false
+    when: "auditd_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Create audit rules file for kernel module monitoring"
+    ansible.builtin.copy:
+      dest: "{{ audit_rules_file }}"
+      content: |
+        -a always,exit -F arch=b64 -S init_module,finit_module,delete_module,create_module,query_module -F auid>={{ _uid_min_result.stdout | trim }} -F auid!=unset -k kernel_modules
+        -a always,exit -F path=/usr/bin/kmod -F perm=x -F auid>={{ _uid_min_result.stdout | trim }} -F auid!=unset -k kernel_modules
+      mode: '0640'
+    when:
+    - "auditd_installed | default(false) | bool"
+    - "_uid_min_result.stdout | default('') | trim | length > 0"
+    failed_when: false
+    register: _rules_create_result
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules into active configuration"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: "auditd_installed | default(false) | bool"
+    failed_when: false
+    register: _augenrules_result
+    tags: [execute]
+
+  - name: "Req 01 - Check if reboot is required for audit rules"
+    ansible.builtin.shell: |
+      set -o pipefail
+      if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then
+        echo "REBOOT_REQUIRED"
+      else
+        echo "NO_REBOOT"
+      fi
+    args:
+      executable: /bin/bash
+    register: _reboot_check
+    failed_when: false
+    when: "auditd_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 02 - Verify kernel module audit rules exist in rules file"
+    ansible.builtin.shell: |
+      grep -q 'init_module\|finit_module\|delete_module\|create_module\|query_module' {{ audit_rules_file }} && echo "RULES_EXIST" || echo "RULES_MISSING"
+    args:
+      executable: /bin/bash
+    register: _verify_rules_file
+    failed_when: false
+    when: "auditd_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 02 - Verify kernel module audit rules are loaded in active configuration"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -l | grep -E 'init_module|finit_module|delete_module|create_module|query_module|kmod' || echo "VERIFY_FAILED"
+    args:
+      executable: /bin/bash
+    register: _verify_active_rules
+    failed_when: false
+    when: "auditd_installed | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 03 - Store overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {{ 
+          'PASS' if (_augenrules_result.rc | default(-1)) == 0 
+                   and ('VERIFY_FAILED' not in (_verify_active_rules.stdout | default('VERIFY_FAILED')))
+          else ('SKIP' if not (auditd_installed | default(false) | bool) else 'FAIL')
+        }}
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Store overall remediation result"
+      task_03_cmd: "set_fact cis_result"
+      task_03_rc: 0
+      data_03: "{{ cis_result }}"
+      status_03: "PASS"
+      details_03: "Overall remediation status recorded as {{ cis_result }}"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.3.3.19"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.19"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Create audit rules and load into active configuration"
+      - "  Command: augenrules --load"
+      - "  Exit code: {{ _augenrules_result.rc | default(-1) }}"
+      - "  Data: {{ _augenrules_result.stdout | default('') | trim }}"
+      - "  Status: {{ ('PASS' if (_augenrules_result.rc | default(-1)) == 0 else ('SKIP' if not (auditd_installed | default(false) | bool) else 'FAIL')) }}"
+      - "  Details: {{ ('Rules created and loaded successfully' if (_augenrules_result.rc | default(-1)) == 0 else ('Auditd not installed - skipped' if not (auditd_installed | default(false) | bool) else 'Failed to load rules')) }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify kernel module audit rules are active"
+      - "  Command: auditctl -l | grep -E 'init_module|finit_module|delete_module|create_module|query_module|kmod'"
+      - "  Exit code: {{ _verify_active_rules.rc | default(-1) }}"
+      - "  Data: {{ _verify_active_rules.stdout | default('') | trim }}"
+      - "  Status: {{ ('PASS' if ('VERIFY_FAILED' not in (_verify_active_rules.stdout | default('VERIFY_FAILED'))) else ('SKIP' if not (auditd_installed | default(false) | bool) else 'FAIL')) }}"
+      - "  Details: {{ ('Kernel module audit rules are active' if ('VERIFY_FAILED' not in (_verify_active_rules.stdout | default('VERIFY_FAILED'))) else ('Auditd not installed - skipped' if not (auditd_installed | default(false) | bool) else 'Rules not found in active configuration')) }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Generate remediation report"
+      - "  Command: debug msg"
+      - "  Exit code: 0"
+      - "  Data: Report generated"
+      - "  Status: PASS"
+      - "  Details: Remediation report completed"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ ('All checks passed' if cis_result | default('ERROR') == 'PASS' else ('Auditd not installed - remediation skipped' if cis_result | default('ERROR') == 'SKIP' else 'One or more checks failed')) }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if rules backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-kernel_modules.rules.orig"
+    register: _restore_rules_check
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite rules file with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-kernel_modules.rules.orig"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: "_restore_rules_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/rules_existed"
+    register: _restore_existed
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove rules file if it was created by remediation"
+    ansible.builtin.file:
+      path: "{{ audit_rules_file }}"
+      state: absent
+    when:
+    - "_restore_existed.content is defined"
+    - "(_restore_existed.content | b64decode | trim) == 'False'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload audit rules after restore"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when: "_restore_rules_check.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

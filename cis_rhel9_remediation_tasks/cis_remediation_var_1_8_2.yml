@@ -1,0 +1,5 @@
+playbook_name: "CIS_1.8.2_GDM_login_banner"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+# Values used by the remediation script (modify according to local policy)
+gdm_profile: "gdm"
+banner_message: "'Authorized uses only. All activity may be monitored and reported'"

@@ -1,0 +1,7 @@
+req_01: "Check if pam_pwquality is installed using command: `dpkg -l 2>/dev/null | grep -qiE 'libpam-pwquality|libpwquality' || rpm -q pam_pwquality &>/dev/null`. Expected result: package is installed."
+req_02: |
+  Check if difok is configured in /etc/security/pwquality.conf or .d/*.conf files with value 2 or more using command: `grep -Psi -- '^\\h*difok\\h*=\\h*([2-9]|[1-9][0-9]+)\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf`. Expected result: output shows difok set to 2 or more and meets local site policy.
+req_03: |
+  Check that difok is not set to 0 or 1 in PAM module arguments using command: `grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?difok\\h*=\\h*([0-1])\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: no output returned.
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if pam_pwquality is not installed, FAIL if any check fails."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

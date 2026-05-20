@@ -1,0 +1,6 @@
+req_01: "Check if auditd is installed using command: `dpkg -l auditd 2>/dev/null || rpm -q audit 2>/dev/null`. Expected result: package is installed."
+req_02: "Check if /etc/audit/auditd.conf exists using command: `test -f /etc/audit/auditd.conf && echo 'EXISTS'`. Expected result: EXISTS"
+req_03: |
+  Check the max_log_file_action setting using command: `grep -E '^\s*max_log_file_action\s*=\s*keep_logs' /etc/audit/auditd.conf`. Expected result: max_log_file_action = keep_logs
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if auditd is not installed or /etc/audit/auditd.conf does not exist, FAIL if the setting is not configured as keep_logs."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

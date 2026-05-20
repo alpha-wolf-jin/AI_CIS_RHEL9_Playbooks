@@ -1,0 +1,164 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_1_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Check if /etc/fstab exists"
+  ansible.builtin.stat:
+    path: /etc/fstab
+  register: fstab_stat
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Backup /etc/fstab"
+  ansible.builtin.copy:
+    src: /etc/fstab
+    dest: "{{ backup_dir }}/fstab.bak"
+    remote_src: true
+  when: fstab_stat.stat.exists
+  tags: [snapshot]
+  failed_when: false
+
+
+- block:
+  - name: "Req 1 - Check if a separate partition exists for /tmp"
+    ansible.builtin.shell: mount | grep -E '\s/tmp\s'
+    args:
+      executable: /bin/bash
+    register: tmp_check
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set partition_found fact"
+    set_fact:
+      partition_found: "{{ tmp_check.rc == 0 }}"
+    tags: [execute]
+
+  - name: "Req 2 - Capture /tmp fstab entry before modification"
+    ansible.builtin.shell: grep -E '^\S+\s+/tmp\s+' /etc/fstab || true
+    args:
+      executable: /bin/bash
+    register: fstab_before
+    failed_when: false
+    when: partition_found | default(true)
+    tags: [execute]
+
+  - name: "Req 2 - Add noexec to /tmp in /etc/fstab (if not present)"
+    ansible.builtin.shell: |
+      if ! grep -qE '^\S+\s+/tmp\s+\S+\s+[^#]*\bnoexec\b' /etc/fstab; then
+        sed -i 's|\(\s/tmp\s\+\S\+\s\+\)\S\+|\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab
+      fi
+    args:
+      executable: /bin/bash
+    register: fstab_update
+    failed_when: false
+    when: partition_found | default(true)
+    tags: [execute]
+
+  - name: "Req 2 - Capture /tmp fstab entry after modification"
+    ansible.builtin.shell: grep -E '^\S+\s+/tmp\s+' /etc/fstab || true
+    args:
+      executable: /bin/bash
+    register: fstab_after
+    failed_when: false
+    when: partition_found | default(true)
+    tags: [execute]
+
+  - name: "Req 3 - Remount /tmp with new options"
+    ansible.builtin.shell: mount -o remount /tmp
+    args:
+      executable: /bin/bash
+    register: remount_result
+    failed_when: false
+    when: partition_found | default(true)
+    tags: [execute]
+
+  - name: "Req 4 - Verify noexec option is active on /tmp"
+    ansible.builtin.shell: mount | grep -E '\s/tmp\s' | grep -o 'noexec'
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    when: partition_found | default(true)
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.2.1.4"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.1.4"
+      - ""
+      - "Requirement 1: Check /tmp partition exists"
+      - "  Task: Req 1 - Check if a separate partition exists for /tmp"
+      - "  Command: mount | grep -E '\\s/tmp\\s'"
+      - "  Exit code: {{ tmp_check.rc }}"
+      - "  Data: {{ tmp_check.stdout | default('') }}"
+      - "  Status: {{ 'APPLIED' if tmp_check.rc == 0 else 'FAILED' }}"
+      - "  Details: {{ 'Partition /tmp found' if tmp_check.rc == 0 else 'Partition /tmp not found' }}"
+      - ""
+      - "Requirement 2: Apply noexec to /tmp in /etc/fstab"
+      - "  Task: Req 2 - Add noexec to /tmp in /etc/fstab"
+      - "  Command: if noexec not already present: sed -i 's|\\(\\s/tmp\\s\\+\\S\\+\\s\\+\\)\\S\\+|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab"
+      - "  Exit code: {{ fstab_update.rc }}"
+      - "  Data before: {{ fstab_before.stdout | default('(none)') }}"
+      - "  Data after:  {{ fstab_after.stdout | default('(none)') }}"
+      - "  Status: {{ ('APPLIED' if fstab_update.rc == 0 else 'FAILED') if partition_found | default(false) else 'SKIPPED' }}"
+      - "  Details: {{ 'noexec added to fstab' if fstab_update.rc == 0 and partition_found | default(false) else 'Failed to update fstab' if partition_found | default(false) else 'Skipped because no separate /tmp partition' }}"
+      - ""
+      - "Requirement 3: Remount /tmp"
+      - "  Task: Req 3 - Remount /tmp with new options"
+      - "  Command: mount -o remount /tmp"
+      - "  Exit code: {{ remount_result.rc }}"
+      - "  Data: {{ remount_result.stderr | default('(no error)') }}"
+      - "  Status: {{ ('APPLIED' if remount_result.rc == 0 else 'FAILED') if partition_found | default(false) else 'SKIPPED' }}"
+      - "  Details: {{ 'Remount succeeded' if remount_result.rc == 0 else 'Remount failed' if partition_found | default(false) else 'Skipped because no separate /tmp partition' }}"
+      - ""
+      - "Requirement 4: Verify noexec active on /tmp"
+      - "  Task: Req 4 - Verify noexec option is active on /tmp"
+      - "  Command: mount | grep -E '\\s/tmp\\s' | grep -o 'noexec'"
+      - "  Exit code: {{ verify_result.rc }}"
+      - "  Data: {{ verify_result.stdout | default('') }}"
+      - "  Status: {{ ('APPLIED' if verify_result.rc == 0 and 'noexec' in verify_result.stdout | default('') else 'FAILED') if partition_found | default(false) else 'SKIPPED' }}"
+      - "  Details: {{ 'noexec option confirmed' if verify_result.rc == 0 and 'noexec' in verify_result.stdout | default('') else 'noexec not found' if partition_found | default(false) else 'Skipped because no separate /tmp partition' }}"
+      - ""
+      - "OVERALL REMEDIATION: {{ ('SUCCESS' if verify_result.rc == 0 and 'noexec' in verify_result.stdout | default('') else 'FAILED') if partition_found | default(false) else 'SKIPPED - no separate /tmp partition' }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/fstab.bak"
+    register: restore_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Copy original fstab back"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/fstab.bak"
+      dest: /etc/fstab
+      remote_src: true
+    when: restore_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remount /tmp with original options"
+    ansible.builtin.shell: mount -o remount /tmp
+    args:
+      executable: /bin/bash
+    when: restore_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

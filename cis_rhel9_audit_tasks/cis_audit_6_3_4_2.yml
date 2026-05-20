@@ -1,0 +1,102 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_4_2.yml
+
+- name: "Snapshot - Ensure temporary audit script is absent from previous runs"
+  ansible.builtin.file:
+    path: "{{ audit_script }}"
+    state: absent
+  tags: [snapshot]
+
+- block:
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Determine if auditd is installed"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ ('audit' in ansible_facts.packages | default([])) or ('auditd' in ansible_facts.packages | default([])) }}"
+    tags: [execute]
+
+  - name: "Initialize requirement 01 data when auditd not installed"
+    ansible.builtin.set_fact:
+      data_01: "auditd not installed"
+      status_01: "SKIPPED"
+      details_01: "Audit daemon (auditd) is not installed. CIS 6.3.4.2 not applicable."
+      task_01_name: "Check audit log files mode"
+      task_01_cmd: "N/A (auditd missing)"
+      task_01_rc: -1
+    when: "not auditd_installed"
+    tags: [execute]
+
+  - name: "Copy audit script to target"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ cis_audit_script }}"
+    when: "auditd_installed"
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result
+    when: "auditd_installed"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details from script output"
+    ansible.builtin.set_fact:
+      data_01: "{{ audit_result.stdout | default('') | trim }}"
+      status_01: >-
+        {%- if '** PASS **' in audit_result.stdout | default('') %}PASS
+        {%- elif '** FAIL **' in audit_result.stdout | default('') %}FAIL
+        {%- else %}UNKNOWN{% endif -%}
+      details_01: >-
+        {%- if '** PASS **' in audit_result.stdout | default('') %}Script indicates compliance.
+        {%- elif '** FAIL **' in audit_result.stdout | default('') %}Script indicates non-compliance.
+        {%- else %}Unable to determine compliance from script output.{% endif -%}
+      task_01_name: "Run audit script for CIS 6.3.4.2"
+      task_01_cmd: "/bin/bash /tmp/cis_6_3_4_2_audit.sh"
+      task_01_rc: "{{ audit_result.rc | default(-1) }}"
+    when: "auditd_installed and audit_result is defined"
+    tags: [execute]
+
+  - name: "Set cis_result from requirement 01 status"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_01 | default('UNKNOWN') }}"
+    when: "status_01 is defined"
+    tags: [execute]
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 6.3.4.2"
+      - "Reference: CIS Benchmark checkpoint 6.3.4.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    tags: [restore]

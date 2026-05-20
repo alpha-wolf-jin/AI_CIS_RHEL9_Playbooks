@@ -1,0 +1,204 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_2_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/fstab exists"
+  ansible.builtin.stat:
+    path: /etc/fstab
+  register: _fstab_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/fstab"
+  ansible.builtin.copy:
+    src: /etc/fstab
+    dest: "{{ backup_dir }}/fstab.bak"
+    remote_src: true
+  when: _fstab_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+        # === EXECUTE PHASE ===
+
+# Req 01 – Check separate partition
+  - name: "Req 01 - Check if separate partition exists for /dev/shm"
+    ansible.builtin.shell: "mount | grep /dev/shm"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store Req 01 facts"
+    set_fact:
+      partition_exists: "{{ result_01.rc == 0 }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if result_01.rc == 0 else 'FAILED' }}"
+      details_01: "{{ 'Separate partition for /dev/shm detected' if result_01.rc == 0 else 'No separate partition for /dev/shm found' }}"
+      task_01_name: "Req 01 - Check separate partition"
+      task_01_cmd: "mount | grep /dev/shm"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+    tags: [execute]
+
+# Pre-check: does /dev/shm line already contain nosuid?
+  - name: "Check if nosuid already set in /etc/fstab for /dev/shm"
+    ansible.builtin.shell: "grep /dev/shm /etc/fstab | grep -q nosuid"
+    args:
+      executable: /bin/bash
+    register: nosuid_check
+    when: partition_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set nosuid_already_set flag"
+    set_fact:
+      nosuid_already_set: "{{ (nosuid_check.rc | default(1)) == 0 }}"
+    tags: [execute]
+
+# Req 02 – Edit /etc/fstab
+  - name: "Req 02 - Edit /etc/fstab to add nosuid option"
+    ansible.builtin.shell: "sed -i '/\\/dev\\/shm/s/defaults.*/defaults,rw,nosuid,nodev,noexec,relatime/' /etc/fstab"
+    args:
+      executable: /bin/bash
+    register: result_02
+    when:
+    - partition_exists
+    - not nosuid_already_set
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store Req 02 facts"
+    set_fact:
+      task_02_name: "Req 02 - Edit fstab"
+      task_02_cmd: |
+        sed -i '/\\/dev\\/shm/s/defaults.*/defaults,rw,nosuid,nodev,noexec,relatime/' /etc/fstab
+      task_02_rc: "{{ result_02.rc | default(-1) if (partition_exists and not nosuid_already_set) else 0 }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if (not partition_exists or nosuid_already_set) else 'APPLIED' if (result_02.rc | default(1)) == 0 else 'FAILED' }}"
+      details_02: "{{ 'fstab updated with nosuid' if (partition_exists and not nosuid_already_set and (result_02.rc | default(1)) == 0) else 'nosuid already present, no change needed' if nosuid_already_set else 'No separate partition, skipped' if not partition_exists else 'Failed to update' }}"
+    tags: [execute]
+
+# Req 03 – Remount /dev/shm
+  - name: "Req 03 - Remount /dev/shm with configured options"
+    ansible.builtin.shell: "mount -o remount /dev/shm"
+    args:
+      executable: /bin/bash
+    register: result_03
+    when:
+    - partition_exists
+    - not nosuid_already_set
+    - (result_02.rc | default(1)) == 0
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store Req 03 facts"
+    set_fact:
+      task_03_name: "Req 03 - Remount /dev/shm"
+      task_03_cmd: "mount -o remount /dev/shm"
+      task_03_rc: "{{ result_03.rc | default(-1) if (partition_exists and not nosuid_already_set and (result_02.rc | default(1)) == 0) else 0 }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'SKIPPED' if (not partition_exists or nosuid_already_set or (result_02.rc | default(1)) != 0) else 'APPLIED' if result_03.rc == 0 else 'FAILED' }}"
+      details_03: "{{ 'Remounted /dev/shm with new options' if (partition_exists and not nosuid_already_set and (result_02.rc | default(1)) == 0 and result_03.rc == 0) else 'Skipped - partition missing or nosuid already present' if (not partition_exists or nosuid_already_set) else 'Remount failed' }}"
+    tags: [execute]
+
+# Req 04 – Verify nosuid is active
+  - name: "Req 04 - Verify nosuid option set on /dev/shm"
+    ansible.builtin.shell: "mount | grep /dev/shm | grep nosuid"
+    args:
+      executable: /bin/bash
+    register: result_04
+    when: partition_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store Req 04 facts"
+    set_fact:
+      task_04_name: "Req 04 - Verify nosuid"
+      task_04_cmd: "mount | grep /dev/shm | grep nosuid"
+      task_04_rc: "{{ result_04.rc | default(-1) if partition_exists else -1 }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'APPLIED' if (partition_exists and result_04.rc == 0) else 'FAILED' if partition_exists else 'SKIPPED' }}"
+      details_04: "{{ 'nosuid option verified on /dev/shm' if (partition_exists and result_04.rc == 0) else 'nosuid not found' if partition_exists else 'No separate partition, skipped' }}"
+    tags: [execute]
+
+# Final report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.2.2.3"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.2.3"
+      - ""
+      - "Requirement 01 - Check separate partition:"
+      - "  Task:     {{ task_01_name | default('N/A') }}"
+      - "  Command:  {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data:     {{ data_01 | default('') }}"
+      - "  Status:   {{ status_01 | default('UNKNOWN') }}"
+      - "  Details:  {{ details_01 | default('None') }}"
+      - ""
+      - "Requirement 02 - Edit fstab:"
+      - "  Task:     {{ task_02_name | default('N/A') }}"
+      - "  Command:  {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data:     {{ data_02 | default('') }}"
+      - "  Status:   {{ status_02 | default('UNKNOWN') }}"
+      - "  Details:  {{ details_02 | default('None') }}"
+      - ""
+      - "Requirement 03 - Remount /dev/shm:"
+      - "  Task:     {{ task_03_name | default('N/A') }}"
+      - "  Command:  {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data:     {{ data_03 | default('') }}"
+      - "  Status:   {{ status_03 | default('UNKNOWN') }}"
+      - "  Details:  {{ details_03 | default('None') }}"
+      - ""
+      - "Requirement 04 - Verify nosuid:"
+      - "  Task:     {{ task_04_name | default('N/A') }}"
+      - "  Command:  {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data:     {{ data_04 | default('') }}"
+      - "  Status:   {{ status_04 | default('UNKNOWN') }}"
+      - "  Details:  {{ details_04 | default('None') }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result:   {{ status_04 | default('UNKNOWN') }}"
+      - "  Details:  {{ details_04 | default('None') }}"
+    tags: [execute]
+
+  always:
+# === RESTORE PHASE (always runs) ===
+  - name: "Restore - Check if fstab backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/fstab.bak"
+    register: _restore_fstab
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/fstab from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/fstab.bak"
+      dest: /etc/fstab
+      remote_src: true
+    when: _restore_fstab.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remount /dev/shm with original options"
+    ansible.builtin.shell: "mount -o remount /dev/shm"
+    args:
+      executable: /bin/bash
+    when: _restore_fstab.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_fstab.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

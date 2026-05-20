@@ -1,0 +1,221 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_2_3.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check if sudo is installed"
+  shell: which sudo || dpkg -l sudo || rpm -q sudo
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store Req 01 details"
+  set_fact:
+    task_01_name: "Req 01 - Check if sudo is installed"
+    task_01_cmd: "{{ result_01.cmd | default('which sudo || dpkg -l sudo || rpm -q sudo') }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Sudo binary found: ' + result_01.stdout | trim if result_01.rc | default(-1) == 0 else 'Sudo not found') | trim }}"
+
+- name: "Req 02 - Check if /etc/sudoers* files exist"
+  shell: "ls /etc/sudoers* 2>/dev/null | head -1"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc | default(-1) == 0"
+
+- name: "Store Req 02 details"
+  set_fact:
+    task_02_name: "Req 02 - Check if /etc/sudoers* files exist"
+    task_02_cmd: "ls /etc/sudoers* 2>/dev/null | head -1"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        SKIP
+      {%- elif result_02.stdout | default('') | trim | length > 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        Sudo not installed, check skipped
+      {%- elif result_02.stdout | default('') | trim | length > 0 -%}
+        Sudoers files found: {{ result_02.stdout | trim }}
+      {%- else -%}
+        No sudoers files found
+      {%- endif -%}
+
+- name: "Req 03 - Check if sudo log file is configured"
+  shell: |
+    grep -rPsi "^\h*Defaults\h+([^#]+,\h*)?logfile\h*=\h*(\"|\')?\H+(\"|\')?(,\h*\H+\h*)*\h*(#.*)?$" /etc/sudoers*
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when:
+  - "result_01.rc | default(-1) == 0"
+  - "result_02.stdout | default('') | trim | length > 0"
+
+- name: "Store Req 03 details"
+  set_fact:
+    task_03_name: "Req 03 - Check if sudo log file is configured"
+    task_03_cmd: |
+      grep -rPsi \"^\\h*Defaults\\h+([^#]+,\\h*)?logfile\\h*=\\h*(\\\"|\\')?\\H+(\\\"|\\')?(,\\h*\\H+\\h*)*\\h*(#.*)?$\" /etc/sudoers*
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        SKIP
+      {%- elif result_02.stdout | default('') | trim | length == 0 -%}
+        SKIP
+      {%- elif result_03.stdout | default('') | trim | length > 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        Sudo not installed, check skipped
+      {%- elif result_02.stdout | default('') | trim | length == 0 -%}
+        No sudoers files exist, check skipped
+      {%- elif result_03.stdout | default('') | trim | length > 0 -%}
+        Log file configured: {{ result_03.stdout | trim }}
+      {%- else -%}
+        Log file not configured
+      {%- endif -%}
+
+- name: "Determine compliance status"
+  set_fact:
+    compliance_status: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        SKIP
+      {%- elif result_02.stdout | default('') | trim | length == 0 -%}
+        SKIP
+      {%- elif result_03.stdout | default('') | trim | length > 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    compliance_details: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        Sudo is not installed; audit skipped.
+      {%- elif result_02.stdout | default('') | trim | length == 0 -%}
+        No /etc/sudoers* files exist; audit skipped.
+      {%- elif result_03.stdout | default('') | trim | length > 0 -%}
+        Sudo log file is configured: {{ result_03.stdout | trim }}
+      {%- else -%}
+        Sudo is installed but log file is not configured.
+      {%- endif -%}
+
+- name: "Store Req 04 details"
+  set_fact:
+    task_04_name: "Req 04 - Determine compliance status"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "{{ compliance_status | trim }}"
+    status_04: "{{ compliance_status | trim }}"
+    details_04: "{{ compliance_details | trim }}"
+
+- name: "Store final result in cis_result"
+  set_fact:
+    cis_result: "{{ compliance_status | trim }}"
+
+- name: "Store Req 05 details"
+  set_fact:
+    task_05_name: "Req 05 - Store final audit result"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "{{ cis_result | trim }}"
+    status_05: "{{ cis_result | trim }}"
+    details_05: "Stored compliance result in cis_result"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.2.3"
+    - "Reference: CIS Benchmark checkpoint 5.2.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

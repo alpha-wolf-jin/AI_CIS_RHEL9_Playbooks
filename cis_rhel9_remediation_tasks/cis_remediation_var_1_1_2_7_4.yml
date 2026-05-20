@@ -1,0 +1,8 @@
+playbook_name: "remediate_cis_1_1_2_7_4_noexec_var_log_audit"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+mount_point: "/var/log/audit"
+fstab_file: "/etc/fstab"
+req_01: "Verify that a separate partition exists for /var/log/audit using command: `mount | grep /var/log/audit`. Expected result: output showing a mounted partition for /var/log/audit."
+req_02: "Edit the /etc/fstab file to add noexec to the fourth field (mounting options) for the /var/log/audit partition. Expected result: the line for /var/log/audit includes noexec in the options."
+req_03: "Remount /var/log/audit with the configured options using command: `mount -o remount /var/log/audit`. Expected result: the partition is remounted with noexec option."
+req_04: "Verify that the noexec option is set on /var/log/audit partition using command: `mount | grep /var/log/audit | grep noexec`. Expected result: output shows the noexec option is active."

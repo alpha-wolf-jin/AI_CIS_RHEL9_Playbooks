@@ -1,0 +1,4 @@
+req_01: "Check if ypserv package is installed using command: `rpm -q ypserv`. Expected result: package ypserv is not installed"
+req_02: "If ypserv package is installed and required for dependencies, check if ypserv.service is enabled using command: `systemctl is-enabled ypserv.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If ypserv package is installed and required for dependencies, check if ypserv.service is active using command: `systemctl is-active ypserv.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "Summarize overall compliance: Ensure that either ypserv is not installed, or if installed for dependencies, the service is not enabled and not active, and local site policy approves the dependency and the stopping/masking of the service."

@@ -1,0 +1,216 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_8_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/dconf directory exists"
+  ansible.builtin.stat:
+    path: /etc/dconf
+  register: dconf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/dconf directory"
+  ansible.builtin.copy:
+    src: /etc/dconf
+    dest: "{{ backup_dir }}/dconf_backup"
+    remote_src: true
+  when: dconf_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Determine if GDM is installed"
+    ansible.builtin.set_fact:
+      gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
+      playbook_skipped: "{{ not ('gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages) }}"
+    tags: [execute]
+
+  - name: "Req 01 - Deploy remediation script"
+    ansible.builtin.copy:
+      content: |
+        #!/usr/bin/env bash
+        {
+           l_pkgoutput=""
+           if command -v dpkg-query > /dev/null 2>&1; then
+              l_pq="dpkg-query -W"
+           elif command -v rpm > /dev/null 2>&1; then
+              l_pq="rpm -q"
+           fi
+           l_pcl="gdm gdm3"
+           for l_pn in $l_pcl; do
+              $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="y" && echo -e "\n - Package: \"$l_pn\" exists on the system\n - remediating configuration if needed"
+           done
+           if [ -n "$l_pkgoutput" ]; then
+              l_kfd="/etc/dconf/db/$(grep -Psril '^\h*idle-delay\h*=\h*uint32\h+\d+\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d"
+              l_kfd2="/etc/dconf/db/$(grep -Psril '^\h*lock-delay\h*=\h*uint32\h+\d+\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d"
+              if [ -d "$l_kfd" ]; then
+                 if grep -Prilq '^\h*\/org\/gnome\/desktop\/session\/idle-delay\b' "$l_kfd"; then
+                    echo " - \"idle-delay\" is locked in \"$(grep -Pril '^\h*\/org\/gnome\/desktop\/session\/idle-delay\b' "$l_kfd")\""
+                 else
+                    echo "creating entry to lock \"idle-delay\""
+                    [ ! -d "$l_kfd"/locks ] && echo "creating directory $l_kfd/locks" && mkdir "$l_kfd"/locks
+                    {
+                       echo -e '\n# Lock desktop screensaver idle-delay setting'
+                       echo '/org/gnome/desktop/session/idle-delay'
+                    } >> "$l_kfd"/locks/00-screensaver
+                 fi
+              else
+                 echo -e " - \"idle-delay\" is not set so it can not be locked\n - Please follow Recommendation \"Ensure GDM screen locks when the user is idle\" and follow this Recommendation again"
+              fi
+              if [ -d "$l_kfd2" ]; then
+                 if grep -Prilq '^\h*\/org\/gnome\/desktop\/screensaver\/lock-delay\b' "$l_kfd2"; then
+                    echo " - \"lock-delay\" is locked in \"$(grep -Pril '^\h*\/org\/gnome\/desktop\/screensaver\/lock-delay\b' "$l_kfd2")\""
+                 else
+                    echo "creating entry to lock \"lock-delay\""
+                    [ ! -d "$l_kfd2"/locks ] && echo "creating directory $l_kfd2/locks" && mkdir "$l_kfd2"/locks
+                    {
+                       echo -e '\n# Lock desktop screensaver lock-delay setting'
+                       echo '/org/gnome/desktop/screensaver/lock-delay'
+                    } >> "$l_kfd2"/locks/00-screensaver
+                 fi
+              else
+                 echo -e " - \"lock-delay\" is not set so it can not be locked\n - Please follow Recommendation \"Ensure GDM screen locks when the user is idle\" and follow this Recommendation again"
+              fi
+           else
+              echo -e " - GNOME Desktop Manager package is not installed on the system\n  - Recommendation is not applicable"
+           fi
+        }
+      dest: /tmp/remediate_cis_1_8_5.sh
+      mode: '0700'
+    when: not playbook_skipped | default(false)
+    register: result_deploy_script
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash /tmp/remediate_cis_1_8_5.sh
+    args:
+      executable: /bin/bash
+    register: result_script
+    failed_when: false
+    changed_when: false
+    when: not playbook_skipped | default(false)
+    tags: [execute]
+
+  - name: "Req 01 - Update dconf databases"
+    ansible.builtin.shell: dconf update
+    args:
+      executable: /bin/bash
+    register: result_dconf_update
+    failed_when: false
+    when: not playbook_skipped | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Verify idle-delay lock exists"
+    ansible.builtin.shell: |
+      grep -Pril '/org/gnome/desktop/session/idle-delay' /etc/dconf/db/*/locks/ 2>/dev/null > /dev/null && echo "LOCKED" || echo "NOT_LOCKED"
+    args:
+      executable: /bin/bash
+    register: result_verify_idle
+    failed_when: false
+    changed_when: false
+    when: not playbook_skipped | default(false)
+    tags: [execute]
+
+  - name: "Req 02 - Verify lock-delay lock exists"
+    ansible.builtin.shell: |
+      grep -Pril '/org/gnome/desktop/screensaver/lock-delay' /etc/dconf/db/*/locks/ 2>/dev/null > /dev/null && echo "LOCKED" || echo "NOT_LOCKED"
+    args:
+      executable: /bin/bash
+    register: result_verify_lock
+    failed_when: false
+    changed_when: false
+    when: not playbook_skipped | default(false)
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Execute remediation script"
+      task_01_cmd: "/bin/bash /tmp/remediate_cis_1_8_5.sh"
+      task_01_rc: "{{ result_script.rc | default(-1) }}"
+      data_01: "{{ result_script.stdout | default('') | trim }}"
+      status_01: '{{ ("SKIPPED" if playbook_skipped | default(false) else ("APPLIED" if result_script.rc | default(-1) == 0 else "FAILED")) | trim }}'
+      details_01: '{{ ("GDM not installed" if playbook_skipped | default(false) else ("Script succeeded" if result_script.rc | default(-1) == 0 else "Script failed: " + result_script.stderr | default(""))) | trim }}'
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify idle-delay and lock-delay locks"
+      task_02_cmd: "grep for lock entries in /etc/dconf/db/*/locks/"
+      task_02_rc: "{{ 0 if (result_verify_idle.stdout | default('') | trim == 'LOCKED') and (result_verify_lock.stdout | default('') | trim == 'LOCKED') else 1 }}"
+      data_02: "idle-delay: {{ result_verify_idle.stdout | default('') | trim }}, lock-delay: {{ result_verify_lock.stdout | default('') | trim }}"
+      status_02: '{{ ("SKIPPED" if playbook_skipped | default(false) else ("PASS" if (result_verify_idle.stdout | default("") | trim == "LOCKED") and (result_verify_lock.stdout | default("") | trim == "LOCKED") else "FAIL")) | trim }}'
+      details_02: '{{ ("Not applicable" if playbook_skipped | default(false) else ("Both locks present" if (result_verify_idle.stdout | default("") | trim == "LOCKED") and (result_verify_lock.stdout | default("") | trim == "LOCKED") else "One or both locks missing")) | trim }}'
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 1.8.5"
+      - "Reference: CIS Benchmark checkpoint 1.8.5"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 | truncate(120) }}"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 }}"
+      - "  Details: {{ details_01 }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 | truncate(120) }}"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_02 }}"
+      - "  Details: {{ details_02 }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if /etc/dconf backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/dconf_backup"
+    register: restore_dconf_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove current /etc/dconf"
+    ansible.builtin.file:
+      path: /etc/dconf
+      state: absent
+    when: restore_dconf_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/dconf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/dconf_backup"
+      dest: /etc/dconf
+      remote_src: true
+    when: restore_dconf_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Clean up backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

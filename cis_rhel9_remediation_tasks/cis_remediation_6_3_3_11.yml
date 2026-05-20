@@ -1,0 +1,158 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_11.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snap_audit_rules
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-session.rules.present"
+    remote_src: true
+  when: "_snap_audit_rules.stat.exists"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ 'audit' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'audit' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Configure session initiation collection rules"
+    ansible.builtin.lineinfile:
+      path: "{{ audit_rules_file }}"
+      line: "{{ item }}"
+      regexp: "^{{ item | regex_escape }}"
+      state: present
+      create: true
+      mode: '0640'
+    loop:
+    - "-w /var/run/utmp -p wa -k session"
+    - "-w /var/log/wtmp -p wa -k session"
+    - "-w /var/log/btmp -p wa -k session"
+    register: _lineinfile_result
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules with augenrules"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    register: _augenrules_result
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Req 02 - Verify session initiation rules are active"
+    ansible.builtin.shell: |
+      auditctl -l 2>/dev/null | grep -E '(utmp|wtmp|btmp)' || echo 'VERIFY_FAILED'
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Configure session initiation collection rules and load with augenrules"
+      task_01_cmd: "lineinfile + augenrules --load"
+      task_01_rc: "{{ _augenrules_result.rc | default(-1) }}"
+      data_01: "{{ _augenrules_result.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('APPLIED' if (_augenrules_result.rc | default(-1) == 0) else 'FAILED') }}"
+      details_01: "{{ 'auditd not installed - skipped' if (playbook_skipped | default(false) | bool) else ('Rules applied and loaded successfully' if (_augenrules_result.rc | default(-1) == 0) else 'Failed to load audit rules') }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify session initiation rules with auditctl -l"
+      task_02_cmd: "auditctl -l | grep -E '(utmp|wtmp|btmp)'"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('APPLIED' if ('VERIFY_FAILED' not in (result_02.stdout | default(''))) else 'FAILED') }}"
+      details_02: "{{ 'auditd not installed - skipped' if (playbook_skipped | default(false) | bool) else ('Session rules active' if ('VERIFY_FAILED' not in (result_02.stdout | default(''))) else 'Session rules not found in active configuration') }}"
+    tags: [execute]
+
+  - name: "Set cis_result from verification status"
+    ansible.builtin.set_fact:
+      cis_result: >-
+        {%- if status_02 == "APPLIED" -%}PASS
+        {%- elif status_02 == "FAILED" -%}FAIL
+        {%- elif status_02 == "SKIPPED" -%}SKIP
+        {%- else -%}ERROR
+        {%- endif %}
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.3.3.11"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.11"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-session.rules.present"
+    register: _restore_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original audit rules file"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-session.rules.present"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: "_restore_backup.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

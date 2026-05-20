@@ -1,0 +1,269 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_1_8.yml
+
+- name: "Snapshot - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "Snapshot - Restore /etc/modprobe.d/usb-storage.conf from previous checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/usb-storage.conf.present"
+    dest: "/etc/modprobe.d/usb-storage.conf"
+    remote_src: true
+  when: _sg_flag.stat.exists | bool
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Remove /etc/modprobe.d/usb-storage.conf if marked absent from previous run"
+  ansible.builtin.file:
+    path: "/etc/modprobe.d/usb-storage.conf"
+    state: absent
+  when: _sg_flag.stat.exists | bool
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Remove old checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists | bool
+  tags: [snapshot]
+- name: "Snapshot - Create fresh checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/modprobe.d/usb-storage.conf exists"
+  ansible.builtin.stat:
+    path: "/etc/modprobe.d/usb-storage.conf"
+  register: _sg_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/modprobe.d/usb-storage.conf if present"
+  ansible.builtin.copy:
+    src: "/etc/modprobe.d/usb-storage.conf"
+    dest: "{{ state_guard_dir }}/usb-storage.conf.present"
+    remote_src: true
+  when: _sg_conf_stat.stat.exists | bool
+  tags: [snapshot]
+- name: "Snapshot - Mark /etc/modprobe.d/usb-storage.conf absent if not present"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/usb-storage.conf.absent"
+  when: not (_sg_conf_stat.stat.exists | bool)
+  tags: [snapshot]
+- name: "Snapshot - Save usb-storage module load state"
+  ansible.builtin.shell: |
+    if lsmod | grep -q '^{{ kernel_module }} '; then
+      echo "loaded" > "{{ state_guard_dir }}/module_load.state"
+    else
+      echo "not_loaded" > "{{ state_guard_dir }}/module_load.state"
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+        # === EXECUTE PHASE ===
+# Requirement 1
+  - name: "Req 01 - Deploy remediation script to disable {{ kernel_module }} module"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+           unset a_output2; l_output3="" l_dl="" # unset arrays and clear variables
+           l_mod_name="usb-storage" # set module name
+           l_mod_type="drivers" # set module type
+           l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
+           f_module_fix()
+           {
+              l_dl="y" # Set to ignore duplicate checks
+              a_showconfig=() # Create array with modprobe output
+              while IFS= read -r l_showconfig; do
+                 a_showconfig+=("$l_showconfig")
+              done < <(modprobe --showconfig | grep -P -- '\b(install|blacklist)\h+'"${l_mod_name//-/_}"'\b')
+              if  lsmod | grep "$l_mod_name" &> /dev/null; then # Check if the module is currently loaded
+                 a_output2+=(" - unloading kernel module: \"$l_mod_name\"")
+                 modprobe -r "$l_mod_name" 2>/dev/null; rmmod "$l_mod_name" 2>/dev/null
+              fi
+              if ! grep -Pq -- '\binstall\h+'"${l_mod_name//- /_}"'\h+\/bin\/(true|false)\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - setting kernel  module: \"$l_mod_name\" to \"/bin/false\"")
+                 printf '%s\n' "install $l_mod_name /bin/false" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+              if ! grep -Pq -- '\bblacklist\h+'"${l_mod_name//-/_}"'\b' <<< "${a_showconfig[*]}"; then
+                 a_output2+=(" - denylisting kernel  module: \"$l_mod_name\"")
+                 printf '%s\n' "blacklist $l_mod_name" >> /etc/modprobe.d/"$l_mod_name".conf
+              fi
+           }
+           for l_mod_base_directory in $l_mod_path; do # Check if the module exists on the system
+              if [ -d "$l_mod_base_directory/${l_mod_name/-/\/}" ] && [ -n "$(ls -A $l_mod_base_directory/${l_mod_name/-/\/})" ]; then
+                 l_output3="$l_output3\n  - \"$l_mod_base_directory\""
+                 [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
+                 [ "$l_dl" != "y" ] && f_module_fix
+              else
+                 echo -e " - kernel module: \"$l_mod_name\" doesn't exist in \"$l_mod_base_directory\""
+              fi
+           done
+           [ -n "$l_output3" ] && echo -e "\n\n -- INFO --\n - module: \"$l_mod_name\" exists in:$l_output3"
+           [ "${#a_output2[@]}" -gt 0 ] && printf '%s\n' "${a_output2[@]}"
+           echo -e "\n - remediation of kernel module: \"$l_mod_name\" complete\n"
+        }
+        {% endraw %}
+      dest: "{{ script_path }}"
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: "/bin/bash {{ script_path }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+# Requirement 2 - Verify
+  - name: "Req 02 - Verify usb-storage module is not loaded and blacklisted"
+    ansible.builtin.shell: |
+      if lsmod | grep -q '^{{ kernel_module }} '; then
+        echo "NON_COMPLIANT: module loaded"
+        exit 1
+      fi
+      if [ -f /etc/modprobe.d/{{ kernel_module }}.conf ]; then
+        if grep -q 'install {{ kernel_module }} /bin/false' /etc/modprobe.d/{{ kernel_module }}.conf && grep -q 'blacklist {{ kernel_module }}' /etc/modprobe.d/{{ kernel_module }}.conf; then
+          echo "COMPLIANT"
+          exit 0
+        else
+          echo "NON_COMPLIANT: missing directives"
+          exit 1
+        fi
+      else
+        echo "NON_COMPLIANT: conf file missing"
+        exit 1
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+# Report facts
+  - name: "Set report facts"
+    ansible.builtin.set_fact:
+      task_01_name: "Req 01 - Deploy and execute remediation script"
+      task_01_cmd: "/bin/bash {{ script_path }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      status_01: "{{ 'APPLIED' if (result_01.rc | default(-1) == 0) else 'FAILED' }}"
+      details_01: "{{ 'Script executed successfully' if (result_01.rc | default(-1) == 0) else 'Script failed' }}"
+      task_02_name: "Req 02 - Verify compliance"
+      task_02_cmd: "shell: verify script"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      status_02: "{{ 'APPLIED' if (result_02.stdout | default('') | trim == 'COMPLIANT') else 'FAILED' }}"
+      details_02: "{{ 'System is compliant' if (result_02.stdout | default('') | trim == 'COMPLIANT') else 'System not compliant' }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 1.1.1.8"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ result_01.stdout | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ result_02.stdout | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION RESULT:"
+      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD RESTORE (GUARANTEED) ===
+  - name: "Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if backup of usb-storage.conf exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/usb-storage.conf.present"
+    register: _sg_restore_conf_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/modprobe.d/usb-storage.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/usb-storage.conf.present"
+      dest: "/etc/modprobe.d/usb-storage.conf"
+      remote_src: true
+    when: _sg_restore_conf_present.stat.exists | bool
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/usb-storage.conf.absent"
+    register: _sg_restore_conf_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete /etc/modprobe.d/usb-storage.conf if marked absent"
+    ansible.builtin.file:
+      path: "/etc/modprobe.d/usb-storage.conf"
+      state: absent
+    when: _sg_restore_conf_absent.stat.exists | bool
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read module load state from checkpoint"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/module_load.state"
+    register: _sg_restore_module_state
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload usb-storage if it was originally loaded"
+    ansible.builtin.shell: |
+      if grep -q 'loaded' "{{ state_guard_dir }}/module_load.state"; then
+        modprobe {{ kernel_module }} 2>/dev/null || true
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_restore_module_state is not failed and _sg_restore_module_state.content is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove checkpoint directory"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | bool
+    failed_when: false
+    tags: [restore]

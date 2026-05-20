@@ -1,0 +1,10 @@
+playbook_name: "CIS_1.1.2.1.2_nodev_tmp"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+ci_restore: false
+req_01: |
+  Check if a separate partition exists for /tmp using command: `mount | grep -E '\\s/tmp\\s'`. Expected result: output shows a line with /tmp partition details.
+req_02: |
+  Edit /etc/fstab to add nodev to the mounting options for /tmp partition using command: `sed -i 's|\\(\\s/tmp\\s\\+\\S\\+\\s\\+\\S\\+\\)|\\1,nodev|' /etc/fstab`. Expected result: the nodev option is added to the /tmp entry in /etc/fstab.
+req_03: "Remount /tmp with the configured options using command: `mount -o remount /tmp`. Expected result: /tmp is remounted successfully with nodev option."
+req_04: |
+  Verify that nodev option is set on /tmp partition using command: `mount | grep -E '\\s/tmp\\s' | grep -o 'nodev'`. Expected result: output contains 'nodev'.

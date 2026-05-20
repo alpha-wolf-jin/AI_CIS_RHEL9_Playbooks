@@ -1,0 +1,8 @@
+req_01: "Check if cron is installed on the system using command: `which crontab || dpkg -l cron || rpm -q cron`. Expected result: cron is installed."
+req_02: "Check /etc/cron.allow exists using command: `[ -e /etc/cron.allow ] && echo 'exists'`. Expected result: exists."
+req_03: "Check /etc/cron.allow mode is 0640 or more restrictive using command: `stat -Lc '%a' /etc/cron.allow`. Expected result: 640 or less (e.g., 600, 400, 000)."
+req_04: "Check /etc/cron.allow is owned by user root using command: `stat -Lc '%U' /etc/cron.allow`. Expected result: root."
+req_05: "Check /etc/cron.allow is group owned by group root using command: `stat -Lc '%G' /etc/cron.allow`. Expected result: root."
+req_06: "Check /etc/cron.deny either does not exist or meets permissions using command: `[ -e /etc/cron.deny ] && stat -Lc 'Access: (%a/%A) Owner: (%U) Group: (%G)' /etc/cron.deny || echo 'does not exist'`. Expected result: either 'does not exist' or 'Access: (640/-rw-r-----) Owner: (root) Group: (root)'."
+req_07: "Summarize overall compliance status: all checks passed for crontab restriction to authorized users."
+req_08: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

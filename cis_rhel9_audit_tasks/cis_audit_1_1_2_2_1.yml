@@ -1,0 +1,55 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_2_1.yml
+
+- name: "Req 01 - Check if {{ mount_point }} is a separate partition using findmnt command"
+  ansible.builtin.command: findmnt -kn {{ mount_point }}
+  register: result_01
+  failed_when: false
+  changed_when: false
+  tags: [audit]
+- name: "Req 02 - Set compliance status fact based on mount check result"
+  ansible.builtin.set_fact:
+    status_02: "{{ 'PASS' if (result_01.rc | default(-1) == 0) and (result_01.stdout | default('') | trim | length > 0) else 'FAIL' }}"
+    details_02: "{{ mount_point ~ ' is mounted' if (result_01.rc | default(-1) == 0) and (result_01.stdout | default('') | trim | length > 0) else mount_point ~ ' is not mounted or command failed' }}"
+  tags: [audit]
+- name: "Req 03 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.2.2.1"
+    - "Reference: CIS Benchmark checkpoint 1.1.2.2.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Check if {{ mount_point }} is a separate partition"
+    - "  Command: findmnt -kn {{ mount_point }}"
+    - "  Exit code: {{ result_01.rc | default(-1) }}"
+    - "  Data: {{ result_01.stdout | default('') | trim }}"
+    - "  Status: {{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+    - "  Details: {{ 'Command executed successfully' if result_01.rc | default(-1) == 0 else 'Command failed' }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Evaluate overall compliance"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: {{ status_02 | default('UNKNOWN') }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Store final audit result"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Status: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: Final audit result stored in cis_result"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"
+  tags: [audit, report]

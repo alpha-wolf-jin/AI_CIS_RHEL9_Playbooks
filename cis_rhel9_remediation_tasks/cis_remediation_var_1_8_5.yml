@@ -1,0 +1,4 @@
+playbook_name: "cis_1_8_5"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Run the provided remediation script to fix Ensure GDM screen locks cannot be overridden."
+req_02: "VERIFY: Run audit check to confirm Ensure GDM screen locks cannot be overridden is properly configured."

@@ -1,0 +1,7 @@
+req_01: "Check if the root account exists and is accessible using command: `id root`. Expected result: root user exists."
+req_02: |
+  Check if the root account password is set or the account is locked using command: `passwd -S root | awk '$2 ~ /^P/ {print \"User: \\\"\" $1 \"\\\" Password is set\"}'`. Expected result: output is either \"User: \\\"root\\\" Password is set\" (with SHA512 or YESCRYPT) or indicates password is locked.
+req_03: "Summarize overall compliance: PASS if root password is set or account is locked; SKIP if root user does not exist; FAIL if root account exists but password is not set and account is not locked."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_02_command: !unsafe |
+  passwd -S root | awk '$2 ~ /^P/ {print "User: \"" $1 "\" Password is set"} $2 ~ /^L/ {print "Password locked."}'

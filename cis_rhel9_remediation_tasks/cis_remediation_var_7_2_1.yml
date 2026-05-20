@@ -1,0 +1,10 @@
+playbook_name: "cis_7_2_1_shadowed_passwords"
+checkpoint_id: "cis_7_2_1"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "Apply prerequisite check for pwconv command using command: `which pwconv`. Expected result: path to pwconv binary (e.g., /usr/sbin/pwconv)."
+req_02: "Apply migration of passwords to shadowed format using command: `pwconv`. Expected result: all accounts in /etc/passwd with an 'x' in the password field, passwords moved to /etc/shadow."
+req_03: |
+  Apply investigation of accounts without shadowed passwords using command: `awk -F: '$2!=\"x\"{print $1}' /etc/passwd`. Expected result: list of accounts that still have non-shadowed passwords (if any).
+req_04: |
+  Apply verification that all accounts use shadowed passwords using command: `awk -F: '$2==\"x\"{count++} END{print count \" accounts use shadowed passwords\"}' /etc/passwd`. Expected result: number of accounts with 'x' in password field equals total number of local accounts.

@@ -1,0 +1,246 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_4_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snapshot_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/user.cfg.present"
+    remote_src: true
+    creates: "{{ backup_dir }}/user.cfg.present"
+  when: _snapshot_config_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark config file as absent if it doesn't exist"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/user.cfg.absent"
+  when: not _snapshot_config_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+# Requirement 1 – prerequisite check
+  - name: "Req 01 - Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set grub2-tools installed fact"
+    ansible.builtin.set_fact:
+      grub2_tools_installed: "{{ 'grub2-tools' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'grub2-tools' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check if grub2-setpassword binary exists"
+    ansible.builtin.shell: which grub2-setpassword
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    when: grub2_tools_installed | default(false)
+    tags: [execute]
+
+  - name: "Req 01 - Store prerequisite check details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check grub2-setpassword availability"
+      task_01_cmd: "which grub2-setpassword"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {{ ('SKIPPED' if not (grub2_tools_installed | default(false)) else
+           ('APPLIED' if (result_01.rc | default(-1)) == 0 else 'FAILED')) | trim }}
+      details_01: >-
+        {{ ('SKIPPED: grub2-tools not installed' if not (grub2_tools_installed | default(false)) else
+           ('APPLIED: grub2-setpassword found at ' + (result_01.stdout | default('') | trim) if (result_01.rc | default(-1)) == 0 else 'FAILED: grub2-setpassword not found')) | trim }}
+    tags: [execute]
+
+# Requirement 2 – set bootloader password (non‑interactive, idempotent)
+  - name: "Req 02 - Check if bootloader password is already set"
+    ansible.builtin.shell: grep -q '{{ grep_pattern }}' "{{ config_file }}"
+    args:
+      executable: /bin/bash
+    register: password_present
+    failed_when: false
+    when:
+    - grub2_tools_installed | default(false)
+    - result_01 is defined and result_01.rc == 0
+    tags: [execute]
+
+  - name: "Req 02 - Generate PBKDF2 password hash"
+    ansible.builtin.shell: |
+      echo -e "{{ bootloader_password }}\n{{ bootloader_password }}" | grub2-mkpasswd-pbkdf2 | tail -n 1
+    args:
+      executable: /bin/bash
+    register: grub_hash
+    failed_when: false
+    when:
+    - grub2_tools_installed | default(false)
+    - result_01 is defined and result_01.rc == 0
+    - password_present.rc | default(-1) != 0
+    tags: [execute]
+
+  - name: "Req 02 - Write GRUB2_PASSWORD hash to user.cfg"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      line: "GRUB2_PASSWORD={{ grub_hash.stdout | trim }}"
+      create: yes
+      mode: '0600'
+      owner: root
+      group: root
+    register: write_result
+    failed_when: false
+    when:
+    - grub2_tools_installed | default(false)
+    - result_01 is defined and result_01.rc == 0
+    - password_present.rc | default(-1) != 0
+    - grub_hash.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Req 02 - Store password set details"
+    ansible.builtin.set_fact:
+      task_02_name: "Set bootloader password via grub2-mkpasswd-pbkdf2 and lineinfile"
+      task_02_cmd: |
+        echo -e 'password\npassword' | grub2-mkpasswd-pbkdf2 | tail -n 1 && lineinfile: GRUB2_PASSWORD=<hash>
+      task_02_rc: >-
+        {%- if not (grub2_tools_installed | default(false)) or (result_01.rc | default(-1)) != 0 -%}
+          -1
+        {%- elif (password_present.rc | default(-1)) == 0 -%}
+          0
+        {%- elif write_result is defined and not write_result.failed -%}
+          0
+        {%- else -%}
+          1
+        {%- endif -%}
+      data_02: "{{ 'Password already set' if (password_present.rc | default(-1)) == 0 else ('Hash generated and written' if (write_result is defined and not write_result.failed) else 'Failed to set password') }}"
+      status_02: >-
+        {%- if not (grub2_tools_installed | default(false)) or (result_01.rc | default(-1)) != 0 -%}
+          SKIPPED
+        {%- elif (password_present.rc | default(-1)) == 0 -%}
+          APPLIED
+        {%- elif write_result is defined and not write_result.failed -%}
+          APPLIED
+        {%- else -%}
+          FAILED
+        {%- endif -%}
+      details_02: >-
+        {%- if not (grub2_tools_installed | default(false)) or (result_01.rc | default(-1)) != 0 -%}
+          SKIPPED: prerequisite not met
+        {%- elif (password_present.rc | default(-1)) == 0 -%}
+          APPLIED: Password already present in user.cfg
+        {%- elif write_result is defined and not write_result.failed -%}
+          APPLIED: Password hash written successfully
+        {%- else -%}
+          FAILED: Password hashing or writing failed
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 3 – verify password presence
+  - name: "Req 03 - Verify bootloader password is set"
+    ansible.builtin.shell: grep -q '{{ grep_pattern }}' "{{ config_file }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when:
+    - grub2_tools_installed | default(false)
+    - result_01 is defined and result_01.rc == 0
+    tags: [execute]
+
+  - name: "Req 03 - Store verification details"
+    ansible.builtin.set_fact:
+      task_03_name: "Verify bootloader password in user.cfg"
+      task_03_cmd: "grep -q '{{ grep_pattern }}' {{ config_file }}"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ 'GRUB2_PASSWORD line found' if (result_03.rc | default(-1)) == 0 else 'Not found' }}"
+      status_03: >-
+        {{ ('SKIPPED' if not (grub2_tools_installed | default(false)) or (result_01.rc | default(-1)) != 0 else
+           ('APPLIED' if (result_03.rc | default(-1)) == 0 else 'FAILED')) | trim }}
+      details_03: >-
+        {{ ('SKIPPED: prerequisite not met' if not (grub2_tools_installed | default(false)) or (result_01.rc | default(-1)) != 0 else
+           ('APPLIED: Bootloader password is set' if (result_03.rc | default(-1)) == 0 else 'FAILED: Password not found in user.cfg')) | trim }}
+    tags: [execute]
+
+# Requirement 4 – remediation report
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.4.1"
+      - "Reference: CIS Benchmark checkpoint 1.4.1"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not executed') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('N/A') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not executed') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('N/A') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not executed') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('N/A') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    when: true
+    tags: [execute]
+
+  always:
+# Restore configuration to baseline
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/user.cfg.present"
+    register: _restore_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite config with original if existed"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/user.cfg.present"
+      dest: "{{ config_file }}"
+      remote_src: true
+    when: _restore_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if config was absent originally"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/user.cfg.absent"
+    register: _restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove config file if it was absent originally"
+    ansible.builtin.file:
+      path: "{{ config_file }}"
+      state: absent
+    when: _restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,159 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_5_4.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Req 01 - Check if a separate partition exists for /var/tmp using findmnt command"
+  ansible.builtin.command: findmnt -kn /var/tmp
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Set partition_exists and requirement 01 details"
+  set_fact:
+    partition_exists: "{{ (result_01.stdout | default('') | trim) != '' }}"
+    task_01_name: "Check if a separate partition exists for /var/tmp using findmnt command"
+    task_01_cmd: "findmnt -kn /var/tmp"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (result_01.stdout | default('') | trim) != '' else 'FAIL' }}"
+    details_01: "{{ 'Partition exists' if (result_01.stdout | default('') | trim) != '' else 'Partition not found' }}"
+
+- name: "Req 02 - Check if noexec option is set on /var/tmp partition using findmnt and grep"
+  ansible.builtin.shell: |
+    findmnt -kn /var/tmp | grep -v noexec
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: partition_exists | bool
+
+- name: "Store requirement 02 details for existing partition"
+  set_fact:
+    task_02_name: "Check if noexec option is set on /var/tmp partition using findmnt and grep"
+    task_02_cmd: "findmnt -kn /var/tmp | grep -v noexec"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL' }}"
+    details_02: "{{ 'noexec is set' if (result_02.stdout | default('') | trim) == '' else 'noexec is not set' }}"
+  when: partition_exists | bool
+
+- name: "Set requirement 02 details when no partition"
+  set_fact:
+    task_02_name: "Check if noexec option is set on /var/tmp partition using findmnt and grep"
+    task_02_cmd: "findmnt -kn /var/tmp | grep -v noexec"
+    task_02_rc: "-1"
+    data_02: ""
+    status_02: "SKIP"
+    details_02: "No separate /var/tmp partition"
+  when: "not (partition_exists | bool)"
+
+- name: "Req 03 - Summarize overall compliance"
+  set_fact:
+    status_03: >-
+      {%- if not (partition_exists | bool) -%}
+        SKIP
+      {%- elif status_02 | trim == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    data_03: >-
+      {%- if not (partition_exists | bool) -%}
+        SKIP
+      {%- elif status_02 | trim == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    task_03_name: "Summarize overall compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: "0"
+    details_03: >-
+      {%- if not (partition_exists | bool) -%}
+        No separate partition, SKIP
+      {%- elif status_02 | trim == 'PASS' -%}
+        Compliant
+      {%- else -%}
+        noexec not set
+      {%- endif -%}
+
+- name: "Req 04 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_03 }}"
+    task_04_name: "Store final audit result in cis_result"
+    task_04_cmd: "N/A"
+    task_04_rc: "0"
+    data_04: "{{ status_03 }}"
+    status_04: "{{ status_03 }}"
+    details_04: "Final result stored"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.2.5.4"
+    - "Reference: CIS Benchmark checkpoint 1.1.2.5.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

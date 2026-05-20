@@ -1,0 +1,508 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_1_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if aidecheck.service exists"
+  ansible.builtin.stat:
+    path: /etc/systemd/system/aidecheck.service
+  register: _snap_service
+  tags: [snapshot]
+- name: "Snapshot - Backup aidecheck.service if exists"
+  ansible.builtin.copy:
+    src: /etc/systemd/system/aidecheck.service
+    dest: "{{ backup_dir }}/aidecheck.service.present"
+    remote_src: true
+  when: "_snap_service.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Check if aidecheck.timer exists"
+  ansible.builtin.stat:
+    path: /etc/systemd/system/aidecheck.timer
+  register: _snap_timer
+  tags: [snapshot]
+- name: "Snapshot - Backup aidecheck.timer if exists"
+  ansible.builtin.copy:
+    src: /etc/systemd/system/aidecheck.timer
+    dest: "{{ backup_dir }}/aidecheck.timer.present"
+    remote_src: true
+  when: "_snap_timer.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Save current crontab for root"
+  ansible.builtin.shell: crontab -u root -l 2>/dev/null || echo ""
+  args:
+    executable: /bin/bash
+  register: _snap_cron
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist crontab to backup"
+  ansible.builtin.copy:
+    content: "{{ _snap_cron.stdout }}"
+    dest: "{{ backup_dir }}/root.crontab.present"
+  tags: [snapshot]
+
+- name: "Initialize report variables"
+  ansible.builtin.set_fact:
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    data_07: "Not collected yet"
+    status_07: "ERROR"
+    details_07: "Not evaluated"
+    task_08_name: "Not executed"
+    task_08_cmd: "N/A"
+    task_08_rc: -1
+    data_08: "Not collected yet"
+    status_08: "ERROR"
+    details_08: "Not evaluated"
+    task_09_name: "Not executed"
+    task_09_cmd: "N/A"
+    task_09_rc: -1
+    data_09: "Not collected yet"
+    status_09: "ERROR"
+    details_09: "Not evaluated"
+    task_10_name: "Not executed"
+    task_10_cmd: "N/A"
+    task_10_rc: -1
+    data_10: "Not collected yet"
+    status_10: "ERROR"
+    details_10: "Not evaluated"
+  tags: [execute]
+- block:
+# Requirement 1 - Check if aide is installed
+  - name: "Req 01 - Check if aide is installed"
+    ansible.builtin.shell: |
+      if ! command -v aide &>/dev/null; then echo 'AIDE not installed'; exit 1; fi
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if aide is installed"
+      task_01_cmd: "if ! command -v aide &>/dev/null; then echo 'AIDE not installed'; exit 1; fi"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ (result_01.rc | default(-1) == 0) | ternary('PASS', 'SKIP') | trim }}"
+      details_01: "{{ 'aide is installed' if (result_01.rc | default(-1) == 0) else 'AIDE not installed, skipping remediation' }}"
+    tags: [execute]
+
+# Requirement 2 - Add cron job
+  - name: "Req 02 - Add cron job for aide check"
+    ansible.builtin.cron:
+      name: "aide check"
+      minute: "0"
+      hour: "5"
+      job: "/usr/sbin/aide --check"
+      user: root
+    register: result_02
+    failed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Add cron job for aide check"
+      task_02_cmd: "cron module: /usr/sbin/aide --check at 0 5 * * *"
+      task_02_rc: "{{ 0 if (result_02 is not skipped and not result_02.failed) else (result_02.rc | default(-1)) }}"
+      data_02: "{{ 'cron job added' if (result_02 is not skipped and not result_02.failed) else '' }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else ('PASS' if not result_02.failed else 'FAIL') | trim }}"
+      details_02: "{{ 'Cron job added to root crontab' if (result_02 is not skipped and not result_02.failed) else 'Cron job not applied' if result_02 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 3 - Create aidecheck.service
+  - name: "Req 03 - Create aidecheck.service unit file"
+    ansible.builtin.copy:
+      content: |
+        [Unit]
+        Description=Aide Check
+
+        [Service]
+        Type=simple
+        ExecStart=/usr/sbin/aide --check
+
+        [Install]
+        WantedBy=multi-user.target
+      dest: /etc/systemd/system/aidecheck.service
+      owner: root
+      group: root
+      mode: '0644'
+    register: result_03
+    failed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Create aidecheck.service unit file"
+      task_03_cmd: "copy module: /etc/systemd/system/aidecheck.service"
+      task_03_rc: "{{ 0 if (result_03 is not skipped and not result_03.failed) else (result_03.rc | default(-1)) }}"
+      data_03: "{{ '/etc/systemd/system/aidecheck.service created' if (result_03 is not skipped and not result_03.failed) else '' }}"
+      status_03: "{{ 'SKIP' if result_03 is skipped else ('PASS' if not result_03.failed else 'FAIL') | trim }}"
+      details_03: "{{ 'Service unit file created with correct content' if (result_03 is not skipped and not result_03.failed) else 'Service unit file creation failed' if result_03 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 4 - Create aidecheck.timer
+  - name: "Req 04 - Create aidecheck.timer unit file"
+    ansible.builtin.copy:
+      content: |
+        [Unit]
+        Description=Aide check every day at 5AM
+
+        [Timer]
+        OnCalendar=*-*-* 05:00:00
+        Unit=aidecheck.service
+
+        [Install]
+        WantedBy=multi-user.target
+      dest: /etc/systemd/system/aidecheck.timer
+      owner: root
+      group: root
+      mode: '0644'
+    register: result_04
+    failed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Create aidecheck.timer unit file"
+      task_04_cmd: "copy module: /etc/systemd/system/aidecheck.timer"
+      task_04_rc: "{{ 0 if (result_04 is not skipped and not result_04.failed) else (result_04.rc | default(-1)) }}"
+      data_04: "{{ '/etc/systemd/system/aidecheck.timer created' if (result_04 is not skipped and not result_04.failed) else '' }}"
+      status_04: "{{ 'SKIP' if result_04 is skipped else ('PASS' if not result_04.failed else 'FAIL') | trim }}"
+      details_04: "{{ 'Timer unit file created with correct content' if (result_04 is not skipped and not result_04.failed) else 'Timer unit file creation failed' if result_04 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 5 - Set ownership and permissions
+  - name: "Req 05 - Set ownership and permissions on aidecheck files"
+    ansible.builtin.file:
+      path: "{{ item }}"
+      owner: root
+      group: root
+      mode: '0644'
+    loop:
+    - /etc/systemd/system/aidecheck.service
+    - /etc/systemd/system/aidecheck.timer
+    register: result_05
+    failed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Set ownership and permissions on aidecheck files"
+      task_05_cmd: "file module: chown root:root and chmod 0644"
+      task_05_rc: "{{ result_05.results[0].rc | default(0) if result_05.results is defined else -1 }}"
+      data_05: "{{ 'ownership and permissions set' if (result_05 is not skipped and result_05 is not failed) else '' }}"
+      status_05: "{{ 'SKIP' if result_05 is skipped else ('PASS' if result_05 is not failed else 'FAIL') | trim }}"
+      details_05: "{{ 'Files owned by root:root with permissions 0644' if (result_05 is not skipped and result_05 is not failed) else 'Permission setting failed' if result_05 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 6 - systemd daemon-reload
+  - name: "Req 06 - Reload systemd daemon"
+    ansible.builtin.systemd:
+      daemon_reload: yes
+    register: result_06
+    failed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    ansible.builtin.set_fact:
+      task_06_name: "Reload systemd daemon"
+      task_06_cmd: "systemctl daemon-reload"
+      task_06_rc: "{{ 0 if (result_06 is not skipped and not result_06.failed) else (result_06.rc | default(-1)) }}"
+      data_06: "{{ 'daemon-reload succeeded' if (result_06 is not skipped and not result_06.failed) else '' }}"
+      status_06: "{{ 'SKIP' if result_06 is skipped else ('PASS' if not result_06.failed else 'FAIL') | trim }}"
+      details_06: "{{ 'systemd reloaded unit files' if (result_06 is not skipped and not result_06.failed) else 'Daemon reload failed' if result_06 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 7 - Enable aidecheck.service
+  - name: "Req 07 - Enable aidecheck.service"
+    ansible.builtin.systemd:
+      name: aidecheck.service
+      enabled: yes
+    register: result_07
+    failed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 07 details"
+    ansible.builtin.set_fact:
+      task_07_name: "Enable aidecheck.service"
+      task_07_cmd: "systemctl enable aidecheck.service"
+      task_07_rc: "{{ 0 if (result_07 is not skipped and not result_07.failed) else (result_07.rc | default(-1)) }}"
+      data_07: "{{ 'aidecheck.service enabled' if (result_07 is not skipped and not result_07.failed) else '' }}"
+      status_07: "{{ 'SKIP' if result_07 is skipped else ('PASS' if not result_07.failed else 'FAIL') | trim }}"
+      details_07: "{{ 'aidecheck.service is enabled' if (result_07 is not skipped and not result_07.failed) else 'Failed to enable service' if result_07 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 8 - Enable and start aidecheck.timer
+  - name: "Req 08 - Enable and start aidecheck.timer"
+    ansible.builtin.systemd:
+      name: aidecheck.timer
+      enabled: yes
+      state: started
+    register: result_08
+    failed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 08 details"
+    ansible.builtin.set_fact:
+      task_08_name: "Enable and start aidecheck.timer"
+      task_08_cmd: "systemctl --now enable aidecheck.timer"
+      task_08_rc: "{{ 0 if (result_08 is not skipped and not result_08.failed) else (result_08.rc | default(-1)) }}"
+      data_08: "{{ 'aidecheck.timer enabled and started' if (result_08 is not skipped and not result_08.failed) else '' }}"
+      status_08: "{{ 'SKIP' if result_08 is skipped else ('PASS' if not result_08.failed else 'FAIL') | trim }}"
+      details_08: "{{ 'aidecheck.timer is enabled and started' if (result_08 is not skipped and not result_08.failed) else 'Failed to enable/start timer' if result_08 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 9 - Verify scheduling
+  - name: "Req 09 - Verify aide check scheduling"
+    ansible.builtin.shell: |
+      if crontab -u root -l 2>/dev/null | grep -q '/usr/sbin/aide --check'; then
+        echo "Cron job configured"
+      elif systemctl is-active aidecheck.timer 2>/dev/null | grep -q 'active'; then
+        echo "Systemd timer active"
+      else
+        echo "No scheduling found"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_09
+    failed_when: false
+    changed_when: false
+    when: result_01.rc | default(-1) == 0
+    tags: [execute]
+
+  - name: "Store requirement 09 details"
+    ansible.builtin.set_fact:
+      task_09_name: "Verify aide check scheduling"
+      task_09_cmd: "crontab -u root -l | grep aide || systemctl is-active aidecheck.timer"
+      task_09_rc: "{{ result_09.rc | default(-1) }}"
+      data_09: "{{ result_09.stdout | default('') | trim }}"
+      status_09: "{{ 'SKIP' if result_09 is skipped else ('PASS' if (result_09.stdout | default('') | trim) in ['Cron job configured', 'Systemd timer active'] else 'FAIL') | trim }}"
+      details_09: "{{ 'Scheduling verified: ' ~ (result_09.stdout | default('') | trim) if (result_09 is not skipped and (result_09.stdout | default('') | trim | length > 0)) else 'Scheduling verification failed' if result_09 is not skipped else 'Skipped (AIDE not installed)' }}"
+    tags: [execute]
+
+# Requirement 10 - Store final remediation result in cis_result
+  - name: "Req 10 - Set cis_result from last requirement status"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_09 | default('ERROR') | trim }}"
+      task_10_name: "Store final remediation result"
+      task_10_cmd: "set_fact cis_result"
+      task_10_rc: 0
+    tags: [execute]
+
+  - name: "Req 10 - Set cis_result report variables"
+    ansible.builtin.set_fact:
+      data_10: "{{ cis_result }}"
+      status_10: "{{ cis_result }}"
+      details_10: "{{ 'Overall remediation status derived from requirement 09' if cis_result is defined else 'Unknown' }}"
+    tags: [execute]
+
+# Generate remediation report
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.1.2"
+      - "Reference: CIS Benchmark checkpoint 6.1.2"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_07 | default('ERROR') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 08 - {{ req_08 }}:"
+      - "  Task: {{ task_08_name | default('Task not recorded') }}"
+      - "  Command: {{ task_08_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_08_rc | default(-1) }}"
+      - "  Data: {{ data_08 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_08 | default('ERROR') | trim }}"
+      - "  Details: {{ details_08 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 09 - {{ req_09 }}:"
+      - "  Task: {{ task_09_name | default('Task not recorded') }}"
+      - "  Command: {{ task_09_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_09_rc | default(-1) }}"
+      - "  Data: {{ data_09 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_09 | default('ERROR') | trim }}"
+      - "  Details: {{ details_09 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 10 - {{ req_10 }}:"
+      - "  Task: {{ task_10_name | default('Task not recorded') }}"
+      - "  Command: {{ task_10_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_10_rc | default(-1) }}"
+      - "  Data: {{ data_10 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_10 | default('ERROR') | trim }}"
+      - "  Details: {{ details_10 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_09 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup directory exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}"
+    register: _restore_dir
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore aidecheck.service if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/aidecheck.service.present"
+    register: _restore_service_bak
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Copy back aidecheck.service"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/aidecheck.service.present"
+      dest: /etc/systemd/system/aidecheck.service
+      remote_src: true
+    when: "_restore_service_bak.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore aidecheck.timer if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/aidecheck.timer.present"
+    register: _restore_timer_bak
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Copy back aidecheck.timer"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/aidecheck.timer.present"
+      dest: /etc/systemd/system/aidecheck.timer
+      remote_src: true
+    when: "_restore_timer_bak.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore root crontab if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/root.crontab.present"
+    register: _restore_cron_bak
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Copy back root crontab"
+    ansible.builtin.shell: |
+      cat "{{ backup_dir }}/root.crontab.present" | crontab -u root -
+    args:
+      executable: /bin/bash
+    when: "_restore_cron_bak.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: "_restore_dir.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

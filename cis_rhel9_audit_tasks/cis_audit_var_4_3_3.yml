@@ -1,0 +1,4 @@
+req_01: "Check if nftables utility is in use on the system using command: systemctl --quiet is-enabled nftables.service. Expected result: command returns exit code 0 (service enabled)."
+req_02: "Check that the nftables input hook base chain has a default policy of DROP using command: systemctl --quiet is-enabled nftables.service && nft list ruleset | grep 'hook input' | grep -v 'policy drop'. Expected result: no output returned."
+req_03: "Check that the nftables forward hook base chain has a default policy of DROP using command: systemctl --quiet is-enabled nftables.service && nft list ruleset | grep 'hook forward' | grep -v 'policy drop'. Expected result: no output returned."
+req_04: "Summarize overall compliance: if both checks return no output and nftables is enabled, the system is compliant with nftables default deny firewall policy."

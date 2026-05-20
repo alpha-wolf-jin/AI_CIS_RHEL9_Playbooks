@@ -1,0 +1,8 @@
+playbook_name: "cis_2_4_1_5_remediate"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+
+req_01: "Apply prerequisite check: verify cron is installed using command: `if command -v cron >/dev/null 2>&1; then echo 'cron installed'; else echo 'cron not installed'; fi`. Expected result: cron installed"
+req_02: "Apply ownership change on /etc/cron.weekly using command: `chown root:root /etc/cron.weekly/`. Expected result: ownership set to root:root"
+req_03: "Apply permission restriction on /etc/cron.weekly using command: `chmod og-rwx /etc/cron.weekly/`. Expected result: permissions set to 700 (drwx------)"
+req_04: "Verify ownership and permissions on /etc/cron.weekly using command: `stat -c '%U:%G %a' /etc/cron.weekly/`. Expected result: root:root 700"
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

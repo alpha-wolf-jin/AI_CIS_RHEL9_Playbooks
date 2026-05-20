@@ -1,0 +1,183 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_5_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0755'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: _pre_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Record audit script pre-existence"
+  ansible.builtin.copy:
+    dest: "{{ backup_dir }}/audit_script_pre_exists.txt"
+    content: "{{ _pre_script_stat.stat.exists | default(false) | string }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Check installed packages"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Determine systemd presence"
+    ansible.builtin.set_fact:
+      systemd_installed: "{{ 'systemd' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'systemd' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Execute audit script"
+    ansible.builtin.shell: "/bin/bash {{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: script_result
+    changed_when: false
+    failed_when: false
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Remove temporary script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    failed_when: false
+    when: not playbook_skipped
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Run audit script to verify ProcessSizeMax=0"
+      task_01_cmd: "bash {{ audit_script }}"
+      task_01_rc: "{{ script_result.rc | default(-1) }}"
+      data_01: "{{ script_result.stdout | default('') | trim }}"
+      status_01: >-
+        {{ 'NOT_APPLICABLE' if playbook_skipped else
+           'PASS' if (script_result is defined and script_result.stdout | default('') | trim | length > 0) else
+           'FAIL' }}
+      details_01: >-
+        {% if playbook_skipped %}
+          systemd is not installed — check not applicable
+        {% elif (script_result is defined and script_result.stdout | default('') | trim | length > 0) %}
+          Audit script executed successfully
+        {% else %}
+          Audit script execution failed or produced no output
+        {% endif %}
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Summarize compliance status"
+      task_02_cmd: "N/A"
+      task_02_rc: 0
+      data_02: "{{ ('PASS' if '** PASS **' in (script_result.stdout | default('')) else 'FAIL' if '** FAIL **' in (script_result.stdout | default('')) else 'UNKNOWN') if not playbook_skipped else 'NOT_APPLICABLE' }}"
+      status_02: >-
+        {{ 'NOT_APPLICABLE' if playbook_skipped else
+           'PASS' if '** PASS **' in (script_result.stdout | default('')) else
+           'FAIL' if '** FAIL **' in (script_result.stdout | default('')) else
+           'UNKNOWN' }}
+      details_02: >-
+        {% if playbook_skipped %}
+          systemd is not installed — check not applicable
+        {% elif '** PASS **' in (script_result.stdout | default('')) %}
+          ProcessSizeMax is correctly set to 0
+        {% elif '** FAIL **' in (script_result.stdout | default('')) %}
+          ProcessSizeMax is not correctly set to 0
+        {% else %}
+          Compliance status could not be determined from script output
+        {% endif %}
+    tags: [execute]
+
+  - name: "Store overall compliance result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | trim }}"
+      task_03_name: "Store overall compliance result in cis_result"
+      task_03_cmd: "N/A"
+      task_03_rc: 0
+      data_03: "{{ status_02 | trim }}"
+      status_03: "{{ status_02 | trim }}"
+      details_03: "Overall compliance status derived from audit script output"
+    tags: [execute]
+
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.5.3"
+      - "Reference: CIS Benchmark checkpoint 1.5.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if audit script exists now"
+    ansible.builtin.stat:
+      path: "{{ audit_script }}"
+    register: _post_script_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read pre-existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/audit_script_pre_exists.txt"
+    register: _pre_exists_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if it was created by this playbook"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - "_post_script_stat.stat.exists | default(false)"
+    - "((_pre_exists_marker.content | b64decode | default('True') | trim) == 'False')"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

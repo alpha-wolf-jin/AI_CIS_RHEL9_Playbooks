@@ -1,0 +1,191 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_3_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/chrony.conf exists"
+  ansible.builtin.stat:
+    path: /etc/chrony.conf
+  register: chrony_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/chrony.conf if exists"
+  ansible.builtin.copy:
+    src: /etc/chrony.conf
+    dest: "{{ backup_dir }}/chrony.conf"
+    remote_src: true
+  when: chrony_conf_stat.stat.exists
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+    tags: [execute]
+
+  - name: "Check if chrony package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    tags: [execute]
+
+  - name: "Determine chrony presence"
+    set_fact:
+      chrony_present: "{{ 'chrony' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Set SKIP status when chrony not installed"
+    set_fact:
+      status_01: "SKIP"
+      data_01: "chrony not installed"
+      details_01: "chrony package is not installed - remediation skipped"
+      task_01_name: "Install chrony via dnf (skipped)"
+      task_01_cmd: "dnf install chrony"
+      task_01_rc: -1
+      status_02: "SKIP"
+      data_02: "Not collected"
+      details_02: "chrony not installed - verification skipped"
+      task_02_name: "Verify time sync via chronyc tracking (skipped)"
+      task_02_cmd: |
+        chronyc tracking | grep 'Reference ID\\|Stratum'
+      task_02_rc: -1
+      cis_result: "SKIP"
+    when: not chrony_present
+    tags: [execute]
+
+  - name: "Req 01 - Install chrony"
+    ansible.builtin.dnf:
+      name: chrony
+      state: present
+    register: install_result
+    failed_when: false
+    when: chrony_present
+    tags: [execute]
+
+  - name: "Req 01 - Verify chrony is installed"
+    ansible.builtin.shell: rpm -q chrony
+    args:
+      executable: /bin/bash
+    register: verify_install
+    failed_when: false
+    changed_when: false
+    when: chrony_present
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Install chrony via dnf"
+      task_01_cmd: "dnf install chrony"
+      task_01_rc: "{{ verify_install.rc | default(-1) }}"
+      data_01: "{{ 'chrony installed' if verify_install.rc == 0 else 'FAIL' }}"
+      status_01: "{{ ('PASS' if verify_install.rc == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'chrony package installed' if verify_install.rc == 0 else 'chrony installation failed' }}"
+    when: chrony_present
+    tags: [execute]
+
+  - name: "Req 02 - Verify time synchronization"
+    ansible.builtin.shell: |
+      if chronyc tracking | grep -q 'Reference ID\|Stratum' 2>/dev/null; then
+        echo "SYNCED"
+      else
+        echo "NOT_SYNCED"
+      fi
+    args:
+      executable: /bin/bash
+    register: sync_check_result
+    failed_when: false
+    changed_when: false
+    when: chrony_present
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Verify time sync via chronyc tracking"
+      task_02_cmd: |
+        chronyc tracking | grep 'Reference ID\\|Stratum'
+      task_02_rc: "{{ sync_check_result.rc | default(-1) }}"
+      data_02: "{{ sync_check_result.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if sync_check_result.stdout | default('') == 'SYNCED' else 'FAIL') | trim }}"
+      details_02: "{{ 'Time synchronized' if sync_check_result.stdout | default('') == 'SYNCED' else 'Time not synchronized' }}"
+    when: chrony_present
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result (cis_result)"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.3.1"
+      - "Reference: CIS Benchmark checkpoint 2.3.1"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store final remediation result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result | default('') | trim }}"
+      - "  Status: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if chrony.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/chrony.conf"
+    register: restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore chrony.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/chrony.conf"
+      dest: /etc/chrony.conf
+      remote_src: true
+    when: restore_backup_stat.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

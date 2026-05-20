@@ -1,0 +1,67 @@
+req_01: "Run the provided audit script to verify kernel module loading unloading and modification is collected"
+req_02: "Summarise compliance status for Ensure kernel module loading unloading and modification is collected. Expected result: PASS if compliant, FAIL otherwise"
+req_03: "Generate audit report with CIS checkpoint details"
+ondisk_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+    awk '/^ *-a *always,exit/ \
+    &&/ -F *arch=b(32|64)/ \
+    &&(/ -F auid!=unset/||/ -F auid!=-1/||/ -F auid!=4294967295/) \
+    &&/ -S/ \
+    &&(/init_module/ \
+      ||/finit_module/ \
+      ||/delete_module/ \
+      ||/create_module/ \
+      ||/query_module/) \
+    &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)' /etc/audit/rules.d/*.rules
+
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && awk "/^ *-a *always,exit/ \
+    &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) \
+    &&/ -F *auid>=${UID_MIN}/ \
+    &&/ -F *perm=x/ \
+    &&/ -F *path=\/usr\/bin\/kmod/ \
+    &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules \
+    || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+  }
+  {% endraw %}
+loaded_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+    auditctl -l | awk '/^ *-a *always,exit/ \
+    &&/ -F *arch=b(32|64)/ \
+    &&(/ -F auid!=unset/||/ -F auid!=-1/||/ -F auid!=4294967295/) \
+    &&/ -S/ \
+    &&(/init_module/ \
+      ||/finit_module/ \
+      ||/delete_module/ \
+      ||/create_module/ \
+      ||/query_module/) \
+    &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'
+
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && auditctl -l | awk "/^ *-a *always,exit/ \
+    &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) \
+    &&/ -F *auid>=${UID_MIN}/ \
+    &&/ -F *perm=x/ \
+    &&/ -F *path=\/usr\/bin\/kmod/ \
+    &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" \
+    || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+  }
+  {% endraw %}
+symlink_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     a_files=("/usr/sbin/lsmod" "/usr/sbin/rmmod" "/usr/sbin/insmod" "/usr/sbin/modinfo" "/usr/sbin/modprobe" "/usr/sbin/depmod")
+     for l_file in "${a_files[@]}"; do
+        if [ "$(readlink -f "$l_file")" = "$(readlink -f /bin/kmod)" ]; then
+           printf "OK: \"$l_file\"\n"
+        else
+           printf "Issue with symlink for file: \"$l_file\"\n"
+        fi
+     done
+  }
+  {% endraw %}

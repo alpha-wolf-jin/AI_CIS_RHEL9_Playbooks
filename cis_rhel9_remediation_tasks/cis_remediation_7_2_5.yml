@@ -1,0 +1,283 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_7_2_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/group exists"
+  ansible.builtin.stat:
+    path: /etc/group
+  register: _group_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/group if exists"
+  ansible.builtin.copy:
+    src: /etc/group
+    dest: "{{ backup_dir }}/group.backup"
+    remote_src: true
+  when: _group_stat.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if required system tools are available"
+    ansible.builtin.shell: "which awk cut sort uniq groupmod find"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if required system tools are available"
+      task_01_cmd: "which awk cut sort uniq groupmod find"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' | trim }}"
+      details_01: "{{ 'All tools found' if (result_01.rc | default(-1)) == 0 else 'One or more tools missing' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Identify duplicate GIDs in /etc/group"
+    ansible.builtin.shell: "awk -F: '{print $3}' /etc/group | sort | uniq -d"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "(result_01.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Identify duplicate GIDs in /etc/group"
+      task_02_cmd: "awk -F: '{print $3}' /etc/group | sort | uniq -d"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_02: "{{ 'Duplicate GIDs found: ' + (result_02.stdout | default('') | trim) if (result_02.stdout | default('') | trim) != '' else 'No duplicate GIDs found' }}"
+    when: result_02 is defined
+    tags: [execute]
+
+  - name: "Req 03 - List groups sharing first duplicate GID"
+    ansible.builtin.shell: |
+      DUP_GID=$(awk -F: '{print $3}' /etc/group | sort | uniq -d | head -1)
+      if [ -n "$DUP_GID" ]; then
+        awk -F: -v gid="$DUP_GID" '$3 == gid {print $1}' /etc/group
+      fi
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    when:
+    - "result_02 is defined"
+    - "(result_02.stdout | default('') | trim) != ''"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "List groups sharing first duplicate GID"
+      task_03_cmd: "awk -F: -v gid=<DUPLICATE_GID> '$3 == gid {print $1}' /etc/group"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'SKIPPED' if result_03.skipped | default(false) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_03: "{{ 'No duplicate GIDs to list' if result_03.skipped | default(false) else ('Groups listed' if (result_03.stdout | default('') | trim) != '' else 'No groups to list') }}"
+    when: result_03 is defined
+    tags: [execute]
+
+  - name: "Req 04 - Find unused GID"
+    ansible.builtin.shell: |
+      awk -F: '{print $3}' /etc/group | sort -n | awk '{if(NR==1) next; if($1!=prev+1) {print prev+1; exit} prev=$1}'
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when:
+    - "result_02 is defined"
+    - "(result_02.stdout | default('') | trim) != ''"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Find unused GID"
+      task_04_cmd: "awk -F: '{print $3}' /etc/group | sort -n | awk '{if(NR==1) next; if($1!=prev+1) {print prev+1; exit} prev=$1}'"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'SKIPPED' if result_04.skipped | default(false) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_04: "{{ 'No duplicate GIDs to resolve' if result_04.skipped | default(false) else ('Unused GID found: ' + (result_04.stdout | default('') | trim) if (result_04.stdout | default('') | trim) != '' else 'No unused GID identified') }}"
+    when: result_04 is defined
+    tags: [execute]
+
+  - name: "Req 05 - Assign new unique GID to conflicting group"
+    ansible.builtin.shell: |
+      DUP_GID=$(awk -F: '{print $3}' /etc/group | sort | uniq -d | head -1)
+      if [ -n "$DUP_GID" ]; then
+        CONFLICT_GROUP=$(awk -F: -v gid="$DUP_GID" '$3 == gid {print $1}' /etc/group | tail -1)
+        NEW_GID=$(awk -F: '{print $3}' /etc/group | sort -n | awk '{if(NR==1) next; if($1!=prev+1) {print prev+1; exit} prev=$1}')
+        if [ -n "$NEW_GID" ]; then
+          groupmod -g "$NEW_GID" "$CONFLICT_GROUP" && \
+          echo "Changed group $CONFLICT_GROUP from GID $DUP_GID to $NEW_GID"
+        fi
+      fi
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    when:
+    - "result_02 is defined"
+    - "(result_02.stdout | default('') | trim) != ''"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Assign new unique GID to conflicting group"
+      task_05_cmd: "groupmod -g <NEW_UNIQUE_GID> <GROUP_NAME>"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: "{{ 'SKIPPED' if result_05.skipped | default(false) else ('PASS' if (result_05.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_05: "{{ 'No conflicting groups to remediate' if result_05.skipped | default(false) else ('GID updated' if (result_05.rc | default(-1)) == 0 else 'Failed to update GID') }}"
+    when: result_05 is defined
+    tags: [execute]
+
+  - name: "Req 06 - Update file ownership for changed group"
+    ansible.builtin.shell: |
+      DUP_GID=$(awk -F: '{print $3}' /etc/group | sort | uniq -d | head -1)
+      if [ -n "$DUP_GID" ]; then
+        CONFLICT_GROUP=$(awk -F: -v gid="$DUP_GID" '$3 == gid {print $1}' /etc/group | tail -1)
+        NEW_GID=$(getent group "$CONFLICT_GROUP" | cut -d: -f3)
+        find / -gid "$DUP_GID" -exec chgrp "$NEW_GID" {} \; 2>/dev/null
+        echo "Updated files from GID $DUP_GID to $NEW_GID"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_06
+    failed_when: false
+    when:
+    - "result_05 is defined"
+    - "not (result_05.skipped | default(false))"
+    - "(result_05.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Update file ownership for changed group"
+      task_06_cmd: |
+        find / -gid <OLD_DUPLICATE_GID> -exec chgrp <NEW_UNIQUE_GID> {} \\; 2>/dev/null
+      task_06_rc: "{{ result_06.rc | default(-1) }}"
+      data_06: "{{ result_06.stdout | default('') | trim }}"
+      status_06: "{{ 'SKIPPED' if result_06.skipped | default(false) else ('PASS' if (result_06.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_06: "{{ 'No GID changes made, ownership update skipped' if result_06.skipped | default(false) else ('File ownership updated' if (result_06.rc | default(-1)) == 0 else 'Failed to update ownership') }}"
+    when: result_06 is defined
+    tags: [execute]
+
+  - name: "Req 07 - Verify no duplicate GIDs remain"
+    ansible.builtin.shell: "awk -F: '{print $3}' /etc/group | sort | uniq -d"
+    args:
+      executable: /bin/bash
+    register: result_07
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 07 details"
+    set_fact:
+      task_07_name: "Verify no duplicate GIDs remain"
+      task_07_cmd: "awk -F: '{print $3}' /etc/group | sort | uniq -d"
+      task_07_rc: "{{ result_07.rc | default(-1) }}"
+      data_07: "{{ result_07.stdout | default('') | trim }}"
+      status_07: "{{ 'PASS' if (result_07.stdout | default('') | trim) == '' else 'FAIL' }}"
+      details_07: "{{ 'No duplicate GIDs remain' if (result_07.stdout | default('') | trim) == '' else 'Duplicate GIDs still exist: ' + (result_07.stdout | default('') | trim) }}"
+    tags: [execute]
+
+  - name: "Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_07 | default('UNKNOWN') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 7.2.5"
+      - "Reference: CIS Benchmark checkpoint 7.2.5"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 08 - {{ req_08 }}:"
+      - "  Task: Store final remediation result in cis_result"
+      - "  Command: set_fact: cis_result = status_07"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Status: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: Derived from final verification (Req 07)"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+      # The always block with automatic restore has been removed per feedback.
+      # The snapshot backup tasks in pre_tasks remain for safety but are not
+      # automatically restored after remediation.

@@ -1,0 +1,272 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_4.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    data_07: "Not collected yet"
+    status_07: "ERROR"
+    details_07: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+
+- name: "Req 01 - Check if bind package is installed"
+  ansible.builtin.shell: "rpm -q bind"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if bind package is installed"
+    task_01_cmd: "rpm -q bind"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) != 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Package bind is not installed' if result_01.rc | default(-1) != 0 else 'Package bind is installed') | trim }}"
+
+- name: "Req 02 - Check if named.service is enabled"
+  ansible.builtin.shell: "systemctl is-enabled named.service 2>/dev/null | grep 'enabled'"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc == 0"
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check if named.service is enabled"
+    task_02_cmd: "systemctl is-enabled named.service 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: >-
+      {%- if result_02.skipped | default(false) -%}
+        SKIP
+      {%- elif result_02.rc | default(-1) != 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if result_02.skipped | default(false) -%}
+        Bind package not installed, check skipped
+      {%- elif result_02.rc | default(-1) != 0 -%}
+        Named service is not enabled
+      {%- else -%}
+        Named service is enabled
+      {%- endif -%}
+
+- name: "Req 03 - Check if named.service is active"
+  ansible.builtin.shell: "systemctl is-active named.service 2>/dev/null | grep '^active'"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "result_01.rc == 0"
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check if named.service is active"
+    task_03_cmd: "systemctl is-active named.service 2>/dev/null | grep '^active'"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: >-
+      {%- if result_03.skipped | default(false) -%}
+        SKIP
+      {%- elif result_03.rc | default(-1) != 0 -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if result_03.skipped | default(false) -%}
+        Bind package not installed, check skipped
+      {%- elif result_03.rc | default(-1) != 0 -%}
+        Named service is not active
+      {%- else -%}
+        Named service is active
+      {%- endif -%}
+
+- name: "Req 04 - Verify dependent package approval per local site policy"
+  ansible.builtin.set_fact:
+    task_04_name: "Verify dependent package approval per local site policy"
+    task_04_cmd: "N/A (manual check)"
+    task_04_rc: 0
+    data_04: "Manual verification required"
+    status_04: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        SKIP
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_04: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        Bind not installed, manual check not applicable
+      {%- else -%}
+        Manual verification required: ensure dependent package is approved by local site policy
+      {%- endif -%}
+
+- name: "Req 05 - Verify stopping and masking meets local site policy"
+  ansible.builtin.set_fact:
+    task_05_name: "Verify stopping and masking meets local site policy"
+    task_05_cmd: "N/A (manual check)"
+    task_05_rc: 0
+    data_05: "Manual verification required"
+    status_05: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        SKIP
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_05: >-
+      {%- if result_01.rc | default(-1) != 0 -%}
+        Bind not installed, manual check not applicable
+      {%- else -%}
+        Manual verification required: stopping and masking meets local site policy
+      {%- endif -%}
+
+- name: "Req 06 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_06_name: "Summarize overall compliance"
+    task_06_cmd: "N/A"
+    task_06_rc: 0
+    data_06: "N/A"
+    status_06: >-
+      {%- if status_01 == 'PASS' -%}
+        PASS
+      {%- elif status_01 == 'FAIL' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 in ('SKIP', 'ERROR') and status_05 in ('SKIP', 'ERROR') -%}
+        ERROR
+      {%- elif status_01 == 'FAIL' and (status_02 == 'FAIL' or status_03 == 'FAIL') -%}
+        FAIL
+      {%- else -%}
+        ERROR
+      {%- endif -%}
+    details_06: >-
+      {%- if status_01 == 'PASS' -%}
+        DNS server services are not in use (package not installed).
+      {%- elif status_01 == 'FAIL' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 in ('SKIP', 'ERROR') and status_05 in ('SKIP', 'ERROR') -%}
+        DNS server package is installed but service is not enabled or active; manual policy checks are unverified.
+      {%- elif status_01 == 'FAIL' and (status_02 == 'FAIL' or status_03 == 'FAIL') -%}
+        DNS server package is installed and service is enabled or active.
+      {%- else -%}
+        Unable to determine compliance status.
+      {%- endif -%}
+
+- name: "Req 07 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    task_07_name: "Store final audit result in cis_result"
+    task_07_cmd: "N/A"
+    task_07_rc: 0
+    data_07: "{{ status_06 }}"
+    status_07: "{{ status_06 }}"
+    details_07: "{{ details_06 }}"
+    cis_result: "{{ status_06 }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.4"
+    - "Reference: CIS Benchmark checkpoint 2.1.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

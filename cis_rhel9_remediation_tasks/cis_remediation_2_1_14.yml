@@ -1,0 +1,297 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_14.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      data_06: "Report will be generated"
+      status_06: "PASS"
+      details_06: "Remediation report generation"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Store cis_result fact"
+      task_05_cmd: "set_fact"
+      task_05_rc: 0
+      task_06_name: "Generate remediation report"
+      task_06_cmd: "debug"
+      task_06_rc: 0
+
+  - name: "Gather package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Check if net-snmp is installed"
+    set_fact:
+      snmp_installed: "{{ 'net-snmp' in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Set skip_all if net-snmp not installed"
+    set_fact:
+      skip_all: true
+    when: not snmp_installed
+    tags: [execute]
+
+# Requirement 1
+  - name: "Req 01 - Stop snmpd service"
+    ansible.builtin.shell: "systemctl stop snmpd.service"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    when: not skip_all | default(false)
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Stop snmpd service"
+      task_01_cmd: "systemctl stop snmpd.service"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {%- if skip_all | default(false) -%}
+          SKIP
+        {%- elif result_01.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_01: >-
+        {%- if skip_all | default(false) -%}
+          Skipped because net-snmp package not installed
+        {%- elif result_01.rc | default(-1) == 0 -%}
+          snmpd service stopped successfully
+        {%- else -%}
+          Failed to stop snmpd service
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 2
+  - name: "Req 02 - Remove net-snmp package"
+    ansible.builtin.shell: "dnf remove -y net-snmp"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: not skip_all | default(false)
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Remove net-snmp package"
+      task_02_cmd: "dnf remove -y net-snmp"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {%- if skip_all | default(false) -%}
+          SKIP
+        {%- elif result_02.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if skip_all | default(false) -%}
+          Skipped because net-snmp package not installed
+        {%- elif result_02.rc | default(-1) == 0 -%}
+          net-snmp package removed successfully
+        {%- else -%}
+          Failed to remove net-snmp package - it may be required by other packages
+        {%- endif -%}
+      package_removed: "{{ result_02.rc | default(-1) == 0 and not (skip_all | default(false)) }}"
+    tags: [execute]
+
+# Requirement 3
+  - name: "Req 03 - Mask snmpd service if package removal failed"
+    ansible.builtin.shell: "systemctl mask snmpd.service"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when:
+    - "not skip_all | default(false)"
+    - "not package_removed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Mask snmpd service"
+      task_03_cmd: "systemctl mask snmpd.service"
+      task_03_rc: >-
+        {%- if not skip_all | default(false) and not package_removed | default(false) -%}
+          {{ result_03.rc | default(-1) }}
+        {%- else -%}
+          -1
+        {%- endif -%}
+      data_03: >-
+        {%- if not skip_all | default(false) and not package_removed | default(false) -%}
+          {{ result_03.stdout | default('') | trim }}
+        {%- else -%}
+          Not executed (skip)
+        {%- endif -%}
+      status_03: >-
+        {%- if skip_all | default(false) -%}
+          SKIP
+        {%- elif package_removed | default(false) -%}
+          SKIP
+        {%- elif result_03.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_03: >-
+        {%- if skip_all | default(false) -%}
+          Skipped because net-snmp package not installed
+        {%- elif package_removed | default(false) -%}
+          Skipped because net-snmp package was successfully removed
+        {%- elif result_03.rc | default(-1) == 0 -%}
+          snmpd service masked successfully
+        {%- else -%}
+          Failed to mask snmpd service
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 4 — fixed per feedback: redirect stderr to stdout
+  - name: "Req 04 - Verify snmpd service status"
+    ansible.builtin.shell: "systemctl status snmpd.service 2>&1"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify snmpd service status"
+      task_04_cmd: "systemctl status snmpd.service 2>&1"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: >-
+        {%- set out = result_04.stdout | default('') -%}
+        {%- if ('inactive' in out and 'masked' in out) or 'could not be found' in out -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_04: >-
+        {%- set out = result_04.stdout | default('') -%}
+        {%- if ('inactive' in out and 'masked' in out) or 'could not be found' in out -%}
+          Service is inactive, masked or not found - compliant
+        {%- else -%}
+          Service is not in expected state
+        {%- endif -%}
+    tags: [execute]
+
+# Requirement 5
+  - name: "Req 05 - Store cis_result fact"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+      task_05_rc: 0
+      status_05: "PASS"
+      data_05: "cis_result set to {{ status_04 | default('ERROR') | trim }}"
+      details_05: "Overall remediation result derived from requirement 04 verification"
+    tags: [execute]
+
+# Requirement 6: Generate remediation report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.14"
+      - "Reference: CIS Benchmark checkpoint 2.1.14"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(0) }}"
+      - "  Data: {{ data_06 | default('Report generated') | trim }}"
+      - "  Status: {{ status_06 | default('PASS') | trim }}"
+      - "  Details: {{ details_06 | default('Remediation report generated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

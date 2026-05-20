@@ -1,0 +1,7 @@
+playbook_name: "remediate_cis_2_1_20"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for dnf package manager using command: `which dnf`. Expected result: path to dnf binary."
+req_02: "Apply removal of X Window server packages using command: `dnf remove -y xorg-x11-server-common`. Expected result: packages removed successfully."
+req_03: "Verify X Window server packages are removed using command: `rpm -q xorg-x11-server-common`. Expected result: package xorg-x11-server-common is not installed."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_05: "Create a task named 'Generate remediation report' using debug msg with EXACTLY this format: REMEDIATION REPORT — CIS 2.1.20 ..."

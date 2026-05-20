@@ -1,0 +1,311 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_2_6.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/security/pwquality.conf from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/pwquality.conf.present"
+    dest: "/etc/security/pwquality.conf"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/security/pwquality.conf.d from prior checkpoint"
+  ansible.builtin.shell: |
+    if [ -d "{{ state_guard_dir }}/pwquality.conf.d" ]; then
+      rm -rf /etc/security/pwquality.conf.d/*
+      cp -r "{{ state_guard_dir }}/pwquality.conf.d/"* /etc/security/pwquality.conf.d/
+    fi
+  args:
+    executable: /bin/bash
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore PAM files from prior checkpoint"
+  ansible.builtin.shell: |
+    l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+    if [ -n "$l_pam_profile" ]; then
+      for f in system-auth password-auth; do
+        if [ -f "{{ state_guard_dir }}/${f}.present" ]; then
+          cp "{{ state_guard_dir }}/${f}.present" "/etc/authselect/$l_pam_profile/$f"
+        fi
+      done
+      authselect apply-changes
+    fi
+  args:
+    executable: /bin/bash
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/security/pwquality.conf exists"
+  ansible.builtin.stat:
+    path: "/etc/security/pwquality.conf"
+  register: _sg_pwq_conf
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/security/pwquality.conf"
+  ansible.builtin.copy:
+    src: "/etc/security/pwquality.conf"
+    dest: "{{ state_guard_dir }}/pwquality.conf.present"
+    remote_src: true
+  when: "_sg_pwq_conf.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/security/pwquality.conf.d exists"
+  ansible.builtin.stat:
+    path: "/etc/security/pwquality.conf.d"
+  register: _sg_pwq_d
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/security/pwquality.conf.d"
+  ansible.builtin.shell: |
+    mkdir -p "{{ state_guard_dir }}/pwquality.conf.d"
+    cp -r /etc/security/pwquality.conf.d/* "{{ state_guard_dir }}/pwquality.conf.d/" 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  when: "_sg_pwq_d.stat.exists and _sg_pwq_d.stat.isdir"
+  tags: [snapshot]
+- name: "State Guard - Backup PAM system-auth and password-auth"
+  ansible.builtin.shell: |
+    l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+    if [ -n "$l_pam_profile" ]; then
+      for f in system-auth password-auth; do
+        if [ -f "/etc/authselect/$l_pam_profile/$f" ]; then
+          cp "/etc/authselect/$l_pam_profile/$f" "{{ state_guard_dir }}/${f}.present"
+        fi
+      done
+    fi
+  args:
+    executable: /bin/bash
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE ===
+  - name: "Req 01 - Check if pam_pwquality is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if pam_pwquality not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'libpwquality' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Comment out dictcheck=0 in pwquality configuration files"
+    ansible.builtin.shell: |
+      for f in /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf; do
+        [ -f "$f" ] && sed -ri 's/^\s*dictcheck\s*=/# &/' "$f"
+      done
+      exit 0
+    args:
+      executable: /bin/bash
+    register: result_01a
+    failed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 01 - Remove dictcheck from pam_pwquality in PAM files"
+    ansible.builtin.shell: |
+      l_custom_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_custom_profile" ]; then
+        for l_pam_file in system-auth password-auth; do
+          l_authselect_file="/etc/authselect/$l_custom_profile/$l_pam_file"
+          if [ -f "$l_authselect_file" ]; then
+            sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+dictcheck\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+          fi
+        done
+        authselect apply-changes
+      else
+        echo "SKIP: No custom authselect profile found"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_01b
+    failed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 02 - Verify dictcheck not set to zero in pwquality configs"
+    ansible.builtin.shell: |
+      if grep -rs '^\s*dictcheck\s*=\s*0' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/ 2>/dev/null; then
+        echo "FAIL: dictcheck=0 found in pwquality configs"
+        exit 1
+      fi
+      echo "PASS: No dictcheck=0 in pwquality configs"
+      exit 0
+    args:
+      executable: /bin/bash
+    register: result_02a
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 02 - Verify dictcheck not on pam_pwquality in PAM files"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        if grep -E 'pam_pwquality\.so.*dictcheck' "/etc/authselect/$l_pam_profile/system-auth" "/etc/authselect/$l_pam_profile/password-auth" 2>/dev/null; then
+          echo "FAIL: dictcheck found on pam_pwquality in PAM files"
+          exit 1
+        fi
+        echo "PASS: No dictcheck on pam_pwquality in PAM files"
+      else
+        echo "SKIP: No custom authselect profile"
+      fi
+      exit 0
+    args:
+      executable: /bin/bash
+    register: result_02b
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if (result_01a.rc | default(-1) in [0, 1]) and (result_01b.rc | default(-1) == 0) and (result_02a.rc | default(-1) == 0) and (result_02b.rc | default(-1) == 0) else 'FAIL') }}"
+      cis_details: "{{ 'pam_pwquality not installed — remediation skipped' if playbook_skipped else ('All checks passed — system is compliant' if (result_01a.rc | default(-1) in [0, 1]) and (result_01b.rc | default(-1) == 0) and (result_02a.rc | default(-1) == 0) and (result_02b.rc | default(-1) == 0) else 'One or more checks failed') }}"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.3.3.2.6"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.2.6"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Comment out dictcheck=0 in pwquality configs"
+      - "  Command: sed -ri 's/^\\s*dictcheck\\s*=/\\# &/' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf"
+      - "  Exit code: {{ result_01a.rc | default(-1) if not playbook_skipped else 0 }}"
+      - "  Data: {{ result_01a.stdout | default('') | trim if not playbook_skipped else 'SKIPPED' }}"
+      - "  Status: {{ 'SKIPPED' if playbook_skipped else ('APPLIED' if result_01a.rc | default(-1) in [0, 1] else 'FAILED') }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else ('Completed successfully' if result_01a.rc | default(-1) in [0, 1] else 'Failed') }}"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Remove dictcheck from pam_pwquality in PAM files"
+      - "  Command: sed -ri 's/(^\\s*password\\s+(requisite|required|sufficient)\\s+pam_pwquality\\.so.*)(\\s+dictcheck\\s*=\\s*\\S+)(.*$)/\\1\\4/' /etc/authselect/*/system-auth /etc/authselect/*/password-auth; authselect apply-changes (only if custom profile exists)"
+      - "  Exit code: {{ result_01b.rc | default(-1) if not playbook_skipped else 0 }}"
+      - "  Data: {{ result_01b.stdout | default('') | trim if not playbook_skipped else 'SKIPPED' }}"
+      - "  Status: {{ 'SKIPPED' if playbook_skipped else ('APPLIED' if result_01b.rc | default(-1) == 0 else 'FAILED') }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else ('Completed successfully' if result_01b.rc | default(-1) == 0 else 'Failed') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify dictcheck not set to zero in pwquality configs"
+      - "  Command: grep -rs '^\\s*dictcheck\\s*=\\s*0' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/"
+      - "  Exit code: {{ result_02a.rc | default(-1) if not playbook_skipped else 0 }}"
+      - "  Data: {{ result_02a.stdout | default('') | trim if not playbook_skipped else 'SKIPPED' }}"
+      - "  Status: {{ 'SKIPPED' if playbook_skipped else ('PASS' if result_02a.rc | default(-1) == 0 else 'FAIL') }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else ('System is compliant' if result_02a.rc | default(-1) == 0 else 'dictcheck=0 still present') }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: Verify dictcheck not on pam_pwquality in PAM files"
+      - "  Command: grep -E 'pam_pwquality\\.so.*dictcheck' /etc/authselect/*/system-auth /etc/authselect/*/password-auth"
+      - "  Exit code: {{ result_02b.rc | default(-1) if not playbook_skipped else 0 }}"
+      - "  Data: {{ result_02b.stdout | default('') | trim if not playbook_skipped else 'SKIPPED' }}"
+      - "  Status: {{ 'SKIPPED' if playbook_skipped else ('PASS' if result_02b.rc | default(-1) == 0 else 'FAIL') }}"
+      - "  Details: {{ 'pam_pwquality not installed' if playbook_skipped else ('System is compliant' if result_02b.rc | default(-1) == 0 else 'dictcheck still on pam_pwquality') }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store final remediation result in cis_result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result }}"
+      - "  Status: PASS"
+      - "  Details: Remediation result stored"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ cis_details }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if pwquality.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/pwquality.conf.present"
+    register: _sg_restore_pwq_conf
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/security/pwquality.conf"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/pwquality.conf.present"
+      dest: "/etc/security/pwquality.conf"
+      remote_src: true
+    when: "_sg_restore_pwq_conf.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if pwquality.conf.d backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/pwquality.conf.d"
+    register: _sg_restore_pwq_d
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/security/pwquality.conf.d"
+    ansible.builtin.shell: |
+      rm -rf /etc/security/pwquality.conf.d/*
+      cp -r "{{ state_guard_dir }}/pwquality.conf.d/"* /etc/security/pwquality.conf.d/
+    args:
+      executable: /bin/bash
+    when: "_sg_restore_pwq_d.stat.exists | default(false) and _sg_restore_pwq_d.stat.isdir | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore PAM files"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        for f in system-auth password-auth; do
+          if [ -f "{{ state_guard_dir }}/${f}.present" ]; then
+            cp "{{ state_guard_dir }}/${f}.present" "/etc/authselect/$l_pam_profile/$f"
+          fi
+        done
+        authselect apply-changes
+      fi
+    args:
+      executable: /bin/bash
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

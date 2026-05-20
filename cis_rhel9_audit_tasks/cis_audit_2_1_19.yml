@@ -1,0 +1,130 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_1_19.yml
+
+- name: "Req 01 - Check if xinetd package is installed"
+  ansible.builtin.shell: rpm -q xinetd
+  args:
+    executable: /bin/bash
+  register: pkg_result
+  failed_when: false
+  changed_when: false
+  tags: [audit]
+- name: "Req 02 - Check if xinetd service is enabled (if package installed)"
+  ansible.builtin.shell: systemctl is-enabled xinetd.service 2>/dev/null | grep 'enabled'
+  args:
+    executable: /bin/bash
+  register: enabled_result
+  when: pkg_result.rc == 0
+  failed_when: false
+  changed_when: false
+  tags: [audit]
+- name: "Req 03 - Check if xinetd service is active (if package installed)"
+  ansible.builtin.shell: systemctl is-active xinetd.service 2>/dev/null | grep '^active'
+  args:
+    executable: /bin/bash
+  register: active_result
+  when: pkg_result.rc == 0
+  failed_when: false
+  changed_when: false
+  tags: [audit]
+- name: "Store audit details for requirements 1-4"
+  ansible.builtin.set_fact:
+    task_01_name: "Req 01 - Check if xinetd package is installed"
+    task_01_cmd: "rpm -q xinetd"
+    task_01_rc: "{{ pkg_result.rc }}"
+    data_01: "{{ pkg_result.stdout | default('') | trim }}"
+    status_01: '{{ "PASS" if pkg_result.rc != 0 else "FAIL" }}'
+    details_01: '{{ "xinetd package not installed" if pkg_result.rc != 0 else "xinetd package is installed" }}'
+
+    task_02_name: "Req 02 - Check if xinetd service is enabled"
+    task_02_cmd: "systemctl is-enabled xinetd.service 2>/dev/null | grep 'enabled'"
+    task_02_rc: "{{ (enabled_result.rc | default(-2)) if pkg_result.rc == 0 else -2 }}"
+    data_02: "{{ enabled_result.stdout | default('') | trim if pkg_result.rc == 0 else 'Not applicable (package not installed)' }}"
+    status_02: '{{ "SKIP" if pkg_result.rc != 0 else ("FAIL" if enabled_result.stdout | default("") | trim != "" else "PASS") }}'
+    details_02: '{{ "xinetd not installed, check not applicable" if pkg_result.rc != 0 else ("Service is enabled" if enabled_result.stdout | default("") | trim != "" else "Service is not enabled") }}'
+
+    task_03_name: "Req 03 - Check if xinetd service is active"
+    task_03_cmd: "systemctl is-active xinetd.service 2>/dev/null | grep '^active'"
+    task_03_rc: "{{ (active_result.rc | default(-2)) if pkg_result.rc == 0 else -2 }}"
+    data_03: "{{ active_result.stdout | default('') | trim if pkg_result.rc == 0 else 'Not applicable (package not installed)' }}"
+    status_03: '{{ "SKIP" if pkg_result.rc != 0 else ("FAIL" if active_result.stdout | default("") | trim != "" else "PASS") }}'
+    details_03: '{{ "xinetd not installed, check not applicable" if pkg_result.rc != 0 else ("Service is active" if active_result.stdout | default("") | trim != "" else "Service is not active") }}'
+
+    task_04_name: "Req 04 - Verify local site policy for dependent package"
+    task_04_cmd: "Manual review"
+    task_04_rc: -1
+    data_04: '{{ "Manual verification required" if pkg_result.rc == 0 else "Not applicable" }}'
+    status_04: '{{ "SKIP" if pkg_result.rc != 0 else "ERROR" }}'
+    details_04: '{{ "xinetd not installed, policy check not applicable" if pkg_result.rc != 0 else "Verify dependent package approval and service policy compliance per local site policy" }}'
+  tags: [audit]
+- name: "Compute overall compliance status"
+  ansible.builtin.set_fact:
+    cis_result: >-
+      {{ "FAIL" if status_01 == "FAIL" or status_02 == "FAIL" or status_03 == "FAIL"
+         else "ERROR" if status_04 == "ERROR"
+         else "PASS" }}
+  tags: [audit]
+- name: "Set overall compliance details and finalise requirement 5"
+  ansible.builtin.set_fact:
+    status_05: "{{ cis_result }}"
+    task_05_name: "Overall compliance assessment"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    details_05: >-
+      {{ "Non-compliant: one or more checks failed" if cis_result == "FAIL"
+         else "Compliant: xinetd services not in use (or not installed)" if cis_result == "PASS"
+         else "Manual verification required for dependent package approval" }}
+    data_05: "{{ cis_result }}"
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.1.19"
+    - "Reference: CIS Benchmark checkpoint 2.1.19"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name }}"
+    - "  Command: {{ task_04_cmd }}"
+    - "  Exit code: {{ task_04_rc }}"
+    - "  Data: {{ data_04 }}"
+    - "  Status: {{ status_04 }}"
+    - "  Details: {{ details_04 }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name }}"
+    - "  Command: {{ task_05_cmd }}"
+    - "  Exit code: {{ task_05_rc }}"
+    - "  Data: {{ data_05 }}"
+    - "  Status: {{ status_05 }}"
+    - "  Details: {{ details_05 }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ details_05 }}"
+    - "========================================================"
+  tags: [audit]

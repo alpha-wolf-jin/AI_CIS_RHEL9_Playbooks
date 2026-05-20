@@ -1,0 +1,169 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_4_1.yml
+
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: script_stat_pre
+
+- name: "Snapshot - Create absence marker if script does not exist"
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ audit_script }}.noexist"
+    mode: '0600'
+  when: not script_stat_pre.stat.exists
+
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- block:
+  - name: "Check if grub2 package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    changed_when: false
+
+  - name: "Set grub2 package installed flag"
+    ansible.builtin.set_fact:
+      grub2_installed: "{{ 'grub2-tools' in ansible_facts.packages }}"
+
+  - name: "Req 01 - Copy audit script"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      content: "{{ audit_script_content }}"
+      mode: '0700'
+    when: grub2_installed | bool
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Run audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    when: grub2_installed | bool
+    failed_when: false
+    changed_when: false
+
+  - name: "Req 01 - Remove temporary script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: grub2_installed | bool
+    changed_when: false
+
+  - name: "Store Req 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Run audit script for bootloader password"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {{ 'SKIPPED' if not (grub2_installed | default(false) | bool)
+           else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}
+      details_01: >-
+        {{ ('Skipped: grub2-tools package not installed' if not (grub2_installed | default(false) | bool)
+           else ('Audit script executed successfully' if result_01.rc | default(-1) == 0 else 'Audit script execution failed')) | trim }}
+
+  - name: "Req 02 - Summarize compliance status"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify bootloader password compliance"
+      task_02_cmd: "Check if GRUB2_PASSWORD is set in user.cfg"
+      task_02_rc: "{{ task_01_rc }}"
+      data_02: "{{ data_01 }}"
+      status_02: >-
+        {{ 'SKIPPED' if status_01 == 'SKIPPED'
+           else ('PASS' if (data_01 | default('') | trim) | length > 0 and 'GRUB2_PASSWORD=' in data_01 else 'FAIL') | trim }}
+
+  - name: "Req 02 - Set compliance details"
+    ansible.builtin.set_fact:
+      details_02: >-
+        {{ ('Skipped: grub2-tools not installed' if status_01 == 'SKIPPED'
+           else ('Compliant: bootloader password is set' if (data_01 | default('') | trim | length > 0) and ('GRUB2_PASSWORD=' in (data_01 | default('') | trim)) else 'Non-compliant: bootloader password not set')) | trim }}
+
+  - name: "Req 03 - Store final audit result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | trim }}"
+      data_03: "{{ status_02 | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result stored as {{ status_02 | trim }}"
+      task_03_name: "Store cis_result"
+      task_03_cmd: "set_fact cis_result"
+      task_03_rc: 0
+
+  - name: "Req 04 - Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.4.1"
+      - "Reference: CIS Benchmark checkpoint 1.4.1"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+
+  always:
+  - name: "Restore - Check if absence marker exists"
+    ansible.builtin.stat:
+      path: "{{ audit_script }}.noexist"
+    register: marker_stat
+    when: false        # will be removed if you use full restore, but we use it only for existence check
+    tags: [restore]
+
+  - name: "Restore - Remove temporary script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: true         # will be changed to actual condition
+    tags: [restore]
+
+  - name: "Restore - Remove absence marker"
+    ansible.builtin.file:
+      path: "{{ audit_script }}.noexist"
+      state: absent
+    tags: [restore]

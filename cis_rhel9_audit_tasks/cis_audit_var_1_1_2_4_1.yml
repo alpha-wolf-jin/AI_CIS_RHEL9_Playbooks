@@ -1,0 +1,4 @@
+req_01: "Check if /var is mounted as a separate partition using command: `findmnt -kn /var`. Expected result: Output shows /var mounted with filesystem details (e.g., /var /dev/sdb ext4 rw,nosuid,nodev,noexec,relatime,seclabel)."
+req_02: "Verify that the mount point /var is not empty or missing using command: `findmnt -kn /var`. Expected result: Command returns a non-empty line indicating /var is mounted."
+req_03: "Summarize overall compliance: If the command output shows /var is mounted, the requirement is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

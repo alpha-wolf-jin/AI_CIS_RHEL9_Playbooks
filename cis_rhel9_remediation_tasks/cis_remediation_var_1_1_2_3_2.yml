@@ -1,0 +1,8 @@
+playbook_name: "CIS_1_1_2_3_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: |
+  Apply check for separate /home partition using command: `mount | grep -E '\\s/home\\s'`. Expected result: output contains a line with /home partition.
+req_02: "Apply nodev option to /home partition in /etc/fstab using Ansible lineinfile (insert 'nodev' into options). Expected result: /etc/fstab contains nodev in the mounting options for /home."
+req_03: "Apply remount of /home with new options using command: `mount -o remount /home`. Expected result: no error output."
+req_04: |
+  Verify nodev option is set on /home partition using command: `mount | grep -E '\\s/home\\s' | grep -o 'nodev'`. Expected result: output contains 'nodev'.

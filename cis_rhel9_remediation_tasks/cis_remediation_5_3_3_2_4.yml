@@ -1,0 +1,261 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_3_2_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if pwquality.conf exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_conf }}"
+  register: _snap_pwq_conf
+  tags: [snapshot]
+- name: "Snapshot - Backup pwquality.conf if exists"
+  ansible.builtin.copy:
+    src: "{{ pwquality_conf }}"
+    dest: "{{ backup_dir }}/pwquality.conf.present"
+    remote_src: true
+  when: "_snap_pwq_conf.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Check if drop-in directory exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_conf_d }}"
+  register: _snap_pwq_dir
+  tags: [snapshot]
+- name: "Snapshot - Backup drop-in directory if exists"
+  ansible.builtin.copy:
+    src: "{{ pwquality_conf_d }}/"
+    dest: "{{ backup_dir }}/pwquality.conf.d/"
+    remote_src: true
+  when: "_snap_pwq_dir.stat.exists and _snap_pwq_dir.stat.isdir"
+  tags: [snapshot]
+- name: "Snapshot - Check if drop-in file exists"
+  ansible.builtin.stat:
+    path: "{{ pwquality_dropin }}"
+  register: _snap_dropin
+  tags: [snapshot]
+- name: "Snapshot - Backup drop-in file if exists"
+  ansible.builtin.copy:
+    src: "{{ pwquality_dropin }}"
+    dest: "{{ backup_dir }}/50-pwrepeat.conf.present"
+    remote_src: true
+  when: "_snap_dropin.stat.exists"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if authselect package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if authselect not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Comment out existing maxrepeat in pwquality.conf"
+    ansible.builtin.replace:
+      path: "{{ pwquality_conf }}"
+      regexp: |
+        ^(\s*maxrepeat\s*=)
+      replace: |
+        # \1
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Ensure drop-in directory exists"
+    ansible.builtin.file:
+      path: "{{ pwquality_conf_d }}"
+      state: directory
+      mode: '0755'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set maxrepeat in drop-in configuration file"
+    ansible.builtin.lineinfile:
+      path: "{{ pwquality_dropin }}"
+      regexp: |
+        ^\s*maxrepeat\s*=
+      line: "maxrepeat = {{ maxrepeat_value }}"
+      create: true
+      mode: '0644'
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove maxrepeat from PAM authselect files and apply changes"
+    ansible.builtin.shell: |
+      for l_pam_file in system-auth password-auth; do
+        l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+        if [ -f "$l_authselect_file" ]; then
+          sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*)(\s+maxrepeat\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+        fi
+      done
+      authselect apply-changes
+    args:
+      executable: /bin/bash
+    register: result_01_pam
+    when: "not playbook_skipped"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify maxrepeat in pwquality configuration"
+    ansible.builtin.shell: |
+      VAL=$(grep -rh '^\s*maxrepeat\s*=' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/ 2>/dev/null | tail -1 | sed -r 's/.*=\s*([0-9]+).*/\1/')
+      if [ -n "$VAL" ] && [ "$VAL" -ge 1 ] && [ "$VAL" -le 3 ]; then
+        echo "COMPLIANT: maxrepeat=$VAL"
+      elif [ -n "$VAL" ]; then
+        echo "NONCOMPLIANT: maxrepeat=$VAL (expected 1-3)"
+      else
+        echo "NOT_FOUND"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02_pwq
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify maxrepeat not in PAM authselect files"
+    ansible.builtin.shell: |
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf 2>/dev/null | grep 'custom/')"
+      if [ -n "$l_pam_profile" ]; then
+        if grep -E '^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so.*\s+maxrepeat\s*=' "/etc/authselect/$l_pam_profile/system-auth" "/etc/authselect/$l_pam_profile/password-auth" 2>/dev/null; then
+          echo "FOUND_IN_PAM"
+        else
+          echo "NOT_FOUND_IN_PAM"
+        fi
+      else
+        echo "NO_CUSTOM_PROFILE"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02_pam
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Store verification details"
+    ansible.builtin.set_fact:
+      data_02: "pwquality: {{ result_02_pwq.stdout | default('') | trim }} | PAM: {{ result_02_pam.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if ('COMPLIANT' in (result_02_pwq.stdout | default('')) and 'NOT_FOUND_IN_PAM' in (result_02_pam.stdout | default(''))) else 'FAIL' }}"
+      details_02: "{{ 'maxrepeat correctly configured in pwquality and absent from PAM' if ('COMPLIANT' in (result_02_pwq.stdout | default('')) and 'NOT_FOUND_IN_PAM' in (result_02_pam.stdout | default(''))) else 'Configuration does not meet requirements' }}"
+      task_02_name: "Verify maxrepeat configuration"
+      task_02_cmd: "grep maxrepeat in pwquality configs and PAM authselect files"
+      task_02_rc: "{{ 0 if ('COMPLIANT' in (result_02_pwq.stdout | default('')) and 'NOT_FOUND_IN_PAM' in (result_02_pam.stdout | default(''))) else 1 }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 5.3.3.2.4"
+      - "Reference: CIS Benchmark checkpoint 5.3.3.2.4"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: Remediate maxrepeat in pwquality and PAM"
+      - "  Command: lineinfile + authselect sed script"
+      - "  Exit code: {{ result_01_pam.rc | default(-1) }}"
+      - "  Data: {{ result_01_pam.stdout | default('') | trim }}"
+      - "  Status: {{ 'PASS' if (result_01_pam.rc | default(-1)) == 0 else 'FAIL' }}"
+      - "  Details: {{ 'Script executed successfully' if (result_01_pam.rc | default(-1)) == 0 else 'Script execution failed' }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store cis_result"
+      - "  Command: set_fact"
+      - "  Exit code: 0"
+      - "  Data: cis_result = {{ cis_result | default('ERROR') | trim }}"
+      - "  Status: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: cis_result derived from verification status"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: Generate remediation report"
+      - "  Command: debug"
+      - "  Exit code: 0"
+      - "  Data: Report generated"
+      - "  Status: PASS"
+      - "  Details: Report task executed"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if pwquality.conf backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/pwquality.conf.present"
+    register: _rest_pwq_conf
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore pwquality.conf from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/pwquality.conf.present"
+      dest: "{{ pwquality_conf }}"
+      remote_src: true
+    when: "_rest_pwq_conf.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if drop-in file backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-pwrepeat.conf.present"
+    register: _rest_dropin
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore drop-in file from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-pwrepeat.conf.present"
+      dest: "{{ pwquality_dropin }}"
+      remote_src: true
+    when: "_rest_dropin.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if drop-in directory backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/pwquality.conf.d"
+    register: _rest_pwq_dir
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore drop-in directory from backup"
+    ansible.builtin.shell: |
+      rm -rf "{{ pwquality_conf_d }}"/*
+      cp -r "{{ backup_dir }}/pwquality.conf.d/"* "{{ pwquality_conf_d }}/"
+    args:
+      executable: /bin/bash
+    when: "_rest_pwq_dir.stat.exists | default(false) and _rest_pwq_dir.stat.isdir | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

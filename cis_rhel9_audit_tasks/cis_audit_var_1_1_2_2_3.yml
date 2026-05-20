@@ -1,0 +1,6 @@
+req_01: "Check if a separate partition exists for /dev/shm using command: `findmnt -kn /dev/shm`. Expected result: output should contain a mount point entry for /dev/shm."
+req_02: "Check if the nosuid option is set on /dev/shm partition using command: `findmnt -kn /dev/shm | grep -v 'nosuid'`. Expected result: no output should be returned."
+req_03: "Summarize overall compliance status: if both checks pass, the requirement is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+mount_point: "/dev/shm"
+mount_option: "nosuid"

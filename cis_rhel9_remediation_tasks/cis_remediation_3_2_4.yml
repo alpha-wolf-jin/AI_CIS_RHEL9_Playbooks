@@ -1,0 +1,299 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_2_4.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Create state guard directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/modprobe.d/sctp.conf exists"
+  ansible.builtin.stat:
+    path: "{{ config_file_path }}"
+  register: _sg_conf_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup existing sctp.conf (present)"
+  ansible.builtin.copy:
+    src: "{{ config_file_path }}"
+    dest: "{{ backup_dir }}/sctp.conf.present"
+    remote_src: true
+    force: no
+  when: _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark sctp.conf as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/sctp.conf.absent"
+    force: no
+  when: not _sg_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Save current module load state"
+  ansible.builtin.shell: |
+    lsmod | grep -qw {{ kernel_module }} && echo loaded || echo not_loaded
+  args:
+    executable: /bin/bash
+    creates: "{{ backup_dir }}/{{ kernel_module }}_load_state"
+  register: _sg_mod_state
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist module load state"
+  ansible.builtin.copy:
+    content: "{{ _sg_mod_state.stdout }}"
+    dest: "{{ backup_dir }}/{{ kernel_module }}_load_state"
+    force: no
+  tags: [snapshot]
+- name: "Snapshot - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+    force: no
+  tags: [snapshot]
+
+- block:
+# --- Requirement 1: Deploy and execute remediation script ---
+  - name: "Req 01 - Deploy remediation script for {{ kernel_module }}"
+    ansible.builtin.copy:
+      dest: "{{ script_path }}"
+      content: "{{ script_content }}"
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: "/bin/bash {{ script_path }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Req 01 - Execute remediation script"
+      task_01_cmd: "/bin/bash {{ script_path }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED' }}"
+      details_01: "Script executed"
+    tags: [execute]
+
+# --- Requirement 2: Verify compliance ---
+  - name: "Req 02 - Check if {{ kernel_module }} module exists on system"
+    ansible.builtin.shell: |
+      found=0
+      for dir in $(readlink -f /lib/modules/*/kernel/net 2>/dev/null | sort -u); do
+        if [ -d "$dir/{{ kernel_module }}" ] && [ -n "$(ls -A "$dir/{{ kernel_module }}" 2>/dev/null)" ]; then
+          found=1
+          break
+        fi
+      done
+      echo "$found"
+    args:
+      executable: /bin/bash
+    register: _module_exists_check
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set module_exists fact"
+    ansible.builtin.set_fact:
+      module_exists: "{{ _module_exists_check.stdout | trim == '1' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify {{ kernel_module }} module is not available"
+    ansible.builtin.shell: |
+      {% if module_exists | default(true) %}
+      CONFIG_RESULT="CONFIG_FAIL"
+      if [ -f "{{ config_file_path }}" ]; then
+        grep -q "install {{ kernel_module }} /bin/false" "{{ config_file_path }}" && \
+        grep -q "blacklist {{ kernel_module }}" "{{ config_file_path }}" && \
+        CONFIG_RESULT="CONFIG_PASS"
+      fi
+      echo "$CONFIG_RESULT"
+      {% else %}
+      echo "CONFIG_PASS"
+      {% endif %}
+      if lsmod | grep -q '^{{ kernel_module }} '; then
+        echo "MODULE_LOADED"
+      else
+        echo "MODULE_NOT_LOADED"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_02
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Req 02 - Verify sctp module not available"
+      task_02_cmd: "(embedded verification script)"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {{-
+          'PASS' if (result_02.stdout | default('') | trim | regex_search('CONFIG_PASS'))
+                 and not (result_02.stdout | default('') | trim | regex_search('MODULE_LOADED'))
+          else 'FAIL'
+        -}}
+      details_02: "Verification completed"
+    tags: [execute]
+
+# --- Requirement 3: Store cis_result ---
+  - name: "Req 03 - Store overall remediation status in cis_result"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Req 03 - Set cis_result"
+      task_03_cmd: "set_fact cis_result"
+      task_03_rc: "0"
+      data_03: "cis_result = {{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "Stored overall status"
+    tags: [execute]
+
+# --- Requirement 4: Generate report ---
+  - name: "Prepare report generation details"
+    set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: "0"
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Report output"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 3.2.4"
+      - "Reference: CIS Benchmark checkpoint 3.2.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: System check completed."
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup directory exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}"
+    register: _sg_restore_dir
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check for present marker"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sctp.conf.present"
+    register: _sg_restore_present
+    failed_when: false
+    tags: [restore]
+    when: _sg_restore_dir.stat.exists
+
+  - name: "Restore - Restore original sctp.conf if it existed"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/sctp.conf.present"
+      dest: "{{ config_file_path }}"
+      remote_src: true
+    when:
+    - _sg_restore_dir.stat.exists
+    - _sg_restore_present.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check for absent marker"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sctp.conf.absent"
+    register: _sg_restore_absent
+    failed_when: false
+    tags: [restore]
+    when: _sg_restore_dir.stat.exists
+
+  - name: "Restore - Delete sctp.conf if originally absent"
+    ansible.builtin.file:
+      path: "{{ config_file_path }}"
+      state: absent
+    when:
+    - _sg_restore_dir.stat.exists
+    - _sg_restore_absent.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved module load state"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/{{ kernel_module }}_load_state"
+    register: _sg_restore_load_state
+    failed_when: false
+    tags: [restore]
+    when: _sg_restore_dir.stat.exists
+
+  - name: "Restore - Reload {{ kernel_module }} module if it was originally loaded"
+    ansible.builtin.shell: |
+      if [[ "{{ _sg_restore_load_state.content | b64decode | trim }}" == "loaded" ]]; then
+        modprobe {{ kernel_module }} 2>/dev/null || true
+      fi
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_dir.stat.exists
+    - _sg_restore_load_state.content is defined
+    - "(_sg_restore_load_state.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _sg_restore_dir.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove state guard flag"
+    ansible.builtin.file:
+      path: "{{ state_guard_flag }}"
+      state: absent
+    when: _sg_restore_dir.stat.exists
+    failed_when: false
+    tags: [restore]

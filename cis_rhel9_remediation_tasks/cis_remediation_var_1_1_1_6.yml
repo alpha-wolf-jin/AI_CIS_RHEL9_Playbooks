@@ -1,0 +1,7 @@
+playbook_name: "cis_1_1_1_6"
+checkpoint_id: "cis_1_1_1_6"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "1. Run the provided remediation script to fix Ensure squashfs kernel module is not available."
+req_02: "2. VERIFY: Run audit check to confirm Ensure squashfs kernel module is not available is properly configured. Expected result: System is compliant"
+req_03: "3. Create a task named 'Generate remediation report' that displays a debug msg"

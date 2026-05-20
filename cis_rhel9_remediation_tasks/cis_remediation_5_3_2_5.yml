@@ -1,0 +1,182 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_3_2_5.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if authselect.conf exists"
+  ansible.builtin.stat:
+    path: /etc/authselect/authselect.conf
+  register: _snap_authselect_conf
+  tags: [snapshot]
+- name: "Snapshot - Backup authselect.conf if exists"
+  ansible.builtin.copy:
+    src: /etc/authselect/authselect.conf
+    dest: "{{ backup_dir }}/authselect.conf.bak"
+    remote_src: true
+  when: "_snap_authselect_conf.stat.exists | default(false)"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if authselect package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set authselect installed fact"
+    ansible.builtin.set_fact:
+      authselect_installed: "{{ 'authselect' in ansible_facts.packages }}"
+      playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Run remediation script to ensure pam_unix module is enabled"
+    ansible.builtin.shell: |
+      l_module_name="unix"
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf)"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      grep_output=$(grep -P -- "\bpam_$l_module_name\.so\b" "$l_pam_profile_path"/{password,system}-auth 2>/dev/null || true)
+      echo "$grep_output"
+      if echo "$grep_output" | grep -q '{include if "with-pam_unix"}'; then
+        echo "ENABLE_FEATURE"
+        authselect enable-feature with-pam_unix 2>&1
+      elif [ -n "$grep_output" ]; then
+        echo "APPLY_CHANGES"
+        authselect apply-changes 2>&1
+        if [ $? -ne 0 ]; then
+          echo "APPLY_CHANGES_FAILED"
+          echo "Falling back to authselect select with current profile to force-overwrite"
+          authselect select "$l_pam_profile" --force 2>&1
+        fi
+      else
+        echo "NO_MODULE_LINES"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    when: "authselect_installed | default(false)"
+    tags: [execute]
+
+  - name: "Req 02 - Verify pam_unix module is present in authselect profile templates"
+    ansible.builtin.shell: |
+      l_module_name="unix"
+      l_pam_profile="$(head -1 /etc/authselect/authselect.conf)"
+      if grep -Pq -- '^custom\/' <<< "$l_pam_profile"; then
+        l_pam_profile_path="/etc/authselect/$l_pam_profile"
+      else
+        l_pam_profile_path="/usr/share/authselect/default/$l_pam_profile"
+      fi
+      grep -P -- "\bpam_$l_module_name\.so\b" "$l_pam_profile_path"/{password,system}-auth 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    when: "authselect_installed | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Run remediation script to ensure pam_unix module is enabled"
+      task_01_cmd: "authselect enable-feature with-pam_unix or authselect apply-changes (with fallback to authselect select --force)"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIP' if not (authselect_installed | default(false)) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'authselect not installed' if not (authselect_installed | default(false)) else ('Remediation completed successfully' if result_01.rc | default(-1) == 0 else 'Remediation failed') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify pam_unix module is present in authselect profile templates"
+      task_02_cmd: |
+        grep -P -- '\\bpam_unix\\.so\\b' <profile_path>/{password,system}-auth
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIP' if not (authselect_installed | default(false)) else ('PASS' if (result_02.stdout | default('') | trim) | length > 0 else 'FAIL') | trim }}"
+      details_02: "{{ 'authselect not installed' if not (authselect_installed | default(false)) else ('pam_unix module found in profile templates' if (result_02.stdout | default('') | trim) | length > 0 else 'pam_unix module NOT found in profile templates') | trim }}"
+    tags: [execute]
+
+  - name: "Req 03 - Set overall cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Set cis_result variable"
+      task_03_cmd: "set_fact: cis_result = status_02"
+      task_03_rc: 0
+      data_03: "{{ cis_result | default('ERROR') | trim }}"
+      status_03: "{{ 'PASS' if cis_result is defined and cis_result in ['PASS', 'FAIL', 'SKIP', 'ERROR'] else 'ERROR' | trim }}"
+      details_03: "cis_result set to {{ cis_result | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 5.3.2.5"
+      - "Reference: CIS Benchmark checkpoint 5.3.2.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ 'All requirements met' if status_01 | trim == 'PASS' and status_02 | trim == 'PASS' else ('One or more requirements failed' if status_01 | trim == 'FAIL' or status_02 | trim == 'FAIL' else 'Remediation skipped - authselect not installed') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/authselect.conf.bak"
+    register: _restore_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite authselect.conf with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/authselect.conf.bak"
+      dest: /etc/authselect/authselect.conf
+      remote_src: true
+    when: "_restore_backup.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

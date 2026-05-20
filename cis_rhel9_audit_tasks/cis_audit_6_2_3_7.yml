@@ -1,0 +1,228 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_2_3_7.yml
+
+- name: "Req 01 - Check if rsyslog is installed"
+  shell: dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Set rsyslog installed fact"
+  set_fact:
+    rsyslog_installed: "{{ result_01.rc == 0 }}"
+
+- name: "Req 02 - Check advanced imtcp module loading in /etc/rsyslog.conf"
+  shell: |
+    grep -Psi -- '^\h*module\(load="?imtcp"?\)' /etc/rsyslog.conf
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+- name: "Req 03 - Check advanced imtcp module loading in /etc/rsyslog.d/*.conf"
+  shell: |
+    grep -Psi -- '^\h*module\(load="?imtcp"?\)' /etc/rsyslog.d/*.conf
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+- name: "Req 04 - Check advanced imtcp input in /etc/rsyslog.conf"
+  shell: |
+    grep -Psi -- '^\h*input\(type="?imtcp"?\b' /etc/rsyslog.conf
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+- name: "Req 05 - Check advanced imtcp input in /etc/rsyslog.d/*.conf"
+  shell: |
+    grep -Psi -- '^\h*input\(type="?imtcp"?\b' /etc/rsyslog.d/*.conf
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+- name: "Req 06 - Check legacy ModLoad imtcp in /etc/rsyslog.conf"
+  shell: |
+    grep -Psi -- '^\h*\$ModLoad\h+imtcp\b' /etc/rsyslog.conf
+  args:
+    executable: /bin/bash
+  register: result_06
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+- name: "Req 07 - Check legacy ModLoad imtcp in /etc/rsyslog.d/*.conf"
+  shell: |
+    grep -Psi -- '^\h*\$ModLoad\h+imtcp\b' /etc/rsyslog.d/*.conf
+  args:
+    executable: /bin/bash
+  register: result_07
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+- name: "Req 08 - Check legacy InputTCPServerRun in /etc/rsyslog.conf"
+  shell: |
+    grep -Psi -- '^\h*\$InputTCPServerRun\b' /etc/rsyslog.conf
+  args:
+    executable: /bin/bash
+  register: result_08
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+- name: "Req 09 - Check legacy InputTCPServerRun in /etc/rsyslog.d/*.conf"
+  shell: |
+    grep -Psi -- '^\h*\$InputTCPServerRun\b' /etc/rsyslog.d/*.conf
+  args:
+    executable: /bin/bash
+  register: result_09
+  failed_when: false
+  changed_when: false
+  when: rsyslog_installed
+
+# FIX: overall_compliance now yields SKIPPED when rsyslog is absent
+- name: "Req 10 - Summarize overall compliance"
+  set_fact:
+    overall_compliance: >-
+      {% if not rsyslog_installed %}
+        SKIPPED
+      {% elif (result_02.stdout | default('') | trim | length == 0) and
+              (result_03.stdout | default('') | trim | length == 0) and
+              (result_04.stdout | default('') | trim | length == 0) and
+              (result_05.stdout | default('') | trim | length == 0) and
+              (result_06.stdout | default('') | trim | length == 0) and
+              (result_07.stdout | default('') | trim | length == 0) and
+              (result_08.stdout | default('') | trim | length == 0) and
+              (result_09.stdout | default('') | trim | length == 0) %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+
+# FIX: details_11 now contains overall rationale for the report
+- name: "Req 11 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ overall_compliance | trim }}"
+    task_11_name: "Req 11 - Store final audit result in cis_result"
+    task_11_cmd: "set_fact"
+    task_11_rc: 0
+    data_11: "{{ overall_compliance | trim }}"
+    status_11: "{{ overall_compliance | trim }}"
+    details_11: >-
+      {{ 'rsyslog not installed; checks skipped'
+         if not rsyslog_installed
+         else ('All checks passed – no imtcp receiver configured'
+               if (overall_compliance | trim) == 'PASS'
+               else 'At least one imtcp receiver configuration found') }}
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.2.3.7"
+    - "Reference: CIS Benchmark checkpoint 6.2.3.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Check if rsyslog is installed"
+    - "  Command: dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null"
+    - "  Exit code: {{ result_01.rc | default(-1) }}"
+    - "  Data: {{ result_01.stdout | default('') | trim }}"
+    - "  Status: {{ 'PASS' if rsyslog_installed else 'SKIPPED' }}"
+    - "  Details: {{ 'rsyslog package is installed.' if rsyslog_installed else 'rsyslog package is not installed; remaining checks skipped.' }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Check advanced imtcp module loading in /etc/rsyslog.conf"
+    - "  Command: grep -Psi -- '^\\h*module\\(load=\"?imtcp\"?\\)' /etc/rsyslog.conf"
+    - "  Exit code: {{ result_02.rc | default(-1) }}"
+    - "  Data: {{ result_02.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_02.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp module loading found.' if result_02.stdout | default('') | trim == '' else 'Found imtcp module loading.') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Check advanced imtcp module loading in /etc/rsyslog.d/*.conf"
+    - "  Command: grep -Psi -- '^\\h*module\\(load=\"?imtcp\"?\\)' /etc/rsyslog.d/*.conf"
+    - "  Exit code: {{ result_03.rc | default(-1) }}"
+    - "  Data: {{ result_03.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_03.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp module loading found.' if result_03.stdout | default('') | trim == '' else 'Found imtcp module loading.') }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Check advanced imtcp input in /etc/rsyslog.conf"
+    - "  Command: grep -Psi -- '^\\h*input\\(type=\"?imtcp\"?\\b' /etc/rsyslog.conf"
+    - "  Exit code: {{ result_04.rc | default(-1) }}"
+    - "  Data: {{ result_04.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_04.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp input found.' if result_04.stdout | default('') | trim == '' else 'Found imtcp input.') }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: Check advanced imtcp input in /etc/rsyslog.d/*.conf"
+    - "  Command: grep -Psi -- '^\\h*input\\(type=\"?imtcp\"?\\b' /etc/rsyslog.d/*.conf"
+    - "  Exit code: {{ result_05.rc | default(-1) }}"
+    - "  Data: {{ result_05.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_05.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp input found.' if result_05.stdout | default('') | trim == '' else 'Found imtcp input.') }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: Check legacy ModLoad imtcp in /etc/rsyslog.conf"
+    - "  Command: grep -Psi -- '^\\h*\\$ModLoad\\h+imtcp\\b' /etc/rsyslog.conf"
+    - "  Exit code: {{ result_06.rc | default(-1) }}"
+    - "  Data: {{ result_06.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_06.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No ModLoad imtcp found.' if result_06.stdout | default('') | trim == '' else 'Found ModLoad imtcp.') }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: Check legacy ModLoad imtcp in /etc/rsyslog.d/*.conf"
+    - "  Command: grep -Psi -- '^\\h*\\$ModLoad\\h+imtcp\\b' /etc/rsyslog.d/*.conf"
+    - "  Exit code: {{ result_07.rc | default(-1) }}"
+    - "  Data: {{ result_07.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_07.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No ModLoad imtcp found.' if result_07.stdout | default('') | trim == '' else 'Found ModLoad imtcp.') }}"
+    - ""
+    - "REQUIREMENT 08 - {{ req_08 }}:"
+    - "  Task: Check legacy InputTCPServerRun in /etc/rsyslog.conf"
+    - "  Command: grep -Psi -- '^\\h*\\$InputTCPServerRun\\b' /etc/rsyslog.conf"
+    - "  Exit code: {{ result_08.rc | default(-1) }}"
+    - "  Data: {{ result_08.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_08.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No InputTCPServerRun found.' if result_08.stdout | default('') | trim == '' else 'Found InputTCPServerRun.') }}"
+    - ""
+    - "REQUIREMENT 09 - {{ req_09 }}:"
+    - "  Task: Check legacy InputTCPServerRun in /etc/rsyslog.d/*.conf"
+    - "  Command: grep -Psi -- '^\\h*\\$InputTCPServerRun\\b' /etc/rsyslog.d/*.conf"
+    - "  Exit code: {{ result_09.rc | default(-1) }}"
+    - "  Data: {{ result_09.stdout | default('') | trim }}"
+    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_09.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No InputTCPServerRun found.' if result_09.stdout | default('') | trim == '' else 'Found InputTCPServerRun.') }}"
+    - ""
+    - "REQUIREMENT 10 - {{ req_10 }}:"
+    - "  Task: Summarize overall compliance"
+    - "  Command: N/A"
+    - "  Exit code: 0"
+    - "  Data: {{ overall_compliance }}"
+    - "  Status: {{ overall_compliance | trim }}"
+    - "  Details: {{ 'rsyslog not installed; checks skipped' if not rsyslog_installed else ('No imtcp receiver configuration found.' if (overall_compliance | trim) == 'PASS' else 'At least one imtcp receiver configuration found.') }}"
+    - ""
+    - "REQUIREMENT 11 - {{ req_11 }}:"
+    - "  Task: {{ task_11_name }}"
+    - "  Command: {{ task_11_cmd }}"
+    - "  Exit code: {{ task_11_rc }}"
+    - "  Data: {{ data_11 }}"
+    - "  Status: {{ status_11 }}"
+    - "  Details: {{ details_11 }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ details_11 }}"
+    - "========================================================"

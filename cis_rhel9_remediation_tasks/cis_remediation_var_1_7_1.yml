@@ -1,0 +1,6 @@
+playbook_name: "cis_1.7.1_motd"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: |
+  Run the provided remediation script to fix Ensure message of the day is configured properly. Edit files in /etc/motd.d/*, remove \\m, \\r, \\s, \\v or references to the OS platform; also remove /etc/motd if not used; execute audit script.
+req_02: "VERIFY: Run audit check to confirm Ensure message of the day is configured properly is properly configured. Expected result: System is compliant"
+req_03: "Generate remediation report"

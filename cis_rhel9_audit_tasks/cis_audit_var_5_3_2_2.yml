@@ -1,0 +1,16 @@
+req_01: "Check if pam_faillock module is present on the system using command: `find /lib/security /lib64/security /usr/lib/security /usr/lib64/security -name 'pam_faillock.so' 2>/dev/null`. Expected result: file path exists."
+req_02: |
+  Check if pam_faillock is enabled in /etc/pam.d/password-auth for auth preauth using command: `grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'preauth silent'`. Expected result: line containing 'auth required pam_faillock.so preauth silent'.
+req_03: |
+  Check if pam_faillock is enabled in /etc/pam.d/password-auth for auth authfail using command: `grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'authfail'`. Expected result: line containing 'auth required pam_faillock.so authfail'.
+req_04: |
+  Check if pam_faillock is enabled in /etc/pam.d/password-auth for account using command: `grep -P -- '\bpam_faillock.so\b' /etc/pam.d/password-auth | grep 'account'`. Expected result: line containing 'account required pam_faillock.so'.
+req_05: |
+  Check if pam_faillock is enabled in /etc/pam.d/system-auth for auth preauth using command: `grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'preauth silent'`. Expected result: line containing 'auth required pam_faillock.so preauth silent'.
+req_06: |
+  Check if pam_faillock is enabled in /etc/pam.d/system-auth for auth authfail using command: `grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'authfail'`. Expected result: line containing 'auth required pam_faillock.so authfail'.
+req_07: |
+  Check if pam_faillock is enabled in /etc/pam.d/system-auth for account using command: `grep -P -- '\bpam_faillock.so\b' /etc/pam.d/system-auth | grep 'account'`. Expected result: line containing 'account required pam_faillock.so'.
+req_08: "Summarize overall compliance status: PASS if all checks pass, SKIP if pam_faillock.so is not installed, FAIL if any required line is missing or misconfigured."
+req_09: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_12: "Prerequisite check: pam_faillock module must be present on the system; if absent, all checks are SKIP."

@@ -1,0 +1,8 @@
+playbook_name: "remediate_cis_1_1_2_5_4"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/fstab"
+mount_point: "/var/tmp"
+mount_option: "noexec"
+req_01: "Apply noexec mount option to /var/tmp partition by editing /etc/fstab: add noexec to the fourth field for /var/tmp. Expected result: /var/tmp entry in /etc/fstab includes noexec in options."
+req_02: "Remount /var/tmp with updated options using command: `mount -o remount /var/tmp`. Expected result: /var/tmp is remounted with noexec option."
+req_03: "Verify noexec option is active on /var/tmp using command: `mount | grep /var/tmp`. Expected result: output shows noexec in the mount options for /var/tmp."

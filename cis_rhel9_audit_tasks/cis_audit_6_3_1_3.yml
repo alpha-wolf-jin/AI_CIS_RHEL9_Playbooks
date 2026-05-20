@@ -1,0 +1,270 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_1_3.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+
+# Requirement 01: Check if grubby is installed
+- name: "Req 01 - Check if grubby is installed"
+  shell: command -v grubby
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if grubby is installed"
+    task_01_cmd: "command -v grubby"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('grubby found at ' + result_01.stdout if result_01.rc == 0 else 'grubby not found') | trim }}"
+
+# Requirement 02: Check if /etc/default/grub exists
+- name: "Req 02 - Check if /etc/default/grub exists"
+  stat:
+    path: /etc/default/grub
+  register: result_02
+  failed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check if /etc/default/grub exists"
+    task_02_cmd: "stat /etc/default/grub"
+    task_02_rc: 0
+    data_02: "{{ 'EXISTS' if result_02.stat.exists else 'NOT EXISTS' }}"
+    status_02: "{{ ('PASS' if result_02.stat.exists else 'FAIL') | trim }}"
+    details_02: "{{ ('File /etc/default/grub exists' if result_02.stat.exists else 'File /etc/default/grub does not exist') | trim }}"
+
+# Requirement 03: Check audit_backlog_limit in current kernel command line
+- name: "Req 03 - Check audit_backlog_limit in current kernel cmdline"
+  shell: |
+    grubby --info=ALL | grep -Po '\baudit_backlog_limit=\d+\b'
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: status_01 | default('FAIL') | trim == 'PASS'
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check audit_backlog_limit in current kernel command line using grubby"
+    task_03_cmd: |
+      grubby --info=ALL | grep -Po '\\baudit_backlog_limit=\\d+\\b'
+    task_03_rc: "{{ result_03.rc | default(-1) if result_03 is not skipped else -1 }}"
+    data_03: "{{ result_03.stdout | default('') | trim if result_03 is not skipped else 'SKIPPED' }}"
+    status_03: >-
+      {% if result_03 is skipped %}
+        SKIP
+      {% elif result_03.rc | default(-1) == 0 %}
+        {% set vals = result_03.stdout | regex_findall('audit_backlog_limit=([0-9]+)') | map('int') | list %}
+        {% if vals | length > 0 and vals | min >= 8192 %}
+          PASS
+        {% else %}
+          FAIL
+        {% endif %}
+      {% else %}
+        FAIL
+      {% endif %}
+    details_03: >-
+      {% if result_03 is skipped %}
+        Skipped because grubby is not installed
+      {% elif result_03.rc | default(-1) == 0 %}
+        {% set vals = result_03.stdout | regex_findall('audit_backlog_limit=([0-9]+)') | map('int') | list %}
+        {% if vals | length > 0 and vals | min >= 8192 %}
+          All kernel cmdline entries have audit_backlog_limit >= 8192 (min value: {{ vals | min }})
+        {% elif vals | length > 0 %}
+          Some kernel cmdline entry has audit_backlog_limit less than 8192 (min value: {{ vals | min }})
+        {% else %}
+          No audit_backlog_limit found in kernel cmdline entries
+        {% endif %}
+      {% else %}
+        Command failed or no matching output
+      {% endif %}
+
+# Requirement 04: Check audit_backlog_limit in /etc/default/grub
+- name: "Req 04 - Check audit_backlog_limit in /etc/default/grub"
+  shell: |
+    grep -Psoi -- '^\h*GRUB_CMDLINE_LINUX="([^#\n\r]+\h+)?\baudit_backlog_limit=\d+\b' /etc/default/grub
+  args:
+    executable: /bin/bash
+  register: result_04
+  when: status_02 | default('FAIL') | trim == 'PASS'
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Check audit_backlog_limit parameter in /etc/default/grub using grep"
+    task_04_cmd: |
+      grep -Psoi -- '^\\h*GRUB_CMDLINE_LINUX=\"([^#\\n\\r]+\\h+)?\\baudit_backlog_limit=\\d+\\b' /etc/default/grub
+    task_04_rc: "{{ result_04.rc | default(-1) if result_04 is not skipped else -1 }}"
+    data_04: "{{ result_04.stdout | default('') | trim if result_04 is not skipped else 'SKIPPED' }}"
+    status_04: >-
+      {% if result_04 is skipped %}
+        SKIP
+      {% elif result_04.rc | default(-1) == 0 %}
+        {% set val = (result_04.stdout | regex_findall('audit_backlog_limit=([0-9]+)'))[0] | default('0') | int %}
+        {% if val >= 8192 %}
+          PASS
+        {% else %}
+          FAIL
+        {% endif %}
+      {% else %}
+        FAIL
+      {% endif %}
+    details_04: >-
+      {% if result_04 is skipped %}
+        Skipped because /etc/default/grub does not exist
+      {% elif result_04.rc | default(-1) == 0 %}
+        {% set val = (result_04.stdout | regex_findall('audit_backlog_limit=([0-9]+)'))[0] | default('0') | int %}
+        {% if val >= 8192 %}
+          grub config contains audit_backlog_limit={{ val }}, which is >= 8192
+        {% else %}
+          grub config contains audit_backlog_limit={{ val }}, but is less than 8192
+        {% endif %}
+      {% else %}
+        Command failed or no matching output
+      {% endif %}
+
+# Requirement 05: Summarize overall compliance
+- name: "Req 05 - Summarize overall compliance"
+  set_fact:
+    task_05_name: "Summarize overall compliance status for audit_backlog_limit check"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "Combined status from requirements 01-04"
+    status_05: >-
+      {% if status_01 | default('FAIL') | trim == 'FAIL' or status_02 | default('FAIL') | trim == 'FAIL' %}
+        SKIP
+      {% elif status_03 | default('SKIP') | trim == 'SKIP' or status_04 | default('SKIP') | trim == 'SKIP' %}
+        SKIP
+      {% elif status_03 | default('FAIL') | trim == 'PASS' and status_04 | default('FAIL') | trim == 'PASS' %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+    details_05: >-
+      {% if status_01 | default('FAIL') | trim == 'FAIL' %}
+        SKIP: grubby is not installed
+      {% elif status_02 | default('FAIL') | trim == 'FAIL' %}
+        SKIP: /etc/default/grub does not exist
+      {% elif status_03 | default('SKIP') | trim == 'SKIP' or status_04 | default('SKIP') | trim == 'SKIP' %}
+        SKIP: Some checks were skipped
+      {% elif status_03 | default('FAIL') | trim == 'PASS' and status_04 | default('FAIL') | trim == 'PASS' %}
+        PASS: Both kernel cmdline and grub config have audit_backlog_limit >= 8192
+      {% else %}
+        FAIL: One or both checks show missing or insufficient audit_backlog_limit
+      {% endif %}
+
+# Requirement 06: Store final result in cis_result
+- name: "Req 06 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_05 | default('ERROR') | trim }}"
+    data_06: "{{ status_05 | default('ERROR') | trim }}"
+    status_06: "{{ status_05 | default('ERROR') | trim }}"
+    details_06: "Final compliance result stored in cis_result"
+    task_06_name: "Store final audit result"
+    task_06_cmd: "set_fact: cis_result = {{ status_05 | default('ERROR') | trim }}"
+    task_06_rc: 0
+
+# Requirement 07: Generate audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.1.3"
+    - "Reference: CIS Benchmark checkpoint 6.3.1.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

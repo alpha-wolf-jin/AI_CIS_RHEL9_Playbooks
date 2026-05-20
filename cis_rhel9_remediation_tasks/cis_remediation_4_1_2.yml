@@ -1,0 +1,340 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_4_1_2.yml
+
+- name: "Snapshot - Restore previous checkpoint (if any)"
+  block:
+  - name: "Snapshot - Check for existing checkpoint flag"
+    stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_flag_prev
+    tags: snapshot
+
+  - name: "Snapshot - Restore firewalld state from previous run"
+    shell: |
+      if [ -f "{{ state_guard_dir }}/firewalld.state" ]; then
+        state=$(cat "{{ state_guard_dir }}/firewalld.state")
+        IFS=: read enabled active <<< "$state"
+        systemctl unmask firewalld.service 2>/dev/null || true
+        if [ "$enabled" = "enabled" ]; then
+          systemctl enable firewalld.service
+        elif [ "$enabled" = "masked" ]; then
+          systemctl mask firewalld.service
+        else
+          systemctl disable firewalld.service
+        fi
+        if [ "$active" = "active" ]; then
+          systemctl start firewalld.service
+        else
+          systemctl stop firewalld.service
+        fi
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_flag_prev.stat.exists
+    failed_when: false
+    tags: snapshot
+
+  - name: "Snapshot - Restore nftables state from previous run"
+    shell: |
+      if [ -f "{{ state_guard_dir }}/nftables.state" ]; then
+        state=$(cat "{{ state_guard_dir }}/nftables.state")
+        IFS=: read enabled active <<< "$state"
+        systemctl unmask nftables.service 2>/dev/null || true
+        if [ "$enabled" = "enabled" ]; then
+          systemctl enable nftables.service
+        elif [ "$enabled" = "masked" ]; then
+          systemctl mask nftables.service
+        else
+          systemctl disable nftables.service
+        fi
+        if [ "$active" = "active" ]; then
+          systemctl start nftables.service
+        else
+          systemctl stop nftables.service
+        fi
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_flag_prev.stat.exists
+    failed_when: false
+    tags: snapshot
+
+  - name: "Snapshot - Remove old checkpoint directory"
+    file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_flag_prev.stat.exists
+    tags: snapshot
+  tags: snapshot
+
+- name: "Snapshot - Create fresh checkpoint directory"
+  file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: snapshot
+
+- name: "Snapshot - Capture firewalld service state"
+  block:
+  - name: "Snapshot - Check firewalld unit file"
+    stat:
+      path: /usr/lib/systemd/system/firewalld.service
+    register: _sg_firewalld_unit
+  - name: "Snapshot - Get firewalld enabled/active state"
+    shell: |
+      enabled=$(systemctl is-enabled firewalld.service 2>/dev/null || echo "disabled")
+      active=$(systemctl is-active firewalld.service 2>/dev/null || echo "inactive")
+      echo "${enabled}:${active}"
+    register: _sg_firewalld_state
+    when: _sg_firewalld_unit.stat.exists
+    failed_when: false
+    changed_when: false
+  - name: "Snapshot - Save firewalld state"
+    copy:
+      content: "{{ _sg_firewalld_state.stdout }}"
+      dest: "{{ state_guard_dir }}/firewalld.state"
+    when: _sg_firewalld_unit.stat.exists
+  tags: snapshot
+
+- name: "Snapshot - Capture nftables service state"
+  block:
+  - name: "Snapshot - Check nftables unit file"
+    stat:
+      path: /usr/lib/systemd/system/nftables.service
+    register: _sg_nftables_unit
+  - name: "Snapshot - Get nftables enabled/active state"
+    shell: |
+      enabled=$(systemctl is-enabled nftables.service 2>/dev/null || echo "disabled")
+      active=$(systemctl is-active nftables.service 2>/dev/null || echo "inactive")
+      echo "${enabled}:${active}"
+    register: _sg_nftables_state
+    when: _sg_nftables_unit.stat.exists
+    failed_when: false
+    changed_when: false
+  - name: "Snapshot - Save nftables state"
+    copy:
+      content: "{{ _sg_nftables_state.stdout }}"
+      dest: "{{ state_guard_dir }}/nftables.state"
+    when: _sg_nftables_unit.stat.exists
+  tags: snapshot
+
+- name: "Snapshot - Create checkpoint flag"
+  copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: snapshot
+
+
+- block:
+  - name: "Req 01 - Check if any firewall packages are installed"
+    package_facts:
+      manager: auto
+    tags: execute
+
+  - name: "Req 01 - Determine if remediation should be skipped"
+    set_fact:
+      skip_remediation: "{{ (not 'firewalld' in ansible_facts.packages.keys() and not 'nftables' in ansible_facts.packages.keys()) | bool }}"
+    tags: execute
+
+  - name: "Req 01 - Deploy remediation script"
+    copy:
+      content: "{{ remediation_script }}"
+      dest: /tmp/remediate_cis_4_1_2.sh
+      mode: '0700'
+    when: not skip_remediation
+    failed_when: false
+    tags: execute
+
+  - name: "Req 01 - Execute remediation script"
+    shell: /bin/bash /tmp/remediate_cis_4_1_2.sh
+    args:
+      executable: /bin/bash
+    register: script_result
+    failed_when: false
+    when: not skip_remediation
+    tags: execute
+
+  - name: "Req 01 - Remove remediation script"
+    file:
+      path: /tmp/remediate_cis_4_1_2.sh
+      state: absent
+    when: not skip_remediation
+    failed_when: false
+    tags: execute
+
+  - name: "Req 02 - Verify single firewall utility is in use"
+    shell: |
+      fwd_enabled=$(systemctl is-enabled firewalld.service 2>/dev/null | tr -d '\n')
+      fwd_enabled=${fwd_enabled:-disabled}
+      fwd_active=$(systemctl is-active firewalld.service 2>/dev/null | tr -d '\n')
+      fwd_active=${fwd_active:-inactive}
+      nft_enabled=$(systemctl is-enabled nftables.service 2>/dev/null | tr -d '\n')
+      nft_enabled=${nft_enabled:-disabled}
+      nft_active=$(systemctl is-active nftables.service 2>/dev/null | tr -d '\n')
+      nft_active=${nft_active:-inactive}
+      if { [ "$fwd_enabled" = "enabled" ] && [ "$fwd_active" = "active" ]; } && { [ "$nft_enabled" = "masked" ] || [ "$nft_enabled" = "disabled" ]; } && [ "$nft_active" = "inactive" ]; then
+        echo "Compliant: FirewallD active, NFTables properly disabled"
+      elif { [ "$nft_enabled" = "enabled" ] && [ "$nft_active" = "active" ]; } && { [ "$fwd_enabled" = "masked" ] || [ "$fwd_enabled" = "disabled" ]; } && [ "$fwd_active" = "inactive" ]; then
+        echo "Compliant: NFTables active, FirewallD properly disabled"
+      else
+        echo "Non-compliant: exactly one active firewall not detected"
+        exit 1
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    when: not skip_remediation
+    tags: execute
+
+  - name: "Record script execution facts"
+    set_fact:
+      task_01_name: "Deploy and execute remediation script"
+      task_01_cmd: "/bin/bash /tmp/remediate_cis_4_1_2.sh"
+      task_01_rc: "{{ script_result.rc | default(-1) }}"
+      data_01: "{{ script_result.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if script_result.rc | default(-1) == 0 else 'FAILED' }}"
+      details_01: "{{ 'Script executed successfully' if script_result.rc | default(-1) == 0 else 'Script failed' }}"
+    when: not skip_remediation
+    tags: execute
+
+  - name: "Record verification facts"
+    set_fact:
+      task_02_name: "Verify firewall compliance"
+      task_02_cmd: "systemctl is-enabled/is-active compliance verification"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: "{{ 'Compliant' if verify_result.rc | default(-1) == 0 else 'Non-compliant' }}"
+    when: not skip_remediation
+    tags: execute
+
+  - name: "Set skipped status if no firewall packages"
+    set_fact:
+      status_01: "SKIPPED"
+      status_02: "SKIPPED"
+      task_01_name: "Remediation skipped - no firewall packages"
+      task_02_name: "Verification skipped - no firewall packages"
+      details_01: "No firewalld or nftables installed, skipping remediation"
+      details_02: "No firewalld or nftables installed, skipping verification"
+    when: skip_remediation
+    tags: execute
+
+  - name: "Record overall remediation result"
+    set_fact:
+      cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+    tags: execute
+
+  - name: "Req 03 - Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 4.1.2"
+      - "Reference: CIS Benchmark checkpoint 4.1.2"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Generate remediation report"
+      - "  Command: debug"
+      - "  Exit code: 0"
+      - "  Data: Report generated"
+      - "  Status: APPLIED"
+      - "  Details: Report displayed above"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - "========================================================"
+    tags: execute
+
+  always:
+  - name: "State Guard Restore - Check for checkpoint flag"
+    stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: restore
+
+  - name: "State Guard Restore - Restore firewalld state"
+    shell: |
+      if [ -f "{{ state_guard_dir }}/firewalld.state" ]; then
+        state=$(cat "{{ state_guard_dir }}/firewalld.state")
+        IFS=: read enabled active <<< "$state"
+        systemctl unmask firewalld.service 2>/dev/null || true
+        if [ "$enabled" = "enabled" ]; then
+          systemctl enable firewalld.service
+        elif [ "$enabled" = "masked" ]; then
+          systemctl mask firewalld.service
+        else
+          systemctl disable firewalld.service
+        fi
+        if [ "$active" = "active" ]; then
+          systemctl start firewalld.service
+        else
+          systemctl stop firewalld.service
+        fi
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: restore
+
+  - name: "State Guard Restore - Restore nftables state"
+    shell: |
+      if [ -f "{{ state_guard_dir }}/nftables.state" ]; then
+        state=$(cat "{{ state_guard_dir }}/nftables.state")
+        IFS=: read enabled active <<< "$state"
+        systemctl unmask nftables.service 2>/dev/null || true
+        if [ "$enabled" = "enabled" ]; then
+          systemctl enable nftables.service
+        elif [ "$enabled" = "masked" ]; then
+          systemctl mask nftables.service
+        else
+          systemctl disable nftables.service
+        fi
+        if [ "$active" = "active" ]; then
+          systemctl start nftables.service
+        else
+          systemctl stop nftables.service
+        fi
+      fi
+    args:
+      executable: /bin/bash
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: restore
+
+  - name: "State Guard Restore - Clean up temporary remediation script"
+    ansible.builtin.file:
+      path: /tmp/remediate_cis_4_1_2.sh
+      state: absent
+    failed_when: false
+    tags: restore
+
+  - name: "State Guard Restore - Remove checkpoint directory"
+    file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: restore

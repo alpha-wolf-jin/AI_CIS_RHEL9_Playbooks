@@ -1,0 +1,343 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_17.yml
+
+- name: "Snapshot - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check for squid_installed.present in previous checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/squid_installed.present"
+  register: _sg_prev_installed
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Reinstall squid from previous state"
+  ansible.builtin.dnf:
+    name: squid
+    state: present
+  when:
+  - _sg_flag.stat.exists
+  - _sg_prev_installed.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check for squid_enabled.present in previous checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_dir }}/squid_enabled.present"
+  register: _sg_prev_enabled
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Enable and start squid from previous state"
+  ansible.builtin.systemd:
+    name: squid
+    state: started
+    enabled: yes
+  when:
+  - _sg_flag.stat.exists
+  - _sg_prev_enabled.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create fresh checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if squid package is installed"
+  ansible.builtin.shell: "rpm -q squid"
+  args:
+    executable: /bin/bash
+  register: _sg_squid_check
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Mark squid_installed if present"
+  ansible.builtin.copy:
+    content: "installed"
+    dest: "{{ state_guard_dir }}/squid_installed.present"
+  when: _sg_squid_check.rc == 0
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Check if squid service is enabled"
+  ansible.builtin.shell: "systemctl is-enabled squid.service"
+  args:
+    executable: /bin/bash
+  register: _sg_enabled_check
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Mark squid_enabled if enabled"
+  ansible.builtin.copy:
+    content: "enabled"
+    dest: "{{ state_guard_dir }}/squid_enabled.present"
+  when: _sg_enabled_check.rc == 0
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === STATE GUARD — EXECUTE PHASE ===
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      data_06: "Not collected yet"
+      status_06: "ERROR"
+      details_06: "Not evaluated"
+    tags: [execute]
+
+  - name: "Pre-check - Determine if squid package is installed"
+    ansible.builtin.shell: "rpm -q squid"
+    args:
+      executable: /bin/bash
+    register: pre_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set skip flag if squid is not installed"
+    ansible.builtin.set_fact:
+      skip_all: "{{ pre_check.rc != 0 }}"
+    tags: [execute]
+
+# Requirement 1 – Stop squid service
+  - name: "Req 01 - Stop squid service"
+    ansible.builtin.shell: "systemctl stop squid.service"
+    args:
+      executable: /bin/bash
+    register: result_01
+    when: not skip_all | default(false)
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Stop squid service"
+      task_01_cmd: "systemctl stop squid.service"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIP' if skip_all | default(false) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'Skipped - squid not installed' if skip_all | default(false) else ('Service stopped successfully' if result_01.rc | default(-1) == 0 else 'Failed to stop service') | trim }}"
+    tags: [execute]
+
+# Requirement 2 – Remove squid package
+  - name: "Req 02 - Remove squid package"
+    ansible.builtin.shell: "dnf remove -y squid"
+    args:
+      executable: /bin/bash
+    register: result_02
+    when: not skip_all | default(false)
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Remove squid package"
+      task_02_cmd: "dnf remove -y squid"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'SKIP' if skip_all | default(false) else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_02: "{{ 'Skipped - squid not installed' if skip_all | default(false) else ('Package removed successfully' if result_02.rc | default(-1) == 0 else 'Failed to remove package') | trim }}"
+    tags: [execute]
+
+# Requirement 3 – Mask squid service
+  - name: "Req 03 - Mask squid service"
+    ansible.builtin.shell: "systemctl mask squid.service"
+    args:
+      executable: /bin/bash
+    register: result_03
+    when: not skip_all | default(false)
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Mask squid service"
+      task_03_cmd: "systemctl mask squid.service"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'SKIP' if skip_all | default(false) else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_03: "{{ 'Skipped - squid not installed' if skip_all | default(false) else ('Service masked successfully' if result_03.rc | default(-1) == 0 else 'Failed to mask service') | trim }}"
+    tags: [execute]
+
+# Requirement 4 – Verify squid service inactive
+  - name: "Req 04 - Verify squid service is not active"
+    ansible.builtin.shell: "systemctl is-active squid.service"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify squid service inactive"
+      task_04_cmd: "systemctl is-active squid.service"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (result_04.stdout | default('') | trim) == 'inactive' else 'FAIL' | trim }}"
+      details_04: "{{ 'Service is inactive' if (result_04.stdout | default('') | trim) == 'inactive' else ('Service still active or error: ' + (result_04.stdout | default('') | trim)) | trim }}"
+    tags: [execute]
+
+# Requirement 5 – Verify squid package not installed
+  - name: "Req 05 - Verify squid package is not installed"
+    ansible.builtin.shell: "rpm -q squid"
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Verify squid package not installed"
+      task_05_cmd: "rpm -q squid"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: "{{ 'PASS' if result_05.rc != 0 else 'FAIL' | trim }}"
+      details_05: "{{ 'Package squid is not installed' if result_05.rc != 0 else ('Package squid is still installed: ' + (result_05.stdout | default('') | trim)) | trim }}"
+    tags: [execute]
+
+# Requirement 6 – Store cis_result
+  - name: "Req 06 - Store cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_05 | default('ERROR') | trim }}"
+      task_06_name: "Set cis_result"
+      task_06_cmd: "set_fact"
+      task_06_rc: 0
+      data_06: "{{ status_05 | default('ERROR') | trim }}"
+      status_06: "{{ status_05 | default('ERROR') | trim }}"
+      details_06: "Final overall status derived from package verification"
+    tags: [execute]
+
+# Requirement 7 – Generate report
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.17"
+      - "Reference: CIS Benchmark checkpoint 2.1.17"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+# Cleanup checkpoint only – does NOT reinstall or re-enable squid
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

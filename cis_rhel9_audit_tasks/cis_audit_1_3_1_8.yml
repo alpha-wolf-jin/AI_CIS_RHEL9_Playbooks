@@ -1,0 +1,102 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_3_1_8.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+# Requirement 1: Check if package is installed
+- name: "Req 01 - Check if setroubleshoot package is installed"
+  ansible.builtin.shell: "rpm -q setroubleshoot"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if setroubleshoot is installed"
+    task_01_cmd: "rpm -q setroubleshoot"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 1 else 'FAIL' if result_01.rc | default(-1) == 0 else 'UNKNOWN' }}"
+    details_01: "{{ 'Package is not installed (compliant)' if result_01.rc | default(-1) == 1 else 'Package is installed (non-compliant)' if result_01.rc | default(-1) == 0 else 'Unexpected exit code: ' + result_01.rc | default('') | string }}"
+
+# Requirement 2: Summarize compliance
+- name: "Req 02 - Summarize overall compliance"
+  set_fact:
+    task_02_name: "Compliance evaluation"
+    task_02_cmd: "N/A"
+    task_02_rc: "{{ result_01.rc | default(-1) }}"
+    data_02: "{{ 'Compliant' if result_01.rc | default(-1) == 1 else 'Non-compliant' }}"
+    status_02: "{{ 'PASS' if result_01.rc | default(-1) == 1 else 'FAIL' if result_01.rc | default(-1) == 0 else 'UNKNOWN' }}"
+    details_02: "{{ 'System is compliant: package not installed' if result_01.rc | default(-1) == 1 else 'System is non-compliant: package installed' if result_01.rc | default(-1) == 0 else 'Could not determine compliance – rpm exit code: ' + result_01.rc | default(-1) | string }}"
+
+# Requirement 3: Store final audit result
+- name: "Store final compliance result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Store final audit result in cis_result"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "cis_result = {{ cis_result }}"
+    status_03: "PASS"
+    details_03: "Variable cis_result stored successfully"
+
+# Final audit report
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.3.1.8"
+    - "Reference: CIS Benchmark checkpoint 1.3.1.8"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

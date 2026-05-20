@@ -1,0 +1,7 @@
+req_01: "Check if chrony is installed using command: `rpm -q chrony`. Expected result: chrony-<version>"
+req_02: "Verify that chrony service is active and running using command: `systemctl is-active chronyd`. Expected result: active"
+req_03: "Verify that chrony is enabled to start on boot using command: `systemctl is-enabled chronyd`. Expected result: enabled"
+req_04: "Check if chrony is configured to synchronize with an authoritative time source using command: `grep -E '^server|^pool' /etc/chrony.conf`. Expected result: at least one server or pool directive is present"
+req_05: "Verify that time synchronization is working by checking chrony tracking status using command: `chronyc tracking`. Expected result: output shows system time is synchronized (e.g., 'Leap status : Normal' and 'Stratum' value less than 16)"
+req_06: "Summarize overall compliance status: if all above checks pass, then time synchronization is in use and compliant; otherwise, non-compliant."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

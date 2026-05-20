@@ -1,0 +1,7 @@
+req_01: "Check if auditd is installed via package manager"
+req_02: "Check if augenrules binary is available"
+req_03: "Check if /etc/audit/rules.d directory exists"
+req_04: "Check if /etc/audit/audit.rules file exists"
+req_05: "Check if running and on-disk rules are merged (augenrules --check)"
+req_06: "Summarize overall compliance status"
+req_07: "Store final audit result as cis_result"

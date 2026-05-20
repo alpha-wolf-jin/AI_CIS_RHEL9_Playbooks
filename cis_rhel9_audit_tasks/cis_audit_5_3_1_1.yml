@@ -1,0 +1,146 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_1_1.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Req 01 - Check if PAM is installed"
+  shell: rpm -q pam
+  args:
+    executable: /bin/bash
+  register: pam_result
+  failed_when: false
+  changed_when: false
+
+- name: "Record PAM installation status"
+  set_fact:
+    pam_installed: "{{ pam_result.rc == 0 }}"
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check PAM installed"
+    task_01_cmd: "rpm -q pam"
+    task_01_rc: "{{ pam_result.rc | default(-1) }}"
+    data_01: "{{ pam_result.stdout | default('') | trim }}"
+    status_01: "{{ 'SKIP' if not (pam_installed | bool) else 'PASS' | trim }}"
+    details_01: "{{ 'PAM is not installed – requirement SKIPPED' if not (pam_installed | bool) else 'PAM is installed' | trim }}"
+
+- name: "Extract PAM version string (only if installed)"
+  when: pam_installed
+  set_fact:
+    _extracted_version: >-
+      {{ pam_result.stdout | default('') | regex_replace('^pam-([0-9]+\.[0-9]+\.[0-9]+-[0-9]+).*$', '\1') | default('') | trim }}
+
+- name: "Req 02 - Evaluate PAM version against threshold"
+  set_fact:
+    task_02_name: "Evaluate PAM version"
+    task_02_cmd: "rpm -q pam (output analysis)"
+    task_02_rc: "{{ pam_result.rc | default(-1) }}"
+    data_02: "{{ pam_result.stdout | default('') | trim }}"
+    status_02: >-
+      {{ 'SKIP' if not (pam_installed | bool)
+         else 'PASS' if (_extracted_version | length > 0 and _extracted_version is version('1.5.1-19', '>='))
+         else 'FAIL' | trim }}
+    details_02: >-
+      {{ 'PAM not installed – version check SKIPPED'
+         if not (pam_installed | bool)
+         else 'Version ' + _extracted_version + ' meets requirement (>= pam-1.5.1-19)'
+         if (_extracted_version | length > 0 and _extracted_version is version('1.5.1-19', '>='))
+         else 'Version ' + _extracted_version + ' does not meet requirement (>= pam-1.5.1-19)'
+         if (pam_installed | bool) and (_extracted_version | length > 0)
+         else 'Version extraction failed' | trim }}
+
+- name: "Req 03 - Summarize overall compliance"
+  set_fact:
+    task_03_name: "Summarize overall compliance"
+    task_03_cmd: "N/A (evaluation)"
+    task_03_rc: 0
+    data_03: "Overall compliance evaluation"
+    status_03: >-
+      {{ 'SKIP' if not (pam_installed | bool)
+         else 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS')
+         else 'FAIL' | trim }}
+    details_03: >-
+      {{ 'PAM not installed – overall result SKIPPED'
+         if not (pam_installed | bool)
+         else 'All checks passed'
+         if (status_01 == 'PASS' and status_02 == 'PASS')
+         else 'One or more checks failed' | trim }}
+
+- name: "Req 04 - Store final audit result in cis_result"
+  set_fact:
+    task_04_name: "Store cis_result"
+    task_04_cmd: "set_fact"
+    task_04_rc: 0
+    data_04: "cis_result = {{ status_03 | default('UNKNOWN') | trim }}"
+    status_04: "{{ status_03 | default('UNKNOWN') | trim }}"
+    details_04: "Final audit result stored"
+    cis_result: "{{ status_03 | default('UNKNOWN') | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.1.1"
+    - "Reference: CIS Benchmark checkpoint 5.3.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

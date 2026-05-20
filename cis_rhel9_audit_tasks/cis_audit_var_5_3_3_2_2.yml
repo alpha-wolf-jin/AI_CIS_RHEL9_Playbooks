@@ -1,0 +1,9 @@
+req_01: "Check if pwquality configuration files exist using command: `ls /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null`. Expected result: files exist."
+req_02: |
+  Check if pam_pwquality module is present in PAM configuration using command: `grep -Psi -- 'pam_pwquality\\.so' /etc/pam.d/system-auth /etc/pam.d/password-auth 2>/dev/null`. Expected result: at least one match.
+req_03: |
+  Check that minlen is set to 14 or more in pwquality configuration files using command: `grep -Psi -- '^\\h*minlen\\h*=\\h*(1[4-9]|[2-9][0-9]|[1-9][0-9]{2,})\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf`. Expected result: returned value(s) are no less than 14 and meet local site policy.
+req_04: |
+  Check that no PAM configuration overrides minlen to less than 14 using command: `grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?minlen\\h*=\\h*([0-9]|1[0-3])\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: nothing returned.
+req_05: "Summarize overall compliance status: password length is configured to 14 or more characters and conforms to local site policy."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

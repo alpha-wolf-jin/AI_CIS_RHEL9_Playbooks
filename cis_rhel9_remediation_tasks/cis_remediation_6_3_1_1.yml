@@ -1,0 +1,130 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_1_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check package manager availability"
+    ansible.builtin.shell: which dnf || which yum
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check package manager availability"
+      task_01_cmd: "which dnf || which yum"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'Package manager found' if (result_01.rc | default(-1)) == 0 else 'Package manager not found' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Install audit and audit-libs packages"
+    ansible.builtin.shell: dnf install -y audit audit-libs
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Install audit and audit-libs packages"
+      task_02_cmd: "dnf install -y audit audit-libs"
+      task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
+      data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else 'Skipped - no package manager' }}"
+      status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else ('SKIPPED' if result_02 is not defined else 'FAIL') }}"
+      details_02: "{{ 'Packages installed successfully' if (result_02.rc | default(-1)) == 0 else ('Skipped - no package manager available' if result_02 is not defined else 'Package installation failed') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Verify auditd packages are installed"
+    ansible.builtin.shell: rpm -q audit audit-libs
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Verify auditd packages are installed"
+      task_03_cmd: "rpm -q audit audit-libs"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_03: "{{ 'Packages verified successfully' if (result_03.rc | default(-1)) == 0 else 'Package verification failed' }}"
+    tags: [execute]
+
+  - name: "Req 04 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ status_03 | default('UNKNOWN') }}"
+      task_04_name: "Store final remediation result"
+      task_04_cmd: "Set cis_result from status_03"
+      task_04_rc: 0
+      data_04: "cis_result = {{ status_03 | default('UNKNOWN') }}"
+      status_04: "PASS"
+      details_04: "Final remediation result stored"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 6.3.1.1"
+      - "Reference: CIS Benchmark checkpoint 6.3.1.1"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

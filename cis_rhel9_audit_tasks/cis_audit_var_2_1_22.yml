@@ -1,0 +1,8 @@
+req_01: "Check if ss command is available using command: `which ss`. Expected result: path to ss binary."
+req_02: "Check all listening TCP and UDP services using command: `ss -plntu`. Expected result: list of listening services with port, interface, and process."
+req_03: "Check that all listed services are required and approved by local site policy using command: `ss -plntu | awk 'NR>1 {print $1, $4, $5, $7}'`. Expected result: each service must match an approved service list per local policy."
+req_04: "Check that both the port and interface for each listening service are approved by local site policy using command: `ss -plntu | awk 'NR>1 {print $4, $5}'`. Expected result: each port and interface combination must be in the approved list."
+req_05: "Check if any unapproved service is present using command: `ss -plntu | grep -v -f /path/to/approved_services_list`. Expected result: no output (empty)."
+req_06: "Summarize overall compliance status: all listening services are approved, and no unapproved services are present."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+approved_services_list_path: "/etc/cis-approved-services.list"

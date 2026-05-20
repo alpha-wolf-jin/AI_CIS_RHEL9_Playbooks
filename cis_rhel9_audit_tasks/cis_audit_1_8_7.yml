@@ -1,0 +1,89 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_8_7.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [execute]
+- name: "Set GDM installation fact"
+  ansible.builtin.set_fact:
+    gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
+
+- name: "Run audit script for GDM automount lock"
+  ansible.builtin.shell: "{{ audit_script_content }}"
+  args:
+    executable: /bin/bash
+  register: result_01
+  when: gdm_installed | default(false) | bool
+  changed_when: false
+  failed_when: false
+  tags: [execute]
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Run GDM automount lock audit script"
+    task_01_cmd: "Audit script (see audit_script_content)"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: >-
+      {% if gdm_installed | default(false) %}
+        {% if (result_01.rc | default(-1)) == 0 %}PASS{% else %}FAIL{% endif %}
+      {% else %}
+        SKIPPED
+      {% endif %}
+    details_01: >-
+      {% if gdm_installed | default(false) %}
+        {% if (result_01.rc | default(-1)) == 0 %}Script executed successfully{% else %}Script failed{% endif %}
+      {% else %}
+        GDM not installed — requirement not applicable
+      {% endif %}
+  tags: [execute]
+- name: "Determine compliance status for requirement 02"
+  ansible.builtin.set_fact:
+    status_02: >-
+      {% if gdm_installed | default(false) %}
+        {% if '** PASS **' in result_01.stdout | default('') %}PASS{% elif '** FAIL **' in result_01.stdout | default('') %}FAIL{% else %}UNKNOWN{% endif %}
+      {% else %}
+        SKIPPED
+      {% endif %}
+    details_02: >-
+      {% if gdm_installed | default(false) %}
+        {% if '** PASS **' in result_01.stdout | default('') %}Auto-mount settings locked correctly{% elif '** FAIL **' in result_01.stdout | default('') %}Auto-mount settings not locked{% else %}Unable to determine from output{% endif %}
+      {% else %}
+        GDM is not installed — check not applicable
+      {% endif %}
+    data_02: "{{ result_01.stdout | default('') | trim if gdm_installed else 'N/A' }}"
+  tags: [execute]
+- name: "Store final cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+  tags: [execute]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.8.7"
+    - "Reference: CIS Benchmark checkpoint 1.8.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Evaluate compliance from audit script output"
+    - "  Command: N/A"
+    - "  Exit code: N/A"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"
+  tags: [report]

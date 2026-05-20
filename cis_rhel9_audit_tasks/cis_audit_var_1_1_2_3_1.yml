@@ -1,0 +1,3 @@
+req_01: "Check if /home is mounted using command: `findmnt -kn /home`. Expected result: output shows /home is mounted with details such as /home   /dev/sdb  ext4  rw,nosuid,nodev,noexec,relatime,seclabel"
+req_02: "Summarize overall compliance status: if the command output confirms /home is mounted, the requirement is compliant; otherwise, it is non-compliant."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

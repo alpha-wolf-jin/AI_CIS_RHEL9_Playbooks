@@ -1,0 +1,270 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_1_3.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/fstab from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/fstab.present"
+    dest: "/etc/fstab"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Read prior mount options"
+  ansible.builtin.slurp:
+    src: "{{ state_guard_dir }}/tmp_mount_opts.state"
+  register: _sg_prev_mount_data
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remount /tmp with prior options"
+  ansible.builtin.shell: "mount -o remount,{{ _sg_prev_mount_data.content | b64decode | trim }} /tmp"
+  args:
+    executable: /bin/bash
+  when:
+  - _sg_flag.stat.exists
+  - _sg_prev_mount_data is not failed
+  - "(_sg_prev_mount_data.content | default('') | b64decode | trim) != ''"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/fstab"
+  ansible.builtin.copy:
+    src: /etc/fstab
+    dest: "{{ state_guard_dir }}/fstab.present"
+    remote_src: true
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Save current mount options for /tmp"
+  ansible.builtin.shell: "findmnt -n -o OPTIONS /tmp || echo 'NOTMOUNTED'"
+  args:
+    executable: /bin/bash
+  register: _sg_tmp_mount_opts
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Persist mount options to file"
+  ansible.builtin.copy:
+    content: "{{ _sg_tmp_mount_opts.stdout | default('') }}"
+    dest: "{{ state_guard_dir }}/tmp_mount_opts.state"
+  when: "(_sg_tmp_mount_opts.stdout | default('') | trim) != ''"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE – remediation steps ===
+  - name: "Req 1 - Check separate partition for /tmp"
+    ansible.builtin.shell: mount | grep -E '\s/tmp\s'
+    args:
+      executable: /bin/bash
+    register: r1_check_part
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Store status"
+    set_fact:
+      separate_tmp_exists: "{{ (r1_check_part.stdout | default('') | trim) != '' }}"
+      data_01: "{{ r1_check_part.stdout | default('') | trim }}"
+      status_01: "{{ 'APPLIED' if (r1_check_part.stdout | default('') | trim) != '' else 'SKIPPED' }}"
+      details_01: "{{ 'Separate /tmp partition found' if (r1_check_part.stdout | default('') | trim) != '' else 'No separate /tmp partition, skipping remediation' }}"
+      task_01_name: "Check /tmp partition"
+      task_01_cmd: |
+        mount | grep -E '\\s/tmp\\s'
+      task_01_rc: "{{ r1_check_part.rc | default(-1) }}"
+    tags: [execute]
+
+  - name: "Req 2 - Edit /etc/fstab to add nosuid to /tmp entry"
+    ansible.builtin.lineinfile:
+      path: /etc/fstab
+      regexp: |
+        ^(\S+\s+/tmp\s+\S+\s+)((?!.*\bnosuid\b)\S+)(\s+.*)$
+      line: |
+        \1\2,nosuid\3
+      backrefs: true
+    register: r2_edit_fstab
+    when: separate_tmp_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Verify nosuid in /etc/fstab for /tmp"
+    ansible.builtin.shell: "grep -E '^\\s*[^#].*/tmp\\s' /etc/fstab | grep -o 'nosuid'"
+    args:
+      executable: /bin/bash
+    register: r2_verify_fstab
+    when: separate_tmp_exists
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Store status"
+    set_fact:
+      data_02: "{{ r2_verify_fstab.stdout | default('') | trim }}"
+      status_02: "{{ 'APPLIED' if (r2_verify_fstab.stdout | default('') | trim) == 'nosuid' else 'FAILED' }}"
+      details_02: "{{ 'nosuid option present in /etc/fstab for /tmp' if (r2_verify_fstab.stdout | default('') | trim) == 'nosuid' else 'nosuid not found in fstab' }}"
+      task_02_name: "Edit fstab and verify nosuid"
+      task_02_cmd: |
+        lineinfile, then grep -E '^\\s*[^#].*/tmp\\s' /etc/fstab | grep -o 'nosuid'
+      task_02_rc: "{{ r2_verify_fstab.rc | default(-1) }}"
+    when: separate_tmp_exists
+    tags: [execute]
+
+  - name: "Req 3 - Remount /tmp with nosuid option"
+    ansible.builtin.shell: mount -o remount /tmp
+    args:
+      executable: /bin/bash
+    register: r3_remount
+    when: separate_tmp_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 3 - Store status"
+    set_fact:
+      data_03: "{{ r3_remount.stdout | default('') | trim }}"
+      status_03: "{{ 'APPLIED' if r3_remount.rc | default(-1) == 0 else 'FAILED' }}"
+      details_03: "{{ 'Remount command succeeded' if r3_remount.rc | default(-1) == 0 else 'Remount failed. stderr: ' + (r3_remount.stderr | default('')) }}"
+      task_03_name: "Remount /tmp"
+      task_03_cmd: "mount -o remount /tmp"
+      task_03_rc: "{{ r3_remount.rc | default(-1) }}"
+    when: separate_tmp_exists
+    tags: [execute]
+
+  - name: "Req 4 - Verify nosuid option is set on /tmp"
+    ansible.builtin.shell: "mount | grep -E '\\s/tmp\\s' | grep -o 'nosuid'"
+    args:
+      executable: /bin/bash
+    register: r4_verify
+    when: separate_tmp_exists
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 4 - Store status"
+    set_fact:
+      data_04: "{{ r4_verify.stdout | default('') | trim }}"
+      status_04: "{{ 'APPLIED' if (r4_verify.stdout | default('') | trim) == 'nosuid' else 'FAILED' }}"
+      details_04: "{{ 'nosuid active on /tmp' if (r4_verify.stdout | default('') | trim) == 'nosuid' else 'nosuid not active on /tmp' }}"
+      task_04_name: "Verify nosuid on /tmp"
+      task_04_cmd: |
+        mount | grep -E '\\s/tmp\\s' | grep -o 'nosuid'
+      task_04_rc: "{{ r4_verify.rc | default(-1) }}"
+    when: separate_tmp_exists
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.2.1.3"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.1.3"
+      - ""
+      - "For each requirement:"
+      - "  Requirement 1 - Check separate partition for /tmp:"
+      - "    Task: {{ task_01_name }}"
+      - "    Command: {{ task_01_cmd }}"
+      - "    Exit code: {{ task_01_rc }}"
+      - "    Data: {{ data_01 }}"
+      - "    Status: {{ status_01 }}"
+      - "    Details: {{ details_01 }}"
+      - ""
+      - "  Requirement 2 - Edit /etc/fstab and add nosuid:"
+      - "    Task: {{ task_02_name | default('Not executed') }}"
+      - "    Command: {{ task_02_cmd | default('N/A') }}"
+      - "    Exit code: {{ task_02_rc | default(-1) }}"
+      - "    Data: {{ data_02 | default('') }}"
+      - "    Status: {{ status_02 | default('SKIPPED') }}"
+      - "    Details: {{ details_02 | default('Skipped because /tmp not a separate partition') }}"
+      - ""
+      - "  Requirement 3 - Remount /tmp with nosuid option:"
+      - "    Task: {{ task_03_name | default('Not executed') }}"
+      - "    Command: {{ task_03_cmd | default('N/A') }}"
+      - "    Exit code: {{ task_03_rc | default(-1) }}"
+      - "    Data: {{ data_03 | default('') }}"
+      - "    Status: {{ status_03 | default('SKIPPED') }}"
+      - "    Details: {{ details_03 | default('Skipped because /tmp not a separate partition') }}"
+      - ""
+      - "  Requirement 4 - Verify nosuid option set on /tmp:"
+      - "    Task: {{ task_04_name | default('Not executed') }}"
+      - "    Command: {{ task_04_cmd | default('N/A') }}"
+      - "    Exit code: {{ task_04_rc | default(-1) }}"
+      - "    Data: {{ data_04 | default('') }}"
+      - "    Status: {{ status_04 | default('SKIPPED') }}"
+      - "    Details: {{ details_04 | default('Skipped because /tmp not a separate partition') }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Overall Status: {{ status_04 | default('SKIPPED') }}"
+      - "  Details: {{ details_04 | default('') }}"
+    tags: [execute]
+
+  always:
+# === STATE GUARD – RESTORE (guaranteed) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if fstab backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/fstab.present"
+    register: _sg_restore_fstab
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/fstab from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/fstab.present"
+      dest: "/etc/fstab"
+      remote_src: true
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_fstab.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved mount options"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/tmp_mount_opts.state"
+    register: _sg_restore_mount_data
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Remount /tmp with original options"
+    ansible.builtin.shell: "mount -o remount,{{ _sg_restore_mount_data.content | b64decode | trim }} /tmp"
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_mount_data is not failed
+    - "(_sg_restore_mount_data.content | default('') | b64decode | trim) != ''"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint directory"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

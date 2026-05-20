@@ -1,0 +1,198 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_8.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snap_rules_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-identity.rules.backup"
+    remote_src: true
+  when: "_snap_rules_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    auditd_installed: false
+  tags: [always]
+- block:
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set auditd installed fact"
+    ansible.builtin.set_fact:
+      auditd_installed: "{{ ansible_facts.packages['audit'] is defined }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check if identity rules already exist"
+    ansible.builtin.shell: grep -q 'key=identity' {{ audit_rules_file }} 2>/dev/null
+    args:
+      executable: /bin/bash
+    register: _rules_exist
+    failed_when: false
+    changed_when: false
+    when: "auditd_installed | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Configure audit rules for identity events"
+    ansible.builtin.copy:
+      content: |
+        -w /etc/group -p wa -k identity
+        -w /etc/passwd -p wa -k identity
+        -w /etc/gshadow -p wa -k identity
+        -w /etc/shadow -p wa -k identity
+        -w /etc/security/opasswd -p wa -k identity
+        -w /etc/nsswitch.conf -p wa -k identity
+        -w /etc/pam.conf -p wa -k identity
+        -w /etc/pam.d -p wa -k identity
+      dest: "{{ audit_rules_file }}"
+      mode: '0640'
+    register: result_01
+    when:
+    - "auditd_installed | bool"
+    - "_rules_exist.rc | default(1) != 0"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules with augenrules"
+    ansible.builtin.shell: augenrules --load 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    register: _augenrules_result
+    when: "auditd_installed | bool"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Restart auditd to activate new rules"
+    ansible.builtin.service:
+      name: auditd
+      state: restarted
+    when: "auditd_installed | bool"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Configure audit rules for identity events and load via augenrules"
+      task_01_cmd: "copy {{ audit_rules_file }} + augenrules --load + restart auditd"
+      task_01_rc: "{{ 0 if (auditd_installed | bool) and (result_01.changed | default(false)) else (result_01.rc | default(-1) if auditd_installed | bool else 0) }}"
+      data_01: "{{ 'auditd not installed - skipped' if not (auditd_installed | bool) else ('Rules written to ' + audit_rules_file) }}"
+      status_01: "{{ 'SKIP' if not (auditd_installed | bool) else ('PASS' if not (result_01.failed | default(false)) else 'FAIL') }}"
+      details_01: "{{ 'auditd package not installed on this system' if not (auditd_installed | bool) else ('Audit rules configured and loaded successfully' if not (result_01.failed | default(false)) else 'Failed to configure audit rules') }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify audit rules for identity events are loaded"
+    ansible.builtin.shell: |
+      set -o pipefail
+      auditctl -l 2>/dev/null | grep -E 'key=identity' || grep -c 'identity' {{ audit_rules_file }} 2>/dev/null
+    args:
+      executable: /bin/bash
+    register: result_02
+    when: "auditd_installed | bool"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify audit rules for identity events are loaded"
+      task_02_cmd: "auditctl -l | grep -E 'key=identity'"
+      task_02_rc: "{{ result_02.rc | default(-1) if auditd_installed | bool else 0 }}"
+      data_02: "{{ 'auditd not installed - skipped' if not (auditd_installed | bool) else (result_02.stdout | default('') | trim) }}"
+      status_02: "{{ 'SKIP' if not (auditd_installed | bool) else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_02: "{{ 'auditd package not installed on this system' if not (auditd_installed | bool) else ('Identity audit rules are active' if (result_02.rc | default(-1)) == 0 else 'Identity audit rules not found in active configuration - rules file may need manual augenrules --load') }}"
+    tags: [execute]
+
+  - name: "Set final CIS result variable"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.3.3.8"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.8"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-identity.rules.backup"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original audit rules file"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-identity.rules.backup"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: "_restore_backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Reload audit rules after restore"
+    ansible.builtin.shell: augenrules --load 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    when: "_restore_backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

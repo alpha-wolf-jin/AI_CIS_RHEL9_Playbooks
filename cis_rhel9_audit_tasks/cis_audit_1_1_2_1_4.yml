@@ -1,0 +1,75 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_2_1_4.yml
+
+- name: "Req 01 - Check if a separate partition exists for /tmp"
+  ansible.builtin.command: findmnt -kn /tmp
+  register: findmnt_result
+  failed_when: false
+  changed_when: false
+  tags: [audit]
+- name: "Req 02 - Check if noexec option is set on /tmp partition"
+  ansible.builtin.shell: findmnt -kn /tmp | grep -v noexec
+  args:
+    executable: /bin/bash
+  register: noexec_check_result
+  failed_when: false
+  changed_when: false
+  when:
+  - "findmnt_result.rc == 0"
+  - "findmnt_result.stdout | default('') | trim != ''"
+  tags: [audit]
+- name: "Req 03 - Determine overall compliance status"
+  ansible.builtin.set_fact:
+    cis_result: >-
+      {%- if (findmnt_result.rc == 0) and (findmnt_result.stdout | default('') | trim != '') and
+             (noexec_check_result.skipped | default(false) == false) and
+             (noexec_check_result.rc | default(-1) != 0) and
+             (noexec_check_result.stdout | default('') | trim == '') -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+  tags: [audit]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.2.1.4"
+    - "Reference: CIS Benchmark checkpoint 1.1.2.1.4"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Check if a separate partition exists for /tmp"
+    - "  Command: findmnt -kn /tmp"
+    - "  Exit code: {{ findmnt_result.rc | default(-1) }}"
+    - "  Data: {{ findmnt_result.stdout | default('') | trim }}"
+    - "  Status: {{ 'PASS' if (findmnt_result.rc == 0 and findmnt_result.stdout | default('') | trim != '') else 'FAIL' }}"
+    - "  Details: {{ 'Separate partition exists' if (findmnt_result.rc == 0 and findmnt_result.stdout | default('') | trim != '') else 'Separate partition not found or error' }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Check if noexec option is set on /tmp partition"
+    - "  Command: findmnt -kn /tmp | grep -v noexec"
+    - "  Exit code: {{ noexec_check_result.rc | default(-1) if noexec_check_result.skipped | default(false) == false else 'SKIPPED' }}"
+    - "  Data: {{ noexec_check_result.stdout | default('') | trim if noexec_check_result.skipped | default(false) == false else '' }}"
+    - "  Status: {{ 'PASS' if (noexec_check_result.skipped | default(false) == false and noexec_check_result.rc | default(-1) != 0 and noexec_check_result.stdout | default('') | trim == '') else ('SKIPPED' if noexec_check_result.skipped | default(false) else 'FAIL') }}"
+    - "  Details: {{ 'noexec is set on /tmp partition' if (noexec_check_result.skipped | default(false) == false and noexec_check_result.rc | default(-1) != 0 and noexec_check_result.stdout | default('') | trim == '') else ('Check skipped because /tmp partition not found' if noexec_check_result.skipped | default(false) else 'noexec is NOT set or error') }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Determine overall compliance status"
+    - "  Command: N/A (set_fact)"
+    - "  Exit code: N/A"
+    - "  Data: N/A"
+    - "  Status: {{ cis_result }}"
+    - "  Details: Overall compliance based on requirements 01 and 02"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Store final audit result in cis_result"
+    - "  Command: N/A (set_fact)"
+    - "  Exit code: N/A"
+    - "  Data: N/A"
+    - "  Status: {{ cis_result }}"
+    - "  Details: cis_result set to overall compliance status"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "========================================================"

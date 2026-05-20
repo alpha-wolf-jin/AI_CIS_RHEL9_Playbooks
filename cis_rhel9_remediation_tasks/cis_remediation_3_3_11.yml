@@ -1,0 +1,358 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_3_11.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore previous checkpoint if exists (undo prior failed run)"
+  block:
+  - name: "State Guard - Check for previous sysctl config backup"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/sysctl_config.present"
+    register: _sg_restore_fbackup
+    tags: [snapshot]
+
+  - name: "State Guard - Restore previous sysctl config"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/sysctl_config.present"
+      dest: "{{ sysctl_config_file }}"
+      remote_src: true
+    when: _sg_restore_fbackup.stat.exists | default(false)
+    failed_when: false
+    tags: [snapshot]
+
+# Restore runtime kernel parameters from saved state files (prior failed run)
+  - name: "State Guard - Check for saved accept_ra all state"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/accept_ra_all.state"
+    register: _sg_restore_accept_all
+    tags: [snapshot]
+
+  - name: "State Guard - Restore accept_ra all runtime value"
+    ansible.builtin.shell: |
+      val=$(cat {{ state_guard_dir }}/accept_ra_all.state)
+      sysctl -w net.ipv6.conf.all.accept_ra=$val
+    args:
+      executable: /bin/bash
+    when: _sg_restore_accept_all.stat.exists | default(false)
+    failed_when: false
+    tags: [snapshot]
+
+  - name: "State Guard - Check for saved accept_ra default state"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/accept_ra_default.state"
+    register: _sg_restore_accept_default
+    tags: [snapshot]
+
+  - name: "State Guard - Restore accept_ra default runtime value"
+    ansible.builtin.shell: |
+      val=$(cat {{ state_guard_dir }}/accept_ra_default.state)
+      sysctl -w net.ipv6.conf.default.accept_ra=$val
+    args:
+      executable: /bin/bash
+    when: _sg_restore_accept_default.stat.exists | default(false)
+    failed_when: false
+    tags: [snapshot]
+
+  - name: "State Guard - Flush IPv6 routes after runtime restore"
+    ansible.builtin.shell: sysctl -w net.ipv6.route.flush=1
+    args:
+      executable: /bin/bash
+    when: _sg_restore_accept_default.stat.exists | default(false) or _sg_restore_accept_all.stat.exists | default(false)
+    failed_when: false
+    tags: [snapshot]
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if sysctl config file exists"
+  ansible.builtin.stat:
+    path: "{{ sysctl_config_file }}"
+  register: _sg_config_stat
+  tags: [snapshot]
+- name: "State Guard - Backup sysctl config file"
+  ansible.builtin.copy:
+    src: "{{ sysctl_config_file }}"
+    dest: "{{ state_guard_dir }}/sysctl_config.present"
+    remote_src: true
+  when: _sg_config_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Persist config file existence flag"
+  ansible.builtin.copy:
+    content: "{{ _sg_config_stat.stat.exists | lower }}"
+    dest: "{{ state_guard_dir }}/config_existed.flag"
+    mode: '0644'
+  tags: [snapshot]
+- name: "State Guard - Snapshot current accept_ra all value"
+  ansible.builtin.shell: sysctl -n net.ipv6.conf.all.accept_ra 2>/dev/null || echo "0"
+  args:
+    executable: /bin/bash
+  register: _sg_accept_ra_all
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Save accept_ra all value to file"
+  ansible.builtin.copy:
+    content: "{{ _sg_accept_ra_all.stdout | trim }}"
+    dest: "{{ state_guard_dir }}/accept_ra_all.state"
+    mode: '0644'
+  tags: [snapshot]
+- name: "State Guard - Snapshot current accept_ra default value"
+  ansible.builtin.shell: sysctl -n net.ipv6.conf.default.accept_ra 2>/dev/null || echo "0"
+  args:
+    executable: /bin/bash
+  register: _sg_accept_ra_default
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Save accept_ra default value to file"
+  ansible.builtin.copy:
+    content: "{{ _sg_accept_ra_default.stdout | trim }}"
+    dest: "{{ state_guard_dir }}/accept_ra_default.state"
+    mode: '0644'
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === EXECUTE PHASE ===
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+    tags: [execute]
+
+# Requirement 1 - Check if IPv6 enabled
+  - name: "Req 01 - Check if IPv6 is enabled"
+    ansible.builtin.shell: |
+      if sysctl -n net.ipv6.conf.all.disable_ipv6 > /dev/null 2>&1; then
+        if [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6)" = "1" ]; then
+          echo "disabled"
+        else
+          echo "enabled"
+        fi
+      else
+        # sysctl param not found - assume IPv6 enabled
+        echo "enabled"
+      fi
+    args:
+      executable: /bin/bash
+    register: _ipv6_check
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set fact for IPv6 status"
+    ansible.builtin.set_fact:
+      ipv6_enabled: "{{ _ipv6_check.stdout | trim == 'enabled' }}"
+    tags: [execute]
+
+# --- Set SKIPPED for requirements if IPv6 disabled ---
+  - name: "Set SKIPPED for requirements if IPv6 disabled"
+    ansible.builtin.set_fact:
+      status_01: "SKIPPED"
+      status_02: "SKIPPED"
+      details_01: "IPv6 disabled, remediation skipped"
+      details_02: "IPv6 disabled, verification skipped"
+      data_01: ""
+      data_02: ""
+      task_01_name: "N/A"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "N/A"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+    when: not ipv6_enabled
+    tags: [execute]
+
+# Requirement 1 - Remediation (only if IPv6 enabled)
+  - name: "Req 01 - Configure persistent sysctl parameters for IPv6 RA"
+    ansible.builtin.lineinfile:
+      path: "{{ sysctl_config_file }}"
+      line: "{{ item.param }} = {{ item.value }}"
+      regexp: "^#?{{ item.param }}"
+      state: present
+      create: yes
+      mode: '0644'
+    loop:
+    - param: net.ipv6.conf.all.accept_ra
+      value: 0
+    - param: net.ipv6.conf.default.accept_ra
+      value: 0
+    when: ipv6_enabled
+    register: _config_mod
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Copy remediation script to system"
+    ansible.builtin.copy:
+      dest: "{{ script_path }}"
+      content: |
+        #!/usr/bin/env bash
+        {
+           sysctl -w net.ipv6.conf.all.accept_ra=0
+           sysctl -w net.ipv6.conf.default.accept_ra=0
+           sysctl -w net.ipv6.route.flush=1
+        }
+      mode: '0700'
+    when: ipv6_enabled
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash {{ script_path }}
+    args:
+      executable: /bin/bash
+    register: _script_result
+    failed_when: false
+    when: ipv6_enabled
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Configure sysctl and execute script to disable IPv6 RA"
+      task_01_cmd: "lineinfile + script execution"
+      task_01_rc: "{{ _script_result.rc | default(-1) }}"
+      data_01: "{{ _script_result.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if _script_result.rc | default(-1) == 0 else 'FAIL' }}"
+      details_01: >-
+        {% if _script_result.rc | default(-1) == 0 %}Script completed successfully
+        {% else %}Script failed with exit code {{ _script_result.rc | default(-1) }}
+        {% endif %}
+    when: ipv6_enabled
+    tags: [execute]
+
+# Requirement 2 - Verify (only if IPv6 enabled)
+  - name: "Req 02 - Verify IPv6 RA acceptance is disabled"
+    ansible.builtin.shell: |
+      sysctl -n net.ipv6.conf.all.accept_ra
+      sysctl -n net.ipv6.conf.default.accept_ra
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    when: ipv6_enabled
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Check sysctl values for accept_ra"
+      task_02_cmd: "sysctl -n net.ipv6.conf.all.accept_ra; sysctl -n net.ipv6.conf.default.accept_ra"
+      task_02_rc: "{{ _verify_result.rc | default(-1) }}"
+      data_02: "{{ _verify_result.stdout | default('') | trim }}"
+      status_02: >-
+        {% if _verify_result.rc == 0 and (_verify_result.stdout_lines | length) == 2 and _verify_result.stdout_lines[0] | trim == '0' and _verify_result.stdout_lines[1] | trim == '0' %}PASS
+        {% else %}FAIL
+        {% endif %}
+      details_02: >-
+        {% if _verify_result.rc == 0 and (_verify_result.stdout_lines | length) == 2 and _verify_result.stdout_lines[0] | trim == '0' and _verify_result.stdout_lines[1] | trim == '0' %}Both parameters set to 0
+        {% else %}One or both parameters not 0. Output: {{ _verify_result.stdout | default('') | trim }}
+        {% endif %}
+    when: ipv6_enabled
+    tags: [execute]
+
+# Compute overall status (must be separate tasks to avoid circular reference)
+  - name: "Compute overall remediation status"
+    ansible.builtin.set_fact:
+      overall_status: >-
+        {% if not ipv6_enabled %}SKIPPED
+        {% elif status_01 | trim == 'PASS' and status_02 | trim == 'PASS' %}PASS
+        {% elif status_01 | trim == 'PASS' and status_02 | trim == 'SKIPPED' %}PASS
+        {% elif status_01 | trim == 'SKIPPED' and status_02 | trim == 'SKIPPED' %}SKIPPED
+        {% else %}FAILED
+        {% endif %}
+    tags: [execute]
+
+  - name: "Compute overall remediation details"
+    ansible.builtin.set_fact:
+      overall_details: >-
+        {% if overall_status | trim == 'SKIPPED' %}IPv6 disabled, no action taken
+        {% elif overall_status | trim == 'PASS' %}Remediation applied and verified successful
+        {% else %}Remediation or verification failed
+        {% endif %}
+    tags: [execute]
+
+  always:
+# === RESTORE PHASE (cleanup only, no config rollback) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete created script file"
+    ansible.builtin.file:
+      path: "{{ script_path }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+# Set cis_result before the report (requirement 3)
+- name: "Set cis_result variable"
+  ansible.builtin.set_fact:
+    cis_result: "{{ overall_status }}"
+  tags: [report]
+- name: "Req 03 - Generate remediation report"
+  ansible.builtin.debug:
+    msg:
+    - "========================================================"
+    - "        REMEDIATION REPORT — CIS 3.3.11"
+    - "========================================================"
+    - ""
+    - "Reference: CIS Benchmark checkpoint 3.3.11"
+    - "---"
+    - "REQUIREMENT 01 - {{ req_01 }}"
+    - "  Task: {{ task_01_name | default('Not executed') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}"
+    - "  Task: {{ task_02_name | default('Not executed') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL REMEDIATION:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ overall_details | default('Not evaluated') | trim }}"
+    - "========================================================"
+  tags: [report]

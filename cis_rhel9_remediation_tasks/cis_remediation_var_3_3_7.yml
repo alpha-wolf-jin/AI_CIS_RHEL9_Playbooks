@@ -1,0 +1,7 @@
+playbook_name: "cis_remediation_3_3_7"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+sysctl_conf_file: "/etc/sysctl.d/60-netipv4_sysctl.conf"
+checkpoint_id: "cis_3_3_7"
+req_01: "Set net.ipv4.conf.all.rp_filter = 1 and net.ipv4.conf.default.rp_filter = 1"
+req_02: "VERIFY: Run audit check to confirm Ensure reverse path filtering is enabled is properly configured. Expected result: System is compliant"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

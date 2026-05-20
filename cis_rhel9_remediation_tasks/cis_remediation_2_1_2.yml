@@ -1,0 +1,219 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_1_2.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+
+- block:
+  - name: "Check if avahi package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+
+  - name: "Set fact - avahi installed"
+    ansible.builtin.set_fact:
+      avahi_installed: "{{ 'avahi' in ansible_facts.packages }}"
+
+  - name: "Set fact - skip_all if not installed"
+    ansible.builtin.set_fact:
+      skip_all: "{{ not avahi_installed | default(false) }}"
+
+  - name: "Req 1 - Stop avahi-daemon services"
+    ansible.builtin.shell: "systemctl stop avahi-daemon.socket avahi-daemon.service"
+    args:
+      executable: /bin/bash
+    register: result_stop
+    failed_when: false
+    changed_when: false
+    when: "not skip_all"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Req 1 - Stop avahi-daemon services"
+      task_01_cmd: "systemctl stop avahi-daemon.socket avahi-daemon.service"
+      task_01_rc: "{{ result_stop.rc | default(-1) }}"
+      data_01: "{{ result_stop.stdout | default('') | trim }}"
+      status_01: >-
+        {{ 'SKIPPED' if (result_stop.skipped | default(false)) else
+           ('APPLIED' if result_stop.rc == 0 else 'FAILED') }}
+      details_01: >-
+        {{ 'Task skipped because avahi not installed' if (result_stop.skipped | default(false)) else
+           ('Services stopped successfully' if result_stop.rc == 0 else 'Failed to stop services') }}
+
+  - name: "Req 2 - Remove avahi package"
+    ansible.builtin.dnf:
+      name: avahi
+      state: absent
+    register: remove_result
+    failed_when: false
+    when: "not skip_all"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Req 2 - Remove avahi package"
+      task_02_cmd: "dnf remove avahi"
+      task_02_rc: "{{ remove_result.rc | default(-1) }}"
+      data_02: "{{ remove_result.stdout | default('') | trim }}"
+      status_02: >-
+        {{ 'SKIPPED' if (remove_result.skipped | default(false)) else
+           ('APPLIED' if remove_result.rc == 0 else 'FAILED') }}
+      details_02: >-
+        {{ 'Task skipped because avahi not installed' if (remove_result.skipped | default(false)) else
+           ('Package removed successfully' if remove_result.rc == 0 else 'Failed to remove package') }}
+
+  - name: "Req 3 - Mask avahi-daemon services"
+    ansible.builtin.shell: "systemctl mask avahi-daemon.socket avahi-daemon.service"
+    args:
+      executable: /bin/bash
+    register: mask_result
+    failed_when: false
+    changed_when: false
+    when:
+    - "not skip_all"
+    - "remove_result.rc | default(0) != 0"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Req 3 - Mask avahi-daemon services"
+      task_03_cmd: "systemctl mask avahi-daemon.socket avahi-daemon.service"
+      task_03_rc: "{{ mask_result.rc | default(-1) }}"
+      data_03: "{{ mask_result.stdout | default('') | trim }}"
+      status_03: >-
+        {{ 'SKIPPED' if (mask_result.skipped | default(false)) else
+           ('APPLIED' if mask_result.rc == 0 else 'FAILED') }}
+      details_03: >-
+        {{ 'Task skipped because package already removed' if (mask_result.skipped | default(false)) else
+           ('Services masked successfully' if mask_result.rc == 0 else 'Failed to mask services') }}
+
+  - name: "Req 4 - Verify avahi-daemon services are not active"
+    ansible.builtin.shell: "systemctl is-active avahi-daemon.socket avahi-daemon.service"
+    args:
+      executable: /bin/bash
+    register: verify_services
+    failed_when: false
+    changed_when: false
+    when: "not skip_all"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Req 4 - Verify avahi-daemon services are not active"
+      task_04_cmd: "systemctl is-active avahi-daemon.socket avahi-daemon.service"
+      task_04_rc: "{{ verify_services.rc | default(-1) }}"
+      data_04: "{{ verify_services.stdout | default('') | trim }}"
+      status_04: >-
+        {{ 'SKIPPED' if (verify_services.skipped | default(false)) else
+           ('APPLIED' if verify_services.rc != 0 else 'FAILED') }}
+      details_04: >-
+        {{ 'Task skipped because avahi not installed' if (verify_services.skipped | default(false)) else
+           ('Services are inactive or unknown' if verify_services.rc != 0 else 'Services are still active') }}
+
+  - name: "Req 5 - Verify avahi package is removed or masked"
+    ansible.builtin.shell: "rpm -q avahi"
+    args:
+      executable: /bin/bash
+    register: verify_package
+    failed_when: false
+    changed_when: false
+    when: "not skip_all"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Req 5 - Verify avahi package is removed or masked"
+      task_05_cmd: "rpm -q avahi"
+      task_05_rc: "{{ verify_package.rc | default(-1) }}"
+      data_05: "{{ verify_package.stdout | default('') | trim }}"
+      status_05: >-
+        {{ 'SKIPPED' if (verify_package.skipped | default(false)) else
+           ('APPLIED' if (verify_package.rc != 0) or
+                        (mask_result is defined and mask_result.rc | default(-1) == 0) else 'FAILED') }}
+      details_05: >-
+        {{ 'Task skipped because avahi not installed' if (verify_package.skipped | default(false)) else
+           ('Package is not installed' if verify_package.rc != 0 else
+            ('Package remains but services are masked' if mask_result is defined and mask_result.rc | default(-1) == 0 else
+             'Package is still present and services are not masked')) }}
+
+  - name: "Evaluate overall status"
+    ansible.builtin.set_fact:
+      overall_status: >-
+        {{ 'SKIP' if (skip_all | default(false)) else
+           ('PASS' if (status_04 | trim == 'APPLIED') and (status_05 | trim == 'APPLIED') else 'FAIL') }}
+      overall_details: >-
+        {{ 'Avahi package not installed, no remediation needed.' if (skip_all | default(false)) else
+           ('All checks passed - avahi services are not in use.' if (status_04 | trim == 'APPLIED') and (status_05 | trim == 'APPLIED') else
+            'Remediation incomplete - avahi services may still be in use.') }}
+
+  - name: "Set final cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ overall_status | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.1.2"
+      - "Reference: CIS Benchmark checkpoint 2.1.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}"
+      - "  Task: {{ task_01_name }}"
+      - "  Command: {{ task_01_cmd }}"
+      - "  Exit code: {{ task_01_rc }}"
+      - "  Data: {{ data_01 }}"
+      - "  Status: {{ status_01 | trim }}"
+      - "  Details: {{ details_01 | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}"
+      - "  Task: {{ task_02_name }}"
+      - "  Command: {{ task_02_cmd }}"
+      - "  Exit code: {{ task_02_rc }}"
+      - "  Data: {{ data_02 }}"
+      - "  Status: {{ status_02 | trim }}"
+      - "  Details: {{ details_02 | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}"
+      - "  Task: {{ task_03_name }}"
+      - "  Command: {{ task_03_cmd }}"
+      - "  Exit code: {{ task_03_rc }}"
+      - "  Data: {{ data_03 }}"
+      - "  Status: {{ status_03 | trim }}"
+      - "  Details: {{ details_03 | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}"
+      - "  Task: {{ task_04_name }}"
+      - "  Command: {{ task_04_cmd }}"
+      - "  Exit code: {{ task_04_rc }}"
+      - "  Data: {{ data_04 }}"
+      - "  Status: {{ status_04 | trim }}"
+      - "  Details: {{ details_04 | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}"
+      - "  Task: {{ task_05_name }}"
+      - "  Command: {{ task_05_cmd }}"
+      - "  Exit code: {{ task_05_rc }}"
+      - "  Data: {{ data_05 }}"
+      - "  Status: {{ status_05 | trim }}"
+      - "  Details: {{ details_05 | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ overall_details | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

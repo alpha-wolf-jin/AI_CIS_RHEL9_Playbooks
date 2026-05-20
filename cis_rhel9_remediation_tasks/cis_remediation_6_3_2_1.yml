@@ -1,0 +1,204 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_2_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snapshot_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/auditd.conf.bak"
+    remote_src: true
+  when: _snapshot_config_stat.stat.exists
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check auditd package installed"
+  shell: "dpkg -l auditd || rpm -q auditd"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check auditd package installed"
+    task_01_cmd: "dpkg -l auditd || rpm -q auditd"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'SKIP' }}"
+    details_01: "{{ 'Auditd package is installed.' if (result_01.rc | default(-1)) == 0 else 'Auditd package not found. Skipping remediation.' }}"
+    auditd_installed: "{{ (result_01.rc | default(-1)) == 0 }}"
+
+- name: "Set SKIP for remaining requirements if auditd not installed"
+  set_fact:
+    status_02: "SKIP"
+    details_02: "Skipped because auditd package is not installed."
+    data_02: "Not executed"
+    status_03: "SKIP"
+    details_03: "Skipped because auditd package is not installed."
+    data_03: "Not executed"
+    status_04: "SKIP"
+    details_04: "Skipped because auditd package is not installed."
+    data_04: "Not executed"
+    status_05: "SKIP"
+    details_05: "Skipped because auditd package is not installed."
+    data_05: "Not executed"
+  when: "not auditd_installed"
+
+- name: "Req 02 - Configure max_log_file size"
+  ansible.builtin.lineinfile:
+    path: "{{ config_file }}"
+    regexp: |
+      ^max_log_file\s*=.*
+    line: "max_log_file = {{ config_value }}"
+    backup: yes
+  register: lineinfile_result
+  failed_when: false
+  when: auditd_installed
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Configure max_log_file"
+    task_02_cmd: |
+      lineinfile regexp='^max_log_file\\s*=.*' line='max_log_file = {{ config_value }}'
+    task_02_rc: "{{ 0 if not lineinfile_result.failed else 1 }}"
+    data_02: "max_log_file = {{ config_value }}"
+    status_02: "{{ 'PASS' if not lineinfile_result.failed else 'FAIL' }}"
+    details_02: "{{ 'Configuration applied successfully.' if not lineinfile_result.failed else 'Failed to apply configuration.' }}"
+  when: auditd_installed
+
+- name: "Req 03 - Restart auditd service"
+  ansible.builtin.systemd:
+    name: "{{ service_name }}"
+    state: restarted
+  register: service_result
+  failed_when: false
+  when: auditd_installed
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Restart auditd service"
+    task_03_cmd: "systemctl restart auditd"
+    task_03_rc: "{{ 0 if service_result is success else service_result.rc | default(-1) }}"
+    data_03: "Service restart attempted."
+    status_03: "{{ 'PASS' if service_result is success else 'FAIL' }}"
+    details_03: "{{ 'Service restarted successfully.' if service_result is success else 'Failed to restart service.' }}"
+  when: auditd_installed
+
+- name: "Req 04 - Verify max_log_file configuration"
+  shell: "grep '^max_log_file' {{ config_file }}"
+  args:
+    executable: /bin/bash
+  register: verify_result
+  failed_when: false
+  when: auditd_installed
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Verify configuration"
+    task_04_cmd: "grep '^max_log_file' {{ config_file }}"
+    task_04_rc: "{{ verify_result.rc | default(-1) }}"
+    data_04: "{{ verify_result.stdout | default('') | trim }}"
+    status_04: "{{ 'PASS' if (verify_result.rc | default(-1)) == 0 and (config_value | string) in (verify_result.stdout | default('')) else 'FAIL' }}"
+    details_04: "{{ 'Configuration verified: ' + verify_result.stdout if (verify_result.rc | default(-1)) == 0 else 'Verification failed.' }}"
+  when: auditd_installed
+
+- name: "Req 05 - Set final remediation result"
+  set_fact:
+    status_05: "{{ status_04 }}"
+    details_05: "{{ details_04 }}"
+    task_05_name: "Set cis_result"
+    task_05_cmd: "set_fact cis_result"
+    task_05_rc: 0
+    cis_result: "{{ status_04 }}"
+
+- name: "Generate remediation report"
+  debug:
+    msg:
+    - "REMEDIATION REPORT — CIS 6.3.2.1"
+    - "Reference: CIS Benchmark checkpoint 6.3.2.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 | trim }}"
+    - "  Status: {{ status_01 | trim }}"
+    - "  Details: {{ details_01 | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 | trim }}"
+    - "  Status: {{ status_02 | trim }}"
+    - "  Details: {{ details_02 | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 | trim }}"
+    - "  Status: {{ status_03 | trim }}"
+    - "  Details: {{ details_03 | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name }}"
+    - "  Command: {{ task_04_cmd }}"
+    - "  Exit code: {{ task_04_rc }}"
+    - "  Data: {{ data_04 | trim }}"
+    - "  Status: {{ status_04 | trim }}"
+    - "  Details: {{ details_04 | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name }}"
+    - "  Command: {{ task_05_cmd }}"
+    - "  Exit code: {{ task_05_rc }}"
+    - "  Data: {{ data_05 | trim }}"
+    - "  Status: {{ status_05 | trim }}"
+    - "  Details: {{ details_05 | trim }}"
+    - ""
+    - "OVERALL REMEDIATION:"
+    - "  Result: {{ cis_result }}"

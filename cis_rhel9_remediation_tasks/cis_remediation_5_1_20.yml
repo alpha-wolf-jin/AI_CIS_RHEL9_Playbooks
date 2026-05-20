@@ -1,0 +1,333 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_20.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if config file exists"
+  ansible.builtin.stat:
+    path: "{{ config_file }}"
+  register: _snapshot_config_stat
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Backup config file if exists"
+  ansible.builtin.copy:
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/sshd_config.backup"
+    remote_src: true
+  when: _snapshot_config_stat.stat.exists | default(false)
+  failed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_05: "Not collected yet"
+      status_05: "UNKNOWN"
+      details_05: "Not evaluated"
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      data_06: "Not collected yet"
+      status_06: "UNKNOWN"
+      details_06: "Not evaluated"
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      playbook_skipped: false
+    tags: [execute]
+
+  - name: "Req 01 - Check if openssh-server is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if openssh-server is installed"
+      task_01_cmd: "package_facts module"
+      task_01_rc: "{{ 0 if package_name in ansible_facts.packages else 1 }}"
+      data_01: "{{ 'openssh-server found' if package_name in ansible_facts.packages else 'openssh-server not found' }}"
+      status_01: "{{ 'PASS' if package_name in ansible_facts.packages else 'FAIL' }}"
+      details_01: "{{ 'openssh-server is installed' if package_name in ansible_facts.packages else 'openssh-server is NOT installed' }}"
+      playbook_skipped: "{{ false if package_name in ansible_facts.packages else true }}"
+    tags: [execute]
+
+  - name: "Req 02 - Set PermitRootLogin to no in sshd_config"
+    ansible.builtin.lineinfile:
+      path: "{{ config_file }}"
+      regexp: |
+        ^#?{{ config_param }}\s
+      line: "{{ config_param }} {{ config_value }}"
+      state: present
+      backup: false
+    register: result_02
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Set PermitRootLogin to no in sshd_config"
+      task_02_cmd: |
+        lineinfile: regexp='^#?PermitRootLogin\\s' line='PermitRootLogin no'
+      task_02_rc: "{{ 0 if (result_02 is not skipped | default(false)) else -1 }}"
+      data_02: "{{ 'File updated' if (result_02.changed | default(false)) else 'No change needed' if (result_02 is not skipped | default(false)) else 'Skipped' }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else 'PASS' if (result_02 is not skipped | default(false)) else 'FAIL' }}"
+      details_02: "{{ 'Skipped - openssh-server not installed' if (playbook_skipped | default(false) | bool) else 'Configuration updated successfully' if (result_02.changed | default(false)) else 'Configuration already set correctly' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details - skipped"
+    set_fact:
+      task_02_name: "Set PermitRootLogin to no in sshd_config"
+      task_02_cmd: |
+        lineinfile: regexp='^#?PermitRootLogin\\s' line='PermitRootLogin no'
+      task_02_rc: -1
+      data_02: "Skipped"
+      status_02: "SKIP"
+      details_02: "Skipped - openssh-server not installed"
+    when: "playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 03 - Ensure PermitRootLogin no appears before Include/Match"
+    shell: |
+      sed -i '/^Include/i PermitRootLogin no' {{ config_file }}
+      sed -i '/^Match/i PermitRootLogin no' {{ config_file }}
+      awk '!seen[$0]++' {{ config_file }} > /tmp/sshd_config && mv /tmp/sshd_config {{ config_file }}
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Ensure PermitRootLogin no appears before Include/Match"
+      task_03_cmd: "sed -i '/^Include/i PermitRootLogin no' /etc/ssh/sshd_config && sed -i '/^Match/i PermitRootLogin no' /etc/ssh/sshd_config && awk '!seen[$0]++' /etc/ssh/sshd_config > /tmp/sshd_config && mv /tmp/sshd_config /etc/ssh/sshd_config"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_03: "{{ 'File reordered successfully' if (result_03.rc | default(-1)) == 0 else 'Failed to reorder' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details - skipped"
+    set_fact:
+      task_03_name: "Ensure PermitRootLogin no appears before Include/Match"
+      task_03_cmd: "sed ... (skipped)"
+      task_03_rc: -1
+      data_03: "Skipped"
+      status_03: "SKIP"
+      details_03: "Skipped - openssh-server not installed"
+    when: "playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 04 - Restart sshd service"
+    ansible.builtin.shell: systemctl restart sshd
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Restart sshd service"
+      task_04_cmd: "systemctl restart sshd"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_04: "{{ 'sshd restarted successfully' if (result_04.rc | default(-1)) == 0 else 'Failed to restart sshd' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 04 details - skipped"
+    set_fact:
+      task_04_name: "Restart sshd service"
+      task_04_cmd: "systemctl restart sshd"
+      task_04_rc: -1
+      data_04: "Skipped"
+      status_04: "SKIP"
+      details_04: "Skipped - openssh-server not installed"
+    when: "playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 05 - Verify PermitRootLogin via sshd -T"
+    ansible.builtin.shell: "sshd -T | grep -i permitrootlogin"
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    set_fact:
+      task_05_name: "Verify PermitRootLogin is set to no via sshd -T"
+      task_05_cmd: "sshd -T | grep -i permitrootlogin"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: "{{ 'PASS' if (result_05.rc | default(-1)) == 0 and ('permitrootlogin no' in (result_05.stdout | default('') | lower)) else 'FAIL' }}"
+      details_05: "{{ 'Verification passed - PermitRootLogin is no' if (result_05.rc | default(-1)) == 0 and ('permitrootlogin no' in (result_05.stdout | default('') | lower)) else 'Verification failed' }}"
+    when: "not (playbook_skipped | default(false) | bool)"
+    tags: [execute]
+
+  - name: "Store requirement 05 details - skipped"
+    set_fact:
+      task_05_name: "Verify PermitRootLogin is set to no via sshd -T"
+      task_05_cmd: "sshd -T | grep -i permitrootlogin"
+      task_05_rc: -1
+      data_05: "Skipped"
+      status_05: "SKIP"
+      details_05: "Skipped - openssh-server not installed"
+    when: "playbook_skipped | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 06 - Compute overall remediation status"
+    set_fact:
+      cis_result: >-
+        {{
+          'PASS' if status_05 == 'PASS' else
+          'FAIL' if status_05 == 'FAIL' else
+          'SKIP' if status_05 == 'SKIP' else
+          'ERROR'
+        }}
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    set_fact:
+      task_06_name: "Compute overall remediation status"
+      task_06_cmd: "N/A"
+      task_06_rc: 0
+      data_06: "{{ cis_result }}"
+      status_06: "{{ cis_result }}"
+      details_06: "Overall remediation status derived from verification step"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 5.1.20"
+      - "Reference: CIS Benchmark checkpoint 5.1.20"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    stat:
+      path: "{{ backup_dir }}/sshd_config.backup"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite sshd_config with original"
+    copy:
+      src: "{{ backup_dir }}/sshd_config.backup"
+      dest: "{{ config_file }}"
+      remote_src: true
+    register: _restore_config_result
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restart sshd to apply original config"
+    service:
+      name: sshd
+      state: restarted
+    when: "_restore_config_result.rc | default(1) == 0"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,3 @@
+req_01: "Check if journald is used for logging on the system using command: `systemctl is-active systemd-journald`. Expected result: active"
+req_02: "Check if systemd-journal-remote is installed using command: `rpm -q systemd-journal-remote`. Expected result: systemd-journal-remote-<version>"
+req_03: "Summarize overall compliance status: if both checks pass, the system is compliant; otherwise, it is non-compliant."

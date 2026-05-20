@@ -1,0 +1,8 @@
+playbook_name: "cis_5_1_18"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+sshd_config: "/etc/ssh/sshd_config"
+max_sessions_value: "10"
+req_01: "Apply prerequisite check for sshd configuration using command: `which sshd && sshd -t`. Expected result: sshd binary exists and configuration syntax is valid."
+req_02: "Apply MaxSessions setting to 10 or less in /etc/ssh/sshd_config using command: `grep -q '^MaxSessions' /etc/ssh/sshd_config && sed -i 's/^MaxSessions.*/MaxSessions 10/' /etc/ssh/sshd_config || echo 'MaxSessions 10' >> /etc/ssh/sshd_config`. Expected result: MaxSessions is set to 10 in the configuration file."
+req_03: "Apply verification of MaxSessions setting using command: `sshd -T | grep -i maxsessions`. Expected result: output shows 'maxsessions 10'."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

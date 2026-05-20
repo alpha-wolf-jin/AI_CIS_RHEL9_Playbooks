@@ -1,0 +1,7 @@
+req_01: "Check if auditd configuration file exists using stat module. Expected result: file exists."
+req_02: |
+  Check space_left_action is set to email, exec, single, or halt using command: `grep -P -- '^\\h*space_left_action\\h*=\\h*(email|exec|single|halt)\\b' /etc/audit/auditd.conf`. Expected result: output shows space_left_action = email, exec, single, or halt.
+req_03: |
+  Check admin_space_left_action is set to single or halt using command: `grep -P -- '^\\h*admin_space_left_action\\h*=\\h*(single|halt)\\b' /etc/audit/auditd.conf`. Expected result: output shows admin_space_left_action = single or halt.
+req_04: "Summarize overall compliance: PASS if configuration file exists and both checks pass, SKIP if configuration file does not exist, FAIL if configuration file exists but configuration is incorrect."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

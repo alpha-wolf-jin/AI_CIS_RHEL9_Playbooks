@@ -1,0 +1,197 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_1_15.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if sshd config file exists"
+  ansible.builtin.stat:
+    path: "{{ sshd_config_file }}"
+  register: _sshd_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup sshd config file if exists"
+  ansible.builtin.copy:
+    src: "{{ sshd_config_file }}"
+    dest: "{{ backup_dir }}/sshd_config.backup"
+    remote_src: true
+  when: _sshd_config_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Record that pre_remediate backup file does not exist"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/sshd_config.pre_remediate.emarker"
+    mode: '0600'
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    playbook_skipped: false
+  tags: [always]
+- block:
+  - name: "Req 01 - Check if sshd package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if sshd not installed"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'openssh-server' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Backup sshd config before remediation"
+    ansible.builtin.copy:
+      src: "{{ sshd_config_file }}"
+      dest: "{{ backup_dir }}/sshd_config.pre_remediate"
+      remote_src: true
+    register: result_backup
+    failed_when: false
+    when:
+    - "not playbook_skipped | bool"
+    - "_sshd_config_stat.stat.exists | default(false)"
+    tags: [execute]
+
+  - name: "Req 01 - Set LogLevel in sshd configuration"
+    ansible.builtin.lineinfile:
+      path: "{{ sshd_config_file }}"
+      regexp: |
+        ^#?LogLevel\s+
+      line: "LogLevel {{ loglevel_value }}"
+      state: present
+    register: result_loglevel
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Restart sshd service to apply changes"
+    ansible.builtin.service:
+      name: "{{ sshd_service }}"
+      state: restarted
+    register: result_restart
+    failed_when: false
+    when:
+    - "not playbook_skipped | bool"
+    - "result_loglevel is changed"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Set LogLevel in sshd configuration and restart service"
+      task_01_cmd: |
+        lineinfile: path={{ sshd_config_file }} regexp='^#?LogLevel\\s+' line='LogLevel {{ loglevel_value }}'
+      task_01_rc: "{{ result_loglevel.rc | default(0) if not playbook_skipped | bool else 0 }}"
+      data_01: "{{ 'SKIPPED: sshd not installed' if playbook_skipped | bool else ('LogLevel set to ' + loglevel_value) }}"
+      status_01: "{{ 'SKIP' if playbook_skipped | bool else ('PASS' if result_loglevel.rc | default(0) == 0 else 'FAIL') }}"
+      details_01: "{{ 'sshd package not installed - remediation skipped' if playbook_skipped | bool else ('LogLevel configured successfully' if result_loglevel.rc | default(0) == 0 else 'Failed to set LogLevel') }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify LogLevel configuration in sshd"
+    ansible.builtin.shell: "sshd -T 2>/dev/null | grep -i '^loglevel ' || echo 'VERIFY_FAILED'"
+    args:
+      executable: /bin/bash
+    register: result_verify
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify LogLevel configuration using sshd -T"
+      task_02_cmd: "sshd -T 2>/dev/null | grep -i '^loglevel '"
+      task_02_rc: "{{ result_verify.rc | default(-1) if not playbook_skipped | bool else 0 }}"
+      data_02: "{{ 'SKIPPED: sshd not installed' if playbook_skipped | bool else (result_verify.stdout | default('') | trim) }}"
+      status_02: "{{ 'SKIP' if playbook_skipped | bool else ('PASS' if (result_verify.stdout | default('') | trim | lower == 'loglevel ' + loglevel_value | lower) else 'FAIL') }}"
+      details_02: "{{ 'sshd package not installed - verification skipped' if playbook_skipped | bool else ('LogLevel is correctly set to ' + loglevel_value if (result_verify.stdout | default('') | trim | lower == 'loglevel ' + loglevel_value | lower) else 'LogLevel mismatch or verification failed') }}"
+    tags: [execute]
+
+  - name: "Set cis_result from last requirement status"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'PASS' if status_02 == 'PASS' else 'FAIL' if status_02 == 'FAIL' else 'SKIP' if status_02 == 'SKIP' else 'ERROR' }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 5.1.15"
+      - "Reference: CIS Benchmark checkpoint 5.1.15"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sshd_config.backup"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original sshd config"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/sshd_config.backup"
+      dest: "{{ sshd_config_file }}"
+      remote_src: true
+    when: _restore_backup_stat.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if pre_remediate emarker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/sshd_config.pre_remediate.emarker"
+    register: _restore_pre_remediate_emarker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove pre_remediate backup file if should be absent"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}/sshd_config.pre_remediate"
+      state: absent
+    when: _restore_pre_remediate_emarker.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

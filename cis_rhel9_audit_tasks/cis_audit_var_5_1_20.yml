@@ -1,0 +1,6 @@
+req_01: "Check if SSH server is installed using command: `which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server`. Expected result: sshd binary or package is present."
+req_02: "Check global PermitRootLogin setting using command: `sshd -T | grep permitrootlogin`. Expected result: permitrootlogin no"
+req_03: "Check PermitRootLogin for specific user (e.g., sshuser) using command: `sshd -T -C user=sshuser | grep permitrootlogin`. Expected result: permitrootlogin no"
+req_04: "Summarize overall compliance status: PASS if all checks pass, SKIP if SSH server is not installed, FAIL if any check fails."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+search_string: "permitrootlogin no"

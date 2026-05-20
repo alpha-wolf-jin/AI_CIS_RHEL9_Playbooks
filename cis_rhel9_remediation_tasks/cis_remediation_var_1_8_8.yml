@@ -1,0 +1,2 @@
+playbook_name: "cis_1_8_8"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"

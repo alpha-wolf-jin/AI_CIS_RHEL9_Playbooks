@@ -1,0 +1,177 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_3_3_4_2.yml
+
+- name: "Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+  tags: [execute]
+- name: "Set pam_installed fact"
+  ansible.builtin.set_fact:
+    pam_installed: "{{ 'pam' in ansible_facts.packages }}"
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
+- name: "Set SKIPPED status when pam is not installed"
+  ansible.builtin.set_fact:
+    status_01: "SKIPPED"
+    details_01: "PAM package not installed; audit not applicable"
+    data_01: "SKIPPED"
+    status_02: "SKIPPED"
+    details_02: "PAM package not installed; audit not applicable"
+    data_02: "SKIPPED"
+    status_03: "SKIPPED"
+    details_03: "Overall compliance cannot be determined; PAM missing"
+    data_03: "SKIPPED"
+    status_04: "SKIPPED"
+    details_04: "Audit skipped due to missing PAM"
+    data_04: "SKIPPED"
+    cis_result: "SKIPPED"
+  when: not pam_installed
+
+# Requirement 1: Check if pam_unix.so is present
+- name: "Req 01 - Check pam_unix.so presence in password PAM config"
+  ansible.builtin.shell: |
+    grep -Pi '^\h*password\h+([^#\n\r]+\h+)?pam_unix\.so\b' /etc/pam.d/password-auth /etc/pam.d/system-auth
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: pam_installed | bool
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if pam_unix.so is present in PAM configuration files"
+    task_01_cmd: |
+      grep -Pi '^\\h*password\\h+([^#\\n\\r]+\\h+)?pam_unix\\.so\\b' /etc/pam.d/{password,system}-auth
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if (result_01.stdout | default('') | trim) | length > 0 else 'FAIL' }}"
+    details_01: "{{ 'pam_unix.so found in password PAM configuration' if (result_01.stdout | default('') | trim) | length > 0 else 'pam_unix.so not found or no matching lines' }}"
+  when: pam_installed | bool
+
+# Requirement 2: Check that remember argument is not set
+- name: "Req 02 - Check remember argument absence on pam_unix.so"
+  ansible.builtin.shell: |
+    grep -Pi '^\h*password\h+([^#\n\r]+\h+)?pam_unix\.so\b' /etc/pam.d/password-auth /etc/pam.d/system-auth | grep -Pv '\bremember=\d\b'
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: pam_installed | bool
+
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check that remember argument is not set on pam_unix.so"
+    task_02_cmd: |
+      grep -Pi '^\\h*password\\h+([^#\\n\\r]+\\h+)?pam_unix\\.so\\b' /etc/pam.d/{password,system}-auth | grep -Pv '\\bremember=\\d\\b'
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if (result_01.stdout | default('') | trim) == (result_02.stdout | default('') | trim) else 'FAIL' }}"
+    details_02: "{{ 'No remember argument detected on pam_unix.so password lines' if (result_01.stdout | default('') | trim) == (result_02.stdout | default('') | trim) else 'remember argument present on pam_unix.so password lines' }}"
+  when: pam_installed | bool
+
+# Requirement 3: Summarize overall compliance (split to fix data_03 scoping)
+- name: "Req 03 - Determine overall compliance status (compute)"
+  ansible.builtin.set_fact:
+    _tmp_status_03: >-
+      {{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS')
+         else 'SKIPPED' if (status_01 == 'SKIPPED')
+         else 'FAIL' }}
+  when: pam_installed | bool
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    status_03: "{{ _tmp_status_03 }}"
+    data_03: "{{ _tmp_status_03 }}"
+    details_03: >-
+      {{ 'System is compliant with CIS 5.3.3.4.2' if (_tmp_status_03 == 'PASS')
+         else 'PAM package not installed, audit skipped' if (_tmp_status_03 == 'SKIPPED')
+         else 'System is non-compliant with CIS 5.3.3.4.2' }}
+    task_03_name: "Summarize overall compliance"
+    task_03_cmd: "Logic: IF pam_unix.so present AND no remember argument -> PASS, else FAIL/SKIPPED"
+    task_03_rc: 0
+  when: pam_installed | bool
+
+# Requirement 4: Store final cis_result
+- name: "Req 04 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_03 }}"
+    status_04: "{{ status_03 }}"
+    details_04: "{{ details_03 }}"
+    data_04: "{{ status_03 }}"
+    task_04_name: "Set cis_result to overall compliance status"
+    task_04_cmd: "set_fact: cis_result = {{ status_03 }}"
+    task_04_rc: 0
+  when: status_03 is defined
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.3.3.4.2"
+    - "Reference: CIS Benchmark checkpoint 5.3.3.4.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

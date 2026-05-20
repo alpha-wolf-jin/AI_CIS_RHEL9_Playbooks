@@ -1,0 +1,234 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_21.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    data_06: "Not collected yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    sshd_installed: false
+    sshd_running: false
+
+- name: "Req 01 - Check if OpenSSH server is installed"
+  shell: "which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details and sshd installation status"
+  set_fact:
+    task_01_name: "Check if OpenSSH server is installed"
+    task_01_cmd: "which sshd || dpkg -l | grep openssh-server || rpm -q openssh-server"
+    task_01_rc: "{{ result_01.rc }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'FAIL' }}"
+    details_01: "{{ 'sshd is installed' if result_01.rc == 0 else 'sshd is not installed' }}"
+    sshd_installed: "{{ result_01.rc == 0 }}"
+
+- name: "Req 02 - Check if sshd is running"
+  shell: "systemctl is-active sshd 2>/dev/null || service sshd status 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: sshd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details and sshd running status"
+  set_fact:
+    task_02_name: "Check if sshd is running"
+    task_02_cmd: "systemctl is-active sshd 2>/dev/null || service sshd status 2>/dev/null"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('NOT_APPLICABLE') | trim }}"
+    status_02: >-
+      {%- if not sshd_installed -%}
+        SKIP
+      {%- elif result_02.stdout | default('') | trim is search 'active' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_02: >-
+      {%- if not sshd_installed -%}
+        OpenSSH server not installed, skipping run check
+      {%- elif result_02.stdout | default('') | trim is search 'active' -%}
+        sshd is active
+      {%- else -%}
+        sshd is not active or status unknown
+      {%- endif -%}
+    sshd_running: "{{ (sshd_installed | bool and ('active' in result_02.stdout | default('') | lower)) | bool }}"
+
+- name: "Req 03 - Check if PermitUserEnvironment is disabled"
+  shell: "sshd -T | grep permituserenvironment"
+  args:
+    executable: /bin/bash
+  register: result_03
+  when:
+  - sshd_installed | bool
+  - sshd_running | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check PermitUserEnvironment disabled"
+    task_03_cmd: "sshd -T | grep permituserenvironment"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('NOT_APPLICABLE') | trim }}"
+    status_03: >-
+      {%- if not sshd_installed or not sshd_running -%}
+        SKIP
+      {%- elif result_03.stdout | default('') | trim == 'permituserenvironment no' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_03: >-
+      {%- if not sshd_installed or not sshd_running -%}
+        OpenSSH server not installed or not running
+      {%- elif result_03.stdout | default('') | trim == 'permituserenvironment no' -%}
+        PermitUserEnvironment is disabled
+      {%- else -%}
+        PermitUserEnvironment is not set to no or result unexpected
+      {%- endif -%}
+
+- name: "Req 04 - Summarize overall compliance for CIS 5.1.21"
+  set_fact:
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    status_04: >-
+      {%- if not sshd_installed or not sshd_running -%}
+        SKIP
+      {%- elif status_03 | default('') | trim == 'PASS' -%}
+        PASS
+      {%- else -%}
+        FAIL
+      {%- endif -%}
+    details_04: >-
+      {%- if not sshd_installed or not sshd_running -%}
+        OpenSSH server not installed or not running, compliance not applicable
+      {%- elif status_03 | default('') | trim == 'PASS' -%}
+        CIS 5.1.21 compliant
+      {%- else -%}
+        CIS 5.1.21 not compliant
+      {%- endif -%}
+
+- name: "Req 04 - Store requirement 04 compliance data"
+  set_fact:
+    data_04: "{{ status_04 }}"
+
+- name: "Req 05 - Store cis_result for CIS 5.1.21"
+  set_fact:
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    task_05_name: "Store final cis_result"
+    task_05_cmd: "set_fact: cis_result = {{ status_04 }}"
+    task_05_rc: 0
+    status_05: "{{ status_04 | default('ERROR') | trim }}"
+    details_05: "cis_result set to {{ status_04 | default('ERROR') | trim }}"
+    data_05: "{{ status_04 | default('ERROR') | trim }}"
+
+- name: "Req 06 - Prepare report data"
+  set_fact:
+    task_06_name: "Generate audit report"
+    task_06_cmd: "debug msg"
+    task_06_rc: 0
+    data_06: "Report generated"
+    status_06: "{{ cis_result | default('ERROR') | trim }}"
+    details_06: "Audit report generated with overall compliance {{ cis_result | default('ERROR') | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.21"
+    - "Reference: CIS Benchmark checkpoint 5.1.21"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+    - "========================================================"

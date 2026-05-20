@@ -1,0 +1,247 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_4_2_6.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /root/.bash_profile exists"
+  ansible.builtin.stat:
+    path: "/root/.bash_profile"
+  register: _snap_profile_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /root/.bash_profile if exists"
+  ansible.builtin.copy:
+    src: "/root/.bash_profile"
+    dest: "{{ backup_dir }}/bash_profile.present"
+    remote_src: true
+  when: "_snap_profile_stat.stat.exists | default(false)"
+  tags: [snapshot]
+- name: "Snapshot - Check if /root/.bashrc exists"
+  ansible.builtin.stat:
+    path: "/root/.bashrc"
+  register: _snap_bashrc_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /root/.bashrc if exists"
+  ansible.builtin.copy:
+    src: "/root/.bashrc"
+    dest: "{{ backup_dir }}/bashrc.present"
+    remote_src: true
+  when: "_snap_bashrc_stat.stat.exists | default(false)"
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "SKIP"
+      details_01: "Not evaluated"
+      task_01_name: "Req 01 - Check root shell config files exist"
+      task_01_cmd: "test -f /root/.bash_profile && test -f /root/.bashrc"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "SKIP"
+      details_02: "Not evaluated"
+      task_02_name: "Req 02 - Apply umask in /root/.bash_profile"
+      task_02_cmd: "lineinfile: regexp='^[[:space:]]*umask' line='umask 0027' path=/root/.bash_profile"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "SKIP"
+      details_03: "Not evaluated"
+      task_03_name: "Req 03 - Apply umask in /root/.bashrc"
+      task_03_cmd: "lineinfile: regexp='^[[:space:]]*umask' line='umask 0027' path=/root/.bashrc"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "SKIP"
+      details_04: "Not evaluated"
+      task_04_name: "Req 04 - Verify effective umask for root"
+      task_04_cmd: "bash -c 'source /root/.bash_profile; source /root/.bashrc; umask'"
+      task_04_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check root shell config files exist"
+    ansible.builtin.shell: "test -f /root/.bash_profile && test -f /root/.bashrc"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store Req 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Req 01 - Check root shell config files exist"
+      task_01_cmd: "test -f /root/.bash_profile && test -f /root/.bashrc"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'SKIP' }}"
+      details_01: "{{ 'Both files exist' if result_01.rc | default(-1) == 0 else 'One or both files missing - remediation skipped' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Apply umask in /root/.bash_profile"
+    ansible.builtin.lineinfile:
+      path: "/root/.bash_profile"
+      regexp: '^[[:space:]]*umask'
+      line: 'umask 0027'
+      create: false
+    register: result_02
+    failed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store Req 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Req 02 - Apply umask in /root/.bash_profile"
+      task_02_cmd: "lineinfile: regexp='^[[:space:]]*umask' line='umask 0027' path=/root/.bash_profile"
+      task_02_rc: "{{ 0 if not result_02.failed else 1 }}"
+      data_02: "umask 0027"
+      status_02: "{{ 'PASS' if not result_02.failed else 'FAIL' }}"
+      details_02: "{{ 'umask line updated in /root/.bash_profile' if not result_02.failed else 'Failed to update /root/.bash_profile' }}"
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Req 03 - Apply umask in /root/.bashrc"
+    ansible.builtin.lineinfile:
+      path: "/root/.bashrc"
+      regexp: '^[[:space:]]*umask'
+      line: 'umask 0027'
+      create: false
+    register: result_03
+    failed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store Req 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Req 03 - Apply umask in /root/.bashrc"
+      task_03_cmd: "lineinfile: regexp='^[[:space:]]*umask' line='umask 0027' path=/root/.bashrc"
+      task_03_rc: "{{ 0 if not result_03.failed else 1 }}"
+      data_03: "umask 0027"
+      status_03: "{{ 'PASS' if not result_03.failed else 'FAIL' }}"
+      details_03: "{{ 'umask line updated in /root/.bashrc' if not result_03.failed else 'Failed to update /root/.bashrc' }}"
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Req 04 - Verify effective umask for root"
+    ansible.builtin.shell: "bash -c 'source /root/.bash_profile; source /root/.bashrc; umask'"
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Store Req 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Req 04 - Verify effective umask for root"
+      task_04_cmd: "bash -c 'source /root/.bash_profile; source /root/.bashrc; umask'"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (result_04.rc | default(-1) == 0) and (result_04.stdout | default('') | trim in ['0027','0077']) else 'FAIL' }}"
+      details_04: "{{ 'Effective umask is ' + (result_04.stdout | default('') | trim) if (result_04.rc | default(-1) == 0) and (result_04.stdout | default('') | trim in ['0027','0077']) else 'Effective umask not correct or could not be determined' }}"
+    when: "result_01.rc | default(-1) == 0"
+    tags: [execute]
+
+  - name: "Req 05 - Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_04 | default('SKIP') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 5.4.2.6"
+      - "Reference: CIS Benchmark checkpoint 5.4.2.6"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('SKIP') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('SKIP') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('SKIP') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('SKIP') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: set_fact to store cis_result"
+      - "  Command: set_fact: cis_result = {{ status_04 | default('SKIP') | trim }}"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Status: PASS"
+      - "  Details: cis_result stored successfully"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if /root/.bash_profile backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/bash_profile.present"
+    register: _restore_profile
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /root/.bash_profile from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/bash_profile.present"
+      dest: "/root/.bash_profile"
+      remote_src: true
+    when: "_restore_profile.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if /root/.bashrc backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/bashrc.present"
+    register: _restore_bashrc
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /root/.bashrc from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/bashrc.present"
+      dest: "/root/.bashrc"
+      remote_src: true
+    when: "_restore_bashrc.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

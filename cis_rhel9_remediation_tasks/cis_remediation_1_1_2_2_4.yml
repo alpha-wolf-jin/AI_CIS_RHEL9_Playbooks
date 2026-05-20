@@ -1,0 +1,334 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_2_2_4.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/fstab from prior checkpoint if exists"
+  copy:
+    src: "{{ state_guard_dir }}/fstab.present"
+    dest: "{{ fstab_file }}"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Read saved mount options for /dev/shm"
+  slurp:
+    src: "{{ state_guard_dir }}/dev_shm_mount.state"
+  register: _sg_prev_mount_opts_slurp
+  failed_when: false
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Remount /dev/shm with original options"
+  shell: "mount -o remount,{{ _sg_prev_mount_opts_slurp.content | b64decode | trim }} /dev/shm"
+  args:
+    executable: /bin/bash
+  when:
+  - _sg_flag.stat.exists
+  - _sg_prev_mount_opts_slurp is not failed
+  - _sg_prev_mount_opts_slurp.content is defined
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/fstab exists"
+  stat:
+    path: "{{ fstab_file }}"
+  register: _sg_fstab_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/fstab (present)"
+  copy:
+    src: "{{ fstab_file }}"
+    dest: "{{ state_guard_dir }}/fstab.present"
+    remote_src: true
+  when: _sg_fstab_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Save current mount options for /dev/shm"
+  shell: findmnt -n -o OPTIONS {{ mount_point }}
+  args:
+    executable: /bin/bash
+  register: _sg_mount_opts
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Persist mount options to file"
+  copy:
+    content: "{{ _sg_mount_opts.stdout | default('') }}"
+    dest: "{{ state_guard_dir }}/dev_shm_mount.state"
+  when: "(_sg_mount_opts.stdout | default('') | trim | length > 0)"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 1 - Check if /dev/shm partition exists in /etc/fstab"
+    shell: |
+      grep -E '^\\S+\\s+{{ mount_point }}\\s+\\S+' {{ fstab_file }}
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Check if /dev/shm is currently mounted"
+    shell: findmnt -n {{ mount_point }} || mount | grep -w {{ mount_point }}
+    args:
+      executable: /bin/bash
+    register: result_01_mount
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      dev_shm_exists: "{{ (result_01.rc | default(-1) == 0) or (result_01_mount.rc | default(-1) == 0) }}"
+      task_01_name: "Check /dev/shm partition existence"
+      task_01_cmd: |
+        grep -E '^\\S+\\s+{{ mount_point }}\\s+\\S+' {{ fstab_file }} || findmnt -n /dev/shm || mount | grep -w /dev/shm
+      task_01_rc: "{{ (result_01.rc | default(-1), result_01_mount.rc | default(-1)) | min }}"
+      data_01: "{{ (result_01.stdout | default('') | trim) if result_01.rc | default(-1) == 0 else (result_01_mount.stdout | default('') | trim) }}"
+      status_01: "{{ 'APPLIED' if ((result_01.rc | default(-1) == 0) or (result_01_mount.rc | default(-1) == 0)) else 'FAILED' }}"
+      details_01: "{{ 'Partition entry or mount point found' if ((result_01.rc | default(-1) == 0) or (result_01_mount.rc | default(-1) == 0)) else 'Neither entry nor mount found' }}"
+    tags: [execute]
+
+  - name: "Store fstab entry existence flag"
+    set_fact:
+      fstab_entry_exists: "{{ result_01.rc | default(-1) == 0 }}"
+    tags: [execute]
+
+  - name: "Req 2 - Add fstab entry for /dev/shm with noexec (if missing)"
+    ansible.builtin.lineinfile:
+      path: "{{ fstab_file }}"
+      line: 'tmpfs /dev/shm tmpfs defaults,rw,nosuid,nodev,noexec,relatime 0 0'
+      state: present
+    register: add_fstab_entry
+    when:
+    - dev_shm_exists | bool
+    - not fstab_entry_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Check if noexec already set for /dev/shm in fstab"
+    shell: |
+      awk '$2 == \"{{ mount_point }}\" {print $4}' {{ fstab_file }} | grep -qw {{ mount_option }}
+    args:
+      executable: /bin/bash
+    register: noexec_check
+    when:
+    - dev_shm_exists | bool
+    - fstab_entry_exists
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Add noexec to existing /dev/shm options in /etc/fstab"
+    ansible.builtin.lineinfile:
+      path: "{{ fstab_file }}"
+      regexp: |
+        ^(\S+\s+{{ mount_point | regex_escape() }}\s+\S+\s+)(?!.*\b{{ mount_option }}\b)(\S+)(\s+.*)$
+      line: |
+        \1\2,{{ mount_option }}\3
+      backrefs: true
+    register: result_02
+    when:
+    - dev_shm_exists | bool
+    - fstab_entry_exists
+    - noexec_check.rc | default(1) != 0
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Ensure noexec in fstab for /dev/shm"
+      task_02_cmd: "lineinfile on {{ fstab_file }}"
+      task_02_rc: >-
+        {{ 0 if not dev_shm_exists else
+           (0 if (not fstab_entry_exists and add_fstab_entry.changed | default(false)) else
+            (0 if (fstab_entry_exists and noexec_check.rc | default(1) == 0) else
+             (0 if (fstab_entry_exists and result_02.changed | default(false)) else 1)))
+        }}
+      data_02: >-
+        {{ 'Added new entry with noexec' if add_fstab_entry.changed | default(false) else
+           (result_02.line | default('No change needed') | trim) }}
+      status_02: >-
+        {{ 'SKIPPED' if not dev_shm_exists else
+           ('APPLIED' if (not fstab_entry_exists and add_fstab_entry.changed | default(false)) else
+            ('APPLIED' if (fstab_entry_exists and noexec_check.rc | default(1) == 0) else
+             ('APPLIED' if (fstab_entry_exists and result_02.changed | default(false)) else 'FAILED')))
+        }}
+      details_02: >-
+        {{ 'Partition not present' if not dev_shm_exists else
+           ('Added new fstab entry with noexec' if add_fstab_entry.changed | default(false) else
+            ('noexec already present' if (fstab_entry_exists and noexec_check.rc | default(1) == 0) else
+             ('Added noexec to existing entry' if (fstab_entry_exists and result_02.changed | default(false)) else 'Failed to add noexec')))
+        }}
+    tags: [execute]
+
+  - name: "Req 3 - Check if noexec already active on /dev/shm"
+    shell: "findmnt -n {{ mount_point }} | grep -wo {{ mount_option }}"
+    args:
+      executable: /bin/bash
+    register: noexec_active
+    when: dev_shm_exists | bool
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 3 - Remount /dev/shm with noexec"
+    shell: "mount -o remount,{{ mount_option }} {{ mount_point }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    when:
+    - dev_shm_exists | bool
+    - noexec_active.rc | default(1) != 0
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Remount /dev/shm with noexec"
+      task_03_cmd: "mount -o remount,{{ mount_option }} {{ mount_point }}"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: >-
+        {% if not dev_shm_exists %}SKIPPED
+        {% elif noexec_active.rc | default(1) == 0 %}APPLIED
+        {% elif result_03.rc | default(-1) == 0 %}APPLIED
+        {% else %}FAILED
+        {% endif %}
+      details_03: >-
+        {% if not dev_shm_exists %}Partition not present
+        {% elif noexec_active.rc | default(1) == 0 %}noexec already active, remount skipped
+        {% elif result_03.rc | default(-1) == 0 %}Remounted successfully
+        {% else %}Remount failed
+        {% endif %}
+    tags: [execute]
+
+  - name: "Req 4 - Verify noexec option on /dev/shm"
+    shell: "findmnt -n {{ mount_point }} | grep -wo {{ mount_option }}"
+    args:
+      executable: /bin/bash
+    register: result_04
+    when: dev_shm_exists | bool
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify noexec on /dev/shm"
+      task_04_cmd: "findmnt -n {{ mount_point }} | grep -wo {{ mount_option }}"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'SKIPPED' if not dev_shm_exists else ('APPLIED' if result_04.rc | default(-1) == 0 else 'FAILED') }}"
+      details_04: "{{ 'Partition not present' if not dev_shm_exists else ('noexec option verified' if result_04.rc | default(-1) == 0 else 'Verification failed') }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 1.1.2.2.4"
+      - "Reference: CIS Benchmark checkpoint 1.1.2.2.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL RESULT:"
+      - "  Result: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if fstab backup exists"
+    stat:
+      path: "{{ state_guard_dir }}/fstab.present"
+    register: _sg_restore_fstab
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/fstab from backup"
+    copy:
+      src: "{{ state_guard_dir }}/fstab.present"
+      dest: "{{ fstab_file }}"
+      remote_src: true
+    when: _sg_restore_fstab.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved mount options"
+    slurp:
+      src: "{{ state_guard_dir }}/dev_shm_mount.state"
+    register: _sg_restore_mount_slurp
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Remount /dev/shm with original options"
+    shell: "mount -o remount,{{ _sg_restore_mount_slurp.content | b64decode | trim }} /dev/shm"
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_mount_slurp is not failed
+    - _sg_restore_mount_slurp.content is defined
+    - "_sg_restore_mount_slurp.content | default('') | trim | length > 0"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

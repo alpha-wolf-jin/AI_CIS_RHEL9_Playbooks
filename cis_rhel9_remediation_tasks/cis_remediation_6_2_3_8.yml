@@ -1,0 +1,159 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_2_3_8.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if logrotate config file exists"
+  ansible.builtin.stat:
+    path: "{{ logrotate_config_file }}"
+  register: _snap_config_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup logrotate config file if exists"
+  ansible.builtin.copy:
+    src: "{{ logrotate_config_file }}"
+    dest: "{{ backup_dir }}/rsyslog.present"
+    remote_src: true
+  when: "_snap_config_stat.stat.exists"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if rsyslog and logrotate packages are installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if prerequisite packages are missing"
+    ansible.builtin.set_fact:
+      playbook_skipped: "{{ 'rsyslog' not in ansible_facts.packages or 'logrotate' not in ansible_facts.packages }}"
+    tags: [execute]
+
+  - name: "Req 01 - Check if rsyslogd and logrotate binaries exist"
+    ansible.builtin.shell: "which rsyslogd && which logrotate"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Store prerequisite check details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check rsyslogd and logrotate binaries"
+      task_01_cmd: "which rsyslogd && which logrotate"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if playbook_skipped | bool else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      details_01: "{{ 'Prerequisite packages not installed' if playbook_skipped | bool else ('Binaries found' if result_01.rc | default(-1) == 0 else 'Binaries not found') }}"
+    tags: [execute]
+
+  - name: "Req 02 - Create logrotate configuration file for rsyslog"
+    ansible.builtin.copy:
+      content: "{{ logrotate_content }}"
+      dest: "{{ logrotate_config_file }}"
+      owner: root
+      group: root
+      mode: '0644'
+    register: result_02
+    failed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 02 - Store logrotate config details"
+    ansible.builtin.set_fact:
+      task_02_name: "Create logrotate configuration for rsyslog"
+      task_02_cmd: "copy content to {{ logrotate_config_file }}"
+      task_02_rc: "{{ 0 if result_02 is not skipped else -1 }}"
+      data_02: "{{ logrotate_config_file }} created"
+      status_02: "{{ 'SKIPPED' if playbook_skipped | bool else ('PASS' if result_02 is not failed else 'FAIL') }}"
+      details_02: "{{ 'Prerequisite packages not installed' if playbook_skipped | bool else ('Configuration file created' if result_02 is not failed else 'Failed to create configuration file') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Verify logrotate configuration is valid"
+    ansible.builtin.shell: "logrotate -d {{ logrotate_config_file }} 2>&1 | grep -i error || echo 'No errors found'"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: false
+    when: "not playbook_skipped | bool"
+    tags: [execute]
+
+  - name: "Req 03 - Store verification details"
+    ansible.builtin.set_fact:
+      task_03_name: "Verify logrotate configuration"
+      task_03_cmd: "logrotate -d {{ logrotate_config_file }} 2>&1 | grep -i error || echo 'No errors found'"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'SKIPPED' if playbook_skipped | bool else ('PASS' if 'No errors found' in (result_03.stdout | default('')) else 'FAIL') }}"
+      details_03: "{{ 'Prerequisite packages not installed' if playbook_skipped | bool else ('Configuration valid' if 'No errors found' in (result_03.stdout | default('')) else 'Errors found in configuration') }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.2.3.8"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 6.2.3.8"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/rsyslog.present"
+    register: _restore_backup_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original config"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/rsyslog.present"
+      dest: "{{ logrotate_config_file }}"
+      remote_src: true
+    when: "_restore_backup_stat.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,6 @@
+playbook_name: "cis_5_3_3_3_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/security/pwhistory.conf"
+req_01: "Apply prerequisite check for the pwhistory module by verifying that the file /etc/security/pwhistory.conf exists using command: `test -f /etc/security/pwhistory.conf`. Expected result: exit code 0."
+req_02: "Apply the enforce_for_root option by editing or adding the line in /etc/security/pwhistory.conf using command: `echo 'enforce_for_root' >> /etc/security/pwhistory.conf`. Expected result: the line is appended to the file."
+req_03: "Verify that the enforce_for_root option is set in /etc/security/pwhistory.conf using command: `grep -q '^enforce_for_root' /etc/security/pwhistory.conf`. Expected result: exit code 0."

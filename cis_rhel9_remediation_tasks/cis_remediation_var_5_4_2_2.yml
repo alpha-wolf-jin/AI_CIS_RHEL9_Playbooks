@@ -1,0 +1,10 @@
+playbook_name: "cis_5_4_2_2"
+checkpoint_id: "cis_5_4_2_2"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: "Apply prerequisite check for usermod and groupmod commands using: command -v usermod && command -v groupmod. Expected result: both commands are available."
+req_02: "Set the root user's GID to 0 using command: usermod -g 0 root. Expected result: root user's primary group GID is set to 0."
+req_03: "Set the root group's GID to 0 using command: groupmod -g 0 root. Expected result: root group's GID is set to 0."
+req_04: |
+  Remove any users other than root with GID 0 or assign them a new GID using command: awk -F: '($3 == 0 && $1 != \"root\") {print $1}' /etc/passwd | while read user; do usermod -g 9999 \"$user\" || userdel \"$user\"; done. Expected result: no users other than root have GID 0.
+req_05: "Verify that only root has GID 0 using command: awk -F: '($3 == 0)' /etc/passwd. Expected result: only the root user is listed."

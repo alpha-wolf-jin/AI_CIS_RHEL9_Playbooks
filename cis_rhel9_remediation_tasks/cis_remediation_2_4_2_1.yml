@@ -1,0 +1,269 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_2_4_2_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/at.allow exists"
+  ansible.builtin.stat:
+    path: /etc/at.allow
+  register: at_allow_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/at.allow if it exists"
+  ansible.builtin.copy:
+    src: /etc/at.allow
+    dest: "{{ backup_dir }}/at.allow.bak"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: "at_allow_stat.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/at.deny exists"
+  ansible.builtin.stat:
+    path: /etc/at.deny
+  register: at_deny_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/at.deny if it exists"
+  ansible.builtin.copy:
+    src: /etc/at.deny
+    dest: "{{ backup_dir }}/at.deny.bak"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: "at_deny_stat.stat.exists"
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: audit_script_stat_snap
+  tags: [snapshot]
+- name: "Snapshot - Record audit script existence marker"
+  ansible.builtin.copy:
+    content: "{{ 'yes' if audit_script_stat_snap.stat.exists else 'no' }}"
+    dest: "{{ backup_dir }}/audit_script_existed"
+    mode: '0600'
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+    tags: [execute]
+
+  - name: "Check if at package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    tags: [execute]
+
+  - name: "Set fact for at installed"
+    ansible.builtin.set_fact:
+      at_installed: "{{ 'at' in ansible_facts.packages }}"
+    tags: [execute]
+
+# Requirement 1: Remediation script
+  - name: "Req 01 - Copy remediation script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: "at_installed | bool"
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: audit_result_01
+    when: "at_installed | bool"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: "at_installed | bool"
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute CIS 2.4.2.1 remediation script"
+      task_01_cmd: "/bin/bash {{ audit_script }}"
+      task_01_rc: "{{ audit_result_01.rc | default(-1) }}"
+      data_01: "{{ audit_result_01.stdout | default('') | trim }}"
+      status_01: "{{ ('PASS' if (at_installed | bool) and (audit_result_01.rc | default(-1) == 0) else ('SKIP' if not (at_installed | bool) else 'FAIL')) | trim }}"
+      details_01: "{{ ('Remediation script executed successfully' if (at_installed | bool) and (audit_result_01.rc | default(-1) == 0) else ('Skipped: at not installed' if not (at_installed | bool) else 'Script execution failed with rc=' ~ (audit_result_01.rc | default(-1)))) | trim }}"
+    tags: [execute]
+
+# Requirement 2: Verify
+  - name: "Req 02 - Verify at restrictions"
+    ansible.builtin.shell: |
+      #!/bin/bash
+      l_group=""
+      if grep -Pq '^daemon:' /etc/group; then
+         l_group="daemon"
+      else
+         l_group="root"
+      fi
+      l_fail=false
+      # Check /etc/at.allow
+      if [ -e /etc/at.allow ]; then
+         allow_owner=$(stat -c "%U" /etc/at.allow)
+         allow_group=$(stat -c "%G" /etc/at.allow)
+         allow_perm=$(stat -c "%a" /etc/at.allow)
+         if [ "$allow_owner" != "root" ] || [ "$allow_group" != "$l_group" ] || [ "$allow_perm" -gt 640 ]; then
+            l_fail=true
+         fi
+      else
+         l_fail=true
+      fi
+      # Check /etc/at.deny if it exists
+      if [ -e /etc/at.deny ]; then
+         deny_owner=$(stat -c "%U" /etc/at.deny)
+         deny_group=$(stat -c "%G" /etc/at.deny)
+         deny_perm=$(stat -c "%a" /etc/at.deny)
+         if [ "$deny_owner" != "root" ] || [ "$deny_group" != "$l_group" ] || [ "$deny_perm" -gt 640 ]; then
+            l_fail=true
+         fi
+      fi
+      if $l_fail; then
+         echo "FAIL"
+      else
+         echo "PASS"
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_result_02
+    when: "at_installed | bool"
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set status_02 based on verify result"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify at restrictions compliance"
+      task_02_cmd: "Shell script to check ownership and permissions"
+      task_02_rc: "{{ verify_result_02.rc | default(-1) }}"
+      data_02: "{{ verify_result_02.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (at_installed | bool) and (verify_result_02.stdout | default('') | trim == 'PASS') else ('SKIP' if not (at_installed | bool) else 'FAIL')) | trim }}"
+      details_02: "{{ ('Verification passed' if (at_installed | bool) and (verify_result_02.stdout | default('') | trim == 'PASS') else ('Skipped: at not installed' if not (at_installed | bool) else 'Verification failed')) | trim }}"
+    tags: [execute]
+
+# Requirement 3: Store cis_result
+  - name: "Req 03 - Store cis_result fact"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store cis_result"
+      task_03_cmd: "N/A"
+      task_03_rc: 0
+      data_03: "cis_result set to {{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result variable set"
+    tags: [execute]
+
+# Requirement 4: Generate report
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 2.4.2.1"
+      - "Reference: CIS Benchmark checkpoint 2.4.2.1"
+      - "REQUIREMENT 01 - {{ req_01 }}"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if /etc/at.allow backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/at.allow.bak"
+    register: restore_allow_stat
+    tags: [restore]
+
+  - name: "Restore - Overwrite /etc/at.allow with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/at.allow.bak"
+      dest: /etc/at.allow
+      remote_src: true
+    when: "restore_allow_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if /etc/at.deny backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/at.deny.bak"
+    register: restore_deny_stat
+    tags: [restore]
+
+  - name: "Restore - Overwrite /etc/at.deny with original"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/at.deny.bak"
+      dest: /etc/at.deny
+      remote_src: true
+    when: "restore_deny_stat.stat.exists"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read audit script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/audit_script_existed"
+    register: audit_script_marker
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if it did not exist before remediation"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: "(audit_script_marker.content | b64decode | trim) == 'no'"
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

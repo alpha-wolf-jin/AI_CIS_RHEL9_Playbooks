@@ -1,0 +1,4 @@
+req_01: "Check if sudo is installed using command: `which sudo`. Expected result: sudo is present."
+req_02: |
+  Check for lines with !authenticate tag in /etc/sudoers and /etc/sudoers.d/* files using command: `grep -r \"^[^#].*\\!authenticate\" /etc/sudoers*`. Expected result: No output (no lines found).
+req_03: "Summarize overall compliance status: If no lines with !authenticate are found, the system is compliant; otherwise, it is non-compliant."

@@ -1,0 +1,195 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_2_7.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    wheel_group: ""
+    group_found: false
+
+# --- Requirement 1: su command presence ---
+- name: "Req 01 - Check if su command is available"
+  ansible.builtin.shell: which su
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Set su missing flag"
+  ansible.builtin.set_fact:
+    su_missing: "{{ result_01.rc | default(-1) != 0 }}"
+
+# --- Requirement 2: pam_wheel.so line check and group extraction ---
+- name: "Req 02 - Check pam_wheel.so configuration line in /etc/pam.d/su"
+  ansible.builtin.shell: "{{ grep_cmd }}"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: "not su_missing"
+
+- name: "Req 02 - Extract group name from pam_wheel.so configuration"
+  ansible.builtin.shell: |
+    echo "{{ result_02.stdout }}" | grep -oP 'group=\K\S+'
+  args:
+    executable: /bin/bash
+  register: group_extract
+  failed_when: false
+  changed_when: false
+  when: "not su_missing"
+
+- name: "Req 02 - Set group variables"
+  ansible.builtin.set_fact:
+    wheel_group: "{{ group_extract.stdout | default('') | trim }}"
+    group_found: "{{ (group_extract.stdout | default('') | trim) | length > 0 }}"
+  when: "not su_missing"
+
+# --- Requirement 3: group membership check ---
+- name: "Req 03 - Check group membership for su restriction group"
+  ansible.builtin.shell: |
+    LINE=$(grep "^{{ wheel_group }}:" /etc/group 2>/dev/null)
+    if [ -z "$LINE" ]; then
+      echo "GROUP_NOT_FOUND"
+    elif echo "$LINE" | grep -qE '^[^:]+:[^:]+:[^:]+:$'; then
+      echo "GROUP_EMPTY:$LINE"
+    else
+      echo "GROUP_HAS_USERS:$LINE"
+    fi
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: "not su_missing and group_found"
+
+# --- Aggregate all audit facts and compute overall compliance ---
+- name: "Set audit results facts and overall compliance"
+  ansible.builtin.set_fact:
+        # Req 01
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    task_01_name: "Check if su command is available"
+    task_01_cmd: "which su"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    status_01: "{{ 'NOT_APPLICABLE' if su_missing else 'PASS' | trim }}"
+    details_01: >-
+      {{ 'su command not present — audit not applicable' if su_missing
+         else ('su found at: ' + result_01.stdout | default('') | trim) | trim }}
+
+        # Req 02
+    data_02: "{{ 'N/A' if su_missing else (result_02.stdout | default('') | trim) }}"
+    task_02_name: "Check pam_wheel.so configuration line in /etc/pam.d/su"
+    task_02_cmd: "{{ grep_cmd }}"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    status_02: "{{ 'NOT_APPLICABLE' if su_missing else ('PASS' if (result_02.stdout | default('') | trim) != '' else 'FAIL') | trim }}"
+    details_02: >-
+      {{ 'Audit not applicable — su not present' if su_missing
+         else ('Configuration line present' if (result_02.stdout | default('') | trim) != '' else 'Configuration line missing') | trim }}
+
+        # Req 03
+    data_03: "{{ 'N/A' if su_missing else (result_03.stdout | default('') | trim) }}"
+    task_03_name: "Check group membership for su restriction group"
+    task_03_cmd: "grep ^{{ wheel_group }}: /etc/group with emptiness check"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    status_03: >-
+      {{ 'NOT_APPLICABLE' if su_missing
+         else ('SKIPPED' if not group_found
+         else ('PASS' if result_03.stdout | default('') | trim is match('^GROUP_EMPTY:.*')
+         else 'FAIL')) | trim }}
+    details_03: >-
+      {{ 'Audit not applicable — su not present' if su_missing
+         else ('Audit skipped — no group from pam_wheel.so' if not group_found
+         else ('Group is empty' if result_03.stdout | default('') | trim is match('^GROUP_EMPTY:.*')
+         else ('Group has users' if result_03.stdout | default('') | trim is match('^GROUP_HAS_USERS:.*')
+         else 'Group not found'))) | trim }}
+
+        # Req 04 – overall compliance
+    data_04: "N/A"
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    status_04: >-
+      {{ 'NOT_APPLICABLE' if su_missing
+         else ( 'PASS' if (result_02.stdout | default('') | trim) != ''
+                          and (result_03.stdout | default('') | trim is match('^GROUP_EMPTY:.*'))
+                else 'FAIL' ) | trim }}
+    details_04: >-
+      {{ 'su command not present — auditing not applicable' if su_missing
+         else ( 'Access to su is restricted as required'
+                if (result_02.stdout | default('') | trim) != ''
+                   and (result_03.stdout | default('') | trim is match('^GROUP_EMPTY:.*'))
+                else 'Non-compliant – su access not correctly restricted' ) }}
+
+- name: "Store cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_04 }}"
+
+# --- Final audit report ---
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.2.7"
+    - "Reference: CIS Benchmark checkpoint 5.2.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

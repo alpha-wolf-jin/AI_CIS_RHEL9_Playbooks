@@ -1,0 +1,143 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_18.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- name: "Req 1 - Gather package facts (auditd)"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Req 1 - Set auditd installation status"
+  set_fact:
+    auditd_installed: "{{ ('audit' in ansible_facts.packages) or ('auditd' in ansible_facts.packages) }}"
+
+- name: "Req 1 - Check if /usr/sbin/usermod exists"
+  ansible.builtin.stat:
+    path: /usr/sbin/usermod
+  register: usermod_stat
+  failed_when: false
+
+- name: "Req 1 - Set usermod existence"
+  set_fact:
+    usermod_exists: "{{ usermod_stat.stat.exists | default(false) }}"
+
+- name: "Req 1 - Determine prerequisites met"
+  set_fact:
+    prerequisite_met: "{{ auditd_installed | bool and usermod_exists | bool }}"
+
+- name: "Req 1 - Audit on-disk rules for usermod"
+  ansible.builtin.shell: |
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && awk "/^ *-a *always,exit/ &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) &&/ -F *auid>=${UID_MIN}/ &&/ -F *perm=x/ &&/ -F *path=\/usr\/sbin\/usermod/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+  args:
+    executable: /bin/bash
+  register: ondisk_result
+  when: prerequisite_met | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Req 1 - Audit loaded rules for usermod"
+  ansible.builtin.shell: |
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && auditctl -l | awk "/^ *-a *always,exit/ &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) &&/ -F *auid>=${UID_MIN}/ &&/ -F *perm=x/ &&/ -F *path=\/usr\/sbin\/usermod/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+  args:
+    executable: /bin/bash
+  register: running_result
+  when: prerequisite_met | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Req 1 - Evaluate on-disk compliance"
+  set_fact:
+    ondisk_rule_found: "{{ (ondisk_result.stdout | default('') | trim | length > 0) and ('ERROR' not in (ondisk_result.stdout | default(''))) }}"
+  when: prerequisite_met | bool
+
+- name: "Req 1 - Evaluate loaded compliance"
+  set_fact:
+    running_rule_found: "{{ (running_result.stdout | default('') | trim | length > 0) and ('ERROR' not in (running_result.stdout | default(''))) }}"
+  when: prerequisite_met | bool
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "On-disk and loaded audit rules check"
+    task_01_cmd: "awk audit rules and auditctl -l"
+    task_01_rc: >-
+      {% if not (prerequisite_met | bool) %}-1
+      {% elif (ondisk_result.rc | default(-1) == 0) and (running_result.rc | default(-1) == 0) and 'ERROR' not in (ondisk_result.stdout | default('')) and 'ERROR' not in (running_result.stdout | default('')) %}0{% else %}1{% endif %}
+    data_01: "{{ {'ondisk': ondisk_result.stdout | default('') | trim, 'loaded': running_result.stdout | default('') | trim} | to_json | trim }}"
+    status_01: "{{ ('NOT_APPLICABLE' if not (prerequisite_met | bool) else ('PASS' if (ondisk_result.rc | default(-1) == 0) and (running_result.rc | default(-1) == 0) and 'ERROR' not in (ondisk_result.stdout | default('')) and 'ERROR' not in (running_result.stdout | default('')) else 'FAIL')) | trim }}"
+    details_01: "{{ ('NOT_APPLICABLE - auditd or /usr/sbin/usermod not installed' if not (prerequisite_met | bool) else ('Audit procedures executed successfully' if (ondisk_result.rc | default(-1) == 0) and (running_result.rc | default(-1) == 0) and 'ERROR' not in (ondisk_result.stdout | default('')) and 'ERROR' not in (running_result.stdout | default('')) else 'One or both audit commands failed or returned an error')) | trim }}"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Compliance verification"
+    task_02_cmd: "Evaluate collected rules"
+    task_02_rc: "{{ 0 if (prerequisite_met | bool) and (ondisk_rule_found | default(false)) and (running_rule_found | default(false)) else 1 }}"
+    data_02: "{{ data_01 | trim }}"
+    status_02: "{{ ('NOT_APPLICABLE' if not (prerequisite_met | bool) else ('PASS' if (ondisk_rule_found | default(false)) and (running_rule_found | default(false)) else 'FAIL')) | trim }}"
+    details_02: "{{ ('NOT_APPLICABLE - auditd or /usr/sbin/usermod not installed' if not (prerequisite_met | bool) else ('Both on-disk and loaded rules found (compliant)' if (ondisk_rule_found | default(false)) and (running_rule_found | default(false)) else 'Missing expected audit rule (non-compliant)')) | trim }}"
+
+- name: "Req 3 - Store cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | trim }}"
+    task_03_name: "Store cis_result"
+    task_03_cmd: "set_fact"
+    task_03_rc: 0
+    data_03: "{{ status_02 | trim }}"
+    status_03: "PASS"
+    details_03: "{{ ('cis_result set to ' + status_02) | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.18"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.18"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"

@@ -1,0 +1,237 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_2_4_1_7.yml
+
+- name: "Req 01 - Check if cron is installed"
+  ansible.builtin.shell: "dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Initialize facts from requirement 01"
+  set_fact:
+    task_01_name: "Req 01 - Check if cron is installed"
+    task_01_cmd: "dpkg -l cron 2>/dev/null || rpm -q cron 2>/dev/null"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    cron_installed: "{{ result_01.rc == 0 and (result_01.stdout | default('') | trim) != '' }}"
+    status_01: "{{ 'PASS' if (result_01.rc == 0 and (result_01.stdout | default('') | trim) != '' and 'not installed' not in result_01.stdout) else 'FAIL' | trim }}"
+    details_01: "{{ 'Command executed; cron package is ' + ('installed' if (result_01.rc == 0 and (result_01.stdout | default('') | trim) != '') else 'not installed') | trim }}"
+
+- name: "Initialize default facts for all requirements"
+  set_fact:
+    task_02_name: "Req 02 - Check full permissions on /etc/cron.d"
+    task_02_cmd: "stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/cron.d/"
+    data_02: "Not collected"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    task_02_rc: -1
+    task_03_name: "Req 03 - Verify Uid is 0/root"
+    task_03_cmd: "stat -Lc '%u %U' /etc/cron.d/"
+    data_03: "Not collected"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    task_03_rc: -1
+    task_04_name: "Req 04 - Verify Gid is 0/root"
+    task_04_cmd: "stat -Lc '%g %G' /etc/cron.d/"
+    data_04: "Not collected"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_04_rc: -1
+    task_05_name: "Req 05 - Verify Access does not grant permissions to group or other"
+    task_05_cmd: "stat -Lc '%a' /etc/cron.d/"
+    data_05: "Not collected"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_05_rc: -1
+    task_06_name: "Req 06 - Summarize overall compliance status"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    data_06: "Not collected"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+
+- name: "Adjust facts when cron is not installed"
+  set_fact:
+    data_02: "Not applicable"
+    status_02: "SKIP"
+    details_02: "cron is not installed"
+    data_03: "Not applicable"
+    status_03: "SKIP"
+    details_03: "cron is not installed"
+    data_04: "Not applicable"
+    status_04: "SKIP"
+    details_04: "cron is not installed"
+    data_05: "Not applicable"
+    status_05: "SKIP"
+    details_05: "cron is not installed"
+    task_06_name: "Req 06 - Summarize overall compliance status"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    data_06: "Not applicable"
+    status_06: "SKIP"
+    details_06: "cron is not installed, audit not applicable"
+  when: not cron_installed
+
+- name: "Req 02 - Check full permissions on /etc/cron.d"
+  ansible.builtin.shell: "stat -Lc 'Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' {{ target_path }}/"
+  args:
+    executable: /bin/bash
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when: cron_installed
+
+- name: "Store requirement 02 details"
+  set_fact:
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if (result_02.stdout | default('') | trim) == expected_full else 'FAIL' | trim }}"
+    details_02: "{{ 'Permissions match expected' if (result_02.stdout | default('') | trim) == expected_full else 'Permissions do not match' | trim }}"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+  when:
+  - cron_installed
+  - result_02 is defined
+
+- name: "Req 03 - Verify Uid is 0/root"
+  ansible.builtin.shell: "stat -Lc '%u %U' {{ target_path }}/"
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: cron_installed
+
+- name: "Store requirement 03 details"
+  set_fact:
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if (result_03.stdout | default('') | trim) == expected_uid else 'FAIL' | trim }}"
+    details_03: "{{ 'Uid is 0/root' if (result_03.stdout | default('') | trim) == expected_uid else 'Uid is not 0/root' | trim }}"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+  when:
+  - cron_installed
+  - result_03 is defined
+
+- name: "Req 04 - Verify Gid is 0/root"
+  ansible.builtin.shell: "stat -Lc '%g %G' {{ target_path }}/"
+  args:
+    executable: /bin/bash
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when: cron_installed
+
+- name: "Store requirement 04 details"
+  set_fact:
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: "{{ 'PASS' if (result_04.stdout | default('') | trim) == expected_gid else 'FAIL' | trim }}"
+    details_04: "{{ 'Gid is 0/root' if (result_04.stdout | default('') | trim) == expected_gid else 'Gid is not 0/root' | trim }}"
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+  when:
+  - cron_installed
+  - result_04 is defined
+
+- name: "Req 05 - Verify Access does not grant permissions to group or other"
+  ansible.builtin.shell: "stat -Lc '%a' {{ target_path }}/"
+  args:
+    executable: /bin/bash
+  register: result_05
+  failed_when: false
+  changed_when: false
+  when: cron_installed
+
+- name: "Store requirement 05 details"
+  set_fact:
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+    status_05: "{{ 'PASS' if (result_05.stdout | default('') | trim) == expected_perms else 'FAIL' | trim }}"
+    details_05: "{{ 'Access permissions are 700' if (result_05.stdout | default('') | trim) == expected_perms else 'Access permissions are not 700' | trim }}"
+    task_05_rc: "{{ result_05.rc | default(-1) }}"
+  when:
+  - cron_installed
+  - result_05 is defined
+
+- name: "Req 06 - Summarize overall compliance status"
+  set_fact:
+    status_06: >-
+      {% if not cron_installed %}
+        SKIP
+      {% elif status_02 == 'FAIL' or status_03 == 'FAIL' or status_04 == 'FAIL' or status_05 == 'FAIL' %}
+        FAIL
+      {% else %}
+        PASS
+      {% endif %}
+    details_06: >-
+      {% if not cron_installed %}
+        cron is not installed, audit not applicable
+      {% elif status_02 == 'FAIL' or status_03 == 'FAIL' or status_04 == 'FAIL' or status_05 == 'FAIL' %}
+        One or more checks failed
+      {% else %}
+        All checks passed
+      {% endif %}
+
+- name: "Set data_06 for report"
+  set_fact:
+    data_06: "{{ status_06 }}"
+
+- name: "Store cis_result for external use"
+  set_fact:
+    cis_result: "{{ status_06 | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 2.4.1.7"
+    - "Reference: CIS Benchmark checkpoint 2.4.1.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"

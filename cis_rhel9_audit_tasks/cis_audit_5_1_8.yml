@@ -1,0 +1,155 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_8.yml
+
+- name: "Check if openssh-server is installed"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set sshd installation facts"
+  ansible.builtin.set_fact:
+    openssh_server_installed: "{{ 'openssh-server' in ansible_facts.packages }}"
+    playbook_skipped: "{{ 'openssh-server' not in ansible_facts.packages }}"
+
+- name: "Req 1 - Audit sshd Banner configuration"
+  ansible.builtin.shell: |
+    set -o pipefail
+    sshd_config="/etc/ssh/sshd_config"
+    if [ ! -f "$sshd_config" ]; then
+      echo "FAIL: sshd_config not found"
+      exit 1
+    fi
+    global_banner_line=$(sshd -T 2>/dev/null | grep -Pi -- '^banner\h+\/\H+')
+    if [ -z "$global_banner_line" ]; then
+      echo "FAIL: Global Banner not set"
+      exit 1
+    fi
+    global_banner_path=$(echo "$global_banner_line" | awk '{print $2}')
+    has_match=0
+    if grep -qi '^\s*Match' "$sshd_config"; then
+      has_match=1
+    fi
+    if [ $has_match -eq 1 ]; then
+      match_banner_line=$(sshd -T -C user=root 2>/dev/null | grep -Pi -- '^banner\h+\/\H+')
+      if [ -z "$match_banner_line" ]; then
+        echo "FAIL: Banner not set in match block context (user=root)"
+        exit 1
+      fi
+      match_banner_path=$(echo "$match_banner_line" | awk '{print $2}')
+      if [ "$match_banner_path" != "$global_banner_path" ]; then
+        echo "INFO: Match block overrides global banner. Effective banner file: $match_banner_path"
+        effective_banner_path="$match_banner_path"
+      else
+        effective_banner_path="$global_banner_path"
+      fi
+    else
+      effective_banner_path="$global_banner_path"
+    fi
+    if [ ! -f "$effective_banner_path" ]; then
+      echo "FAIL: Banner file $effective_banner_path does not exist"
+      exit 1
+    fi
+    os_id=$(grep -Po '^ID=\K.*' /etc/os-release 2>/dev/null | tr -d '"')
+    forbidden_pattern="(\\\\v|\\\\r|\\\\m|\\\\s|\\b${os_id}\\b)"
+    if grep -Pqsi "$forbidden_pattern" "$effective_banner_path"; then
+      echo "FAIL: Banner file contains forbidden escape sequences or OS ID"
+      exit 1
+    fi
+    echo "PASS: Banner is properly configured"
+    exit 0
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: openssh_server_installed | default(false) | bool
+
+- name: "Extract audit compliance from result"
+  ansible.builtin.set_fact:
+    audit_compliance: >-
+      {%- if 'PASS:' in result_01.stdout -%}PASS
+      {%- elif 'FAIL:' in result_01.stdout -%}FAIL
+      {%- else -%}UNKNOWN
+      {%- endif %}
+  when:
+  - openssh_server_installed | default(false) | bool
+  - result_01.stdout is defined
+
+- name: "Default compliance when sshd not installed"
+  ansible.builtin.set_fact:
+    audit_compliance: "NOT_APPLICABLE"
+  when: audit_compliance is not defined
+
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Req 1 - Audit sshd Banner configuration"
+    task_01_cmd: "Combined shell audit: sshd -T banner check, match block audit, file existence, content check"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'NOT_APPLICABLE' if not (openssh_server_installed | default(false) | bool) else audit_compliance | default('UNKNOWN') }}"
+    details_01: >-
+      {{ 'OpenSSH server not installed' if not (openssh_server_installed | default(false) | bool)
+         else 'Audit completed; system is ' + ('compliant' if audit_compliance == 'PASS' else 'non-compliant') }}
+
+- name: "Req 2 - Summarise compliance status"
+  ansible.builtin.set_fact:
+    task_02_name: "Req 2 - Summarise compliance status"
+    task_02_cmd: "Verify banner configuration compliance from audit result"
+    task_02_rc: 0
+    data_02: "{{ audit_compliance | default('UNKNOWN') | trim }}"
+    status_02: "{{ 'NOT_APPLICABLE' if not (openssh_server_installed | default(false) | bool) else audit_compliance | default('UNKNOWN') | trim }}"
+    details_02: >-
+      {{ 'OpenSSH server not installed' if not (openssh_server_installed | default(false) | bool)
+         else 'Compliance summary: ' + (audit_compliance | default('UNKNOWN')) }}
+    overall_details: >-
+      {{ 'OpenSSH server not installed' if not (openssh_server_installed | default(false) | bool)
+         else 'System is ' + ('compliant' if audit_compliance == 'PASS' else 'non-compliant') }}
+
+- name: "Req 3 - Store final result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ audit_compliance | default('UNKNOWN') }}"
+
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Req 3 - Store cis_result"
+    task_03_cmd: "set_fact cis_result={{ audit_compliance | default('UNKNOWN') }}"
+    task_03_rc: 0
+    data_03: "{{ cis_result }}"
+    status_03: "{{ 'PASS' if cis_result is defined else 'FAIL' | trim }}"
+    details_03: "{{ 'cis_result stored successfully' if cis_result is defined else 'Failed to store' }}"
+
+- name: "Req 4 - Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.8"
+    - "Reference: CIS Benchmark checkpoint 5.1.8"
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result }}"
+    - "  Details: {{ overall_details | default('Not evaluated') | trim }}"
+    - "========================================================"

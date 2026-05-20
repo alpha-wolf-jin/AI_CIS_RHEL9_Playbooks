@@ -1,0 +1,5 @@
+package_name: "libpwquality"
+min_ver: "1.4.4-8"
+req_01: "Check if libpwquality is installed using command: `rpm -q libpwquality`. Expected result: package is installed and version is displayed."
+req_02: "Check the version of libpwquality using command: `rpm -q libpwquality`. Expected result: version is libpwquality-1.4.4-8 or greater (e.g., libpwquality-1.4.4-8.el9.x86_64)."
+req_03: "Summarize overall compliance status: if libpwquality is installed and version is 1.4.4-8 or greater, then compliant; otherwise, non-compliant."

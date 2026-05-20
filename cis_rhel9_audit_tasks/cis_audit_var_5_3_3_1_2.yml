@@ -1,0 +1,8 @@
+req_01: "Check if pam_faillock is installed using command: `dpkg -l | grep -i pam_faillock || rpm -q pam_faillock`. Expected result: package is installed."
+req_02: "Check if /etc/security/faillock.conf exists using command: `test -f /etc/security/faillock.conf && echo 'EXISTS'`. Expected result: EXISTS"
+req_03: |
+  Check unlock_time in /etc/security/faillock.conf using command: `grep -Pi -- '^\\h*unlock_time\\h*=\\h*(0|9[0-9][0-9]|[1-9][0-9]{3,})\\b' /etc/security/faillock.conf`. Expected result: unlock_time = 900 (or 0 or >=900)
+req_04: |
+  Check that unlock_time argument is not set to a value less than 900 (except 0) in /etc/pam.d/system-auth and /etc/pam.d/password-auth using command: `grep -Pi -- '^\\h*auth\\h+(requisite|required|sufficient)\\h+pam_faillock\\.so\\h+([^#\\n\\r]+\\h+)?unlock_time\\h*=\\h*([1-9]|[1-9][0-9]|[1-8][0-9][0-9])\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: Nothing should be returned
+req_05: "Summarize overall compliance status: PASS if all checks pass, SKIP if pam_faillock is not installed or /etc/security/faillock.conf does not exist, FAIL if any check fails."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

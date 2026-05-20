@@ -1,0 +1,51 @@
+playbook_name: "CIS-3.3.5-icmp-redirects"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+sysctl_file_v4: "/etc/sysctl.d/60-netipv4_sysctl.conf"
+sysctl_file_v6: "/etc/sysctl.d/60-netipv6_sysctl.conf"
+req_01: "1. Run the provided remediation script to fix Ensure icmp redirects are not accepted."
+req_02: "2. VERIFY: Run audit check to confirm Ensure icmp redirects are not accepted is properly configured. Expected result: System is compliant"
+req_03: "3. Store the final remediation result in a variable named 'cis_result' using set_fact."
+req_04: "4. Create a task named 'Generate remediation report' using debug msg."
+
+remediation_script: |
+  #!/usr/bin/env bash
+  if ! grep -qxF 'net.ipv4.conf.all.accept_redirects = 0' {{ sysctl_file_v4 }}; then
+      echo 'net.ipv4.conf.all.accept_redirects = 0' >> {{ sysctl_file_v4 }}
+  fi
+  if ! grep -qxF 'net.ipv4.conf.default.accept_redirects = 0' {{ sysctl_file_v4 }}; then
+      echo 'net.ipv4.conf.default.accept_redirects = 0' >> {{ sysctl_file_v4 }}
+  fi
+  sysctl -w net.ipv4.conf.all.accept_redirects=0
+  sysctl -w net.ipv4.conf.default.accept_redirects=0
+  sysctl -w net.ipv4.route.flush=1
+
+  if [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)" != "1" ]; then
+      if ! grep -qxF 'net.ipv6.conf.all.accept_redirects = 0' {{ sysctl_file_v6 }}; then
+          echo 'net.ipv6.conf.all.accept_redirects = 0' >> {{ sysctl_file_v6 }}
+      fi
+      if ! grep -qxF 'net.ipv6.conf.default.accept_redirects = 0' {{ sysctl_file_v6 }}; then
+          echo 'net.ipv6.conf.default.accept_redirects = 0' >> {{ sysctl_file_v6 }}
+      fi
+      sysctl -w net.ipv6.conf.all.accept_redirects=0
+      sysctl -w net.ipv6.conf.default.accept_redirects=0
+      sysctl -w net.ipv6.route.flush=1
+  fi
+
+verification_script: |
+  #!/usr/bin/env bash
+  errors=0
+  if [ "$(sysctl -n net.ipv4.conf.all.accept_redirects)" != "0" ]; then
+      errors=$((errors+1))
+  fi
+  if [ "$(sysctl -n net.ipv4.conf.default.accept_redirects)" != "0" ]; then
+      errors=$((errors+1))
+  fi
+  if [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)" != "1" ]; then
+      if [ "$(sysctl -n net.ipv6.conf.all.accept_redirects)" != "0" ]; then
+          errors=$((errors+1))
+      fi
+      if [ "$(sysctl -n net.ipv6.conf.default.accept_redirects)" != "0" ]; then
+          errors=$((errors+1))
+      fi
+  fi
+  [ $errors -eq 0 ] && echo "PASS" || echo "FAIL"

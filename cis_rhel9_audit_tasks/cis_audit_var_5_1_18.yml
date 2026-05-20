@@ -1,0 +1,7 @@
+req_01: "Check if OpenSSH server is installed using command: `dpkg -l openssh-server 2>/dev/null || rpm -q openssh-server 2>/dev/null`. Expected result: package is installed."
+req_02: "Check the MaxSessions setting in the running SSH daemon configuration using command: `sshd -T | grep -i maxsessions`. Expected result: `maxsessions 10` or less."
+req_03: |
+  Check for any MaxSessions configuration in sshd_config files that exceeds 10 using command: `grep -Psi -- '^\h*MaxSessions\h+\"?(1[1-9]|[2-9][0-9]|[1-9][0-9][0-9]+)\b' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf`. Expected result: no output (nothing returned).
+req_04: "If Match blocks are used, check MaxSessions for a specific user (e.g., sshuser) using command: `sshd -T -C user=sshuser | grep maxsessions`. Expected result: `maxsessions 10` or less."
+req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if OpenSSH server is not installed, FAIL if any check fails."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,7 @@
+playbook_name: "cis_5_1_15"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply remediation for: Ensure sshd LogLevel is configured. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure sshd LogLevel is configured is properly configured. Expected result: Compliant"
+sshd_config_file: "/etc/ssh/sshd_config"
+sshd_service: "sshd"
+loglevel_value: "INFO"

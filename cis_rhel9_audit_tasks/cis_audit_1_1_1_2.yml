@@ -1,0 +1,64 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1_2.yml
+
+- name: "Req 01 - Copy audit script to remote"
+  ansible.builtin.copy:
+    dest: "{{ audit_script }}"
+    mode: '0700'
+    content: "{{ audit_script_content }}"
+  changed_when: false
+  failed_when: false
+- name: "Req 01 - Execute audit script"
+  ansible.builtin.shell: "{{ audit_command }}"
+  args:
+    executable: /bin/bash
+  register: audit_result
+  failed_when: false
+  changed_when: false
+- name: "Req 02 - Evaluate compliance status"
+  ansible.builtin.set_fact:
+    compliance_status: "{{ 'PASS' if '** PASS **' in audit_result.stdout | default('') else 'FAIL' }}"
+- name: "Req 03 - Store final audit result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ compliance_status }}"
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.1.2"
+    - "Reference: CIS Benchmark checkpoint 1.1.1.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: Req 01 - Execute audit script"
+    - "  Command: {{ audit_command }}"
+    - "  Exit code: {{ audit_result.rc | default(-1) }}"
+    - "  Data: {{ audit_result.stdout | default('') | trim }}"
+    - "  Status: {{ ('PASS' if audit_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    - "  Details: {{ 'Audit script executed successfully' if audit_result.rc | default(-1) == 0 else 'Audit script failed' }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: Req 02 - Evaluate compliance status"
+    - "  Command: set_fact module"
+    - "  Exit code: N/A"
+    - "  Data: {{ compliance_status | default('UNKNOWN') }}"
+    - "  Status: PASS"
+    - "  Details: Compliance status determined from audit output"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: Req 03 - Store final audit result"
+    - "  Command: set_fact module"
+    - "  Exit code: N/A"
+    - "  Data: {{ cis_result | default('UNKNOWN') }}"
+    - "  Status: PASS"
+    - "  Details: cis_result variable stored"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug module"
+    - "  Exit code: N/A"
+    - "  Data: See report above"
+    - "  Status: PASS"
+    - "  Details: Audit report generated"
+    - ""
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"

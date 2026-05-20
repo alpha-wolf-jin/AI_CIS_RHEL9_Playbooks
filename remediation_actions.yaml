@@ -1,0 +1,23 @@
+---
+- name: Trigger remediation when selection ends with '.' - substring match
+  block:
+    - name: Build regex filter from dotted prefix
+      ansible.builtin.set_fact:
+        filter_str: "^{{ selection.replace('.', '\\.') }}"
+
+    - name: Run remediation for matching CIS policies
+      ansible.builtin.include_tasks: remediation_execute.yaml
+      loop: "{{ rhel9_cis.keys() | select('match', filter_str) | list }}"
+      loop_control:
+        loop_var: cis_item
+  when:
+    - selection is match("^([0-9]|\\.)+\\.$")
+
+- name: Trigger remediation when selection exactly matches
+  block:
+    - name: Run remediation for single CIS policy
+      ansible.builtin.include_tasks: remediation_execute.yaml
+      vars:
+        cis_item: "{{ selection }}"
+  when:
+    - selection in rhel9_cis.keys() | list

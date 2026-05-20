@@ -1,0 +1,4 @@
+playbook_name: "cis_1_3_1_1_selinux_installed"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply SELinux installation using command: `dnf install libselinux`. Expected result: SELinux package is installed successfully."
+req_02: "Verify SELinux installation using command: `rpm -q libselinux`. Expected result: Package version is displayed, confirming SELinux is installed."

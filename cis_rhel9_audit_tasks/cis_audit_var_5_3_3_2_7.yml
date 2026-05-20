@@ -1,0 +1,9 @@
+req_01: "Check if pwquality is installed using command: `dpkg -l | grep libpwquality || rpm -q libpwquality`. Expected result: package is installed."
+req_02: |
+  Check if enforce_for_root is enabled in /etc/security/pwquality.conf using command: `grep -Psi -- '^\\h*enforce_for_root\\b' /etc/security/pwquality.conf`. Expected result: line containing 'enforce_for_root' is present.
+req_03: |
+  Check if enforce_for_root is enabled in any .conf file under /etc/security/pwquality.conf.d/ using command: `grep -Psi -- '^\\h*enforce_for_root\\b' /etc/security/pwquality.conf.d/*.conf`. Expected result: at least one .conf file contains 'enforce_for_root'.
+req_04: |
+  Check that no conflicting setting disables enforce_for_root in higher precedence locations (module arguments or /etc/security/pwquality.conf) using command: `grep -Psi -- '^\\h*enforce_for_root\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf`. Expected result: enforce_for_root is present and not overridden by a conflicting setting.
+req_05: "Summarize overall compliance: if enforce_for_root is enabled in at least one configuration file and not overridden, then the requirement is satisfied. Expected result: compliant or non-compliant based on previous checks."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

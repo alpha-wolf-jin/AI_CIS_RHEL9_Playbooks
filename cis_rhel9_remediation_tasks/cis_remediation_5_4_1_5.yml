@@ -1,0 +1,343 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_4_1_5.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/default/useradd from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/useradd.present"
+    dest: "/etc/default/useradd"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/shadow from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/shadow.present"
+    dest: "/etc/shadow"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/default/useradd"
+  ansible.builtin.copy:
+    src: "/etc/default/useradd"
+    dest: "{{ state_guard_dir }}/useradd.present"
+    remote_src: true
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/shadow"
+  ansible.builtin.copy:
+    src: "/etc/shadow"
+    dest: "{{ state_guard_dir }}/shadow.present"
+    remote_src: true
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "UNKNOWN"
+      details_05: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check prerequisite shadow-utils commands"
+    ansible.builtin.shell: "which useradd && which chage && which awk"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check prerequisite shadow-utils commands"
+      task_01_cmd: "which useradd && which chage && which awk"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'All prerequisite commands found' if (result_01.rc | default(-1)) == 0 else 'One or more commands missing' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Set default password inactivity period"
+    ansible.builtin.shell: "useradd -D -f {{ inactive_days }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: result_02.rc == 0
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Set default password inactivity period"
+      task_02_cmd: "useradd -D -f {{ inactive_days }}"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_02: "{{ 'Default inactivity set to ' + inactive_days + ' days' if (result_02.rc | default(-1)) == 0 else 'Failed to set default inactivity' }}"
+    tags: [execute]
+
+  - name: "Req 03 - Apply inactive password lock for users exceeding threshold"
+    ansible.builtin.shell: |
+      {% raw %}
+      awk -F: '($2~/^\$.+\$/) {if($7 > 45 || $7 < 0)system ("chage --inactive 45 " $1)}' /etc/shadow
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    changed_when: result_03.rc == 0
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Apply inactive password lock for users exceeding threshold"
+      task_03_cmd: |
+        awk -F: '($2~/^\\$.+\\$/) {if($7 > 45 || $7 < 0)system (\"chage --inactive 45 \" $1)}' /etc/shadow
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
+      data_03: "{{ result_03.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_03: "{{ 'User inactive periods updated' if (result_03.rc | default(-1)) == 0 else 'Failed to update user inactive periods' }}"
+    tags: [execute]
+
+  - name: "Req 04 - Verify inactive password lock configuration"
+    ansible.builtin.shell: |
+      {% raw %}
+      awk -F: '($2~/^\$.+\$/) {print $1":"$7}' /etc/shadow
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify inactive password lock configuration"
+      task_04_cmd: |
+        awk -F: '($2~/^\\$.+\\$/) {print $1\":\"$7}' /etc/shadow
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: >-
+        {%- set output = result_04.stdout | default('') | trim -%}
+        {%- if result_04.rc | default(-1) != 0 -%}
+          FAIL
+        {%- else -%}
+          {%- set lines = output.split('\n') | select('!=', '') | list -%}
+          {%- if lines | length == 0 -%}
+            PASS
+          {%- else -%}
+            {%- set any_fail = false -%}
+            {%- for line in lines -%}
+              {%- set parts = line.split(':') -%}
+              {%- if parts | length == 2 -%}
+                {%- set value = parts[1] | int -%}
+                {%- if value > 45 or value < 0 -%}
+                  {%- set any_fail = true -%}
+                {%- endif -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {%- if any_fail -%}
+              FAIL
+            {%- else -%}
+              PASS
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+      details_04: >-
+        {%- if result_04.rc | default(-1) != 0 -%}
+          Verification command failed with exit code {{ result_04.rc }}
+        {%- else -%}
+          {%- set output = result_04.stdout | default('') | trim -%}
+          {%- set lines = output.split('\n') | select('!=', '') | list -%}
+          {%- if lines | length == 0 -%}
+            No users with password hash found; compliant.
+          {%- else -%}
+            {%- set non_compliant = [] -%}
+            {%- for line in lines -%}
+              {%- set parts = line.split(':') -%}
+              {%- if parts | length == 2 -%}
+                {%- set value = parts[1] | int -%}
+                {%- if value > 45 or value < 0 -%}
+                  {%- set non_compliant = non_compliant + [line] -%}
+                {%- endif -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {%- if non_compliant | length == 0 -%}
+              All {{ lines | length }} user(s) have INACTIVE value ≤45 and ≥0.
+            {%- else -%}
+              Non-compliant users: {{ non_compliant | join(', ') }}. All must have INACTIVE ≤45 and ≥0.
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 05 - Set final remediation result variable"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_04 }}"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Set final remediation result variable"
+      task_05_cmd: "set_fact: cis_result = {{ status_04 }}"
+      task_05_rc: 0
+      data_05: "cis_result = {{ status_04 }}"
+      status_05: "{{ 'PASS' if status_04 | trim in ['PASS','FAIL','SKIP'] else 'ERROR' }}"
+      details_05: "{{ 'Overall remediation result stored' if status_04 | trim in ['PASS','FAIL','SKIP'] else 'Could not derive final result' }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.4.1.5"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 5.4.1.5"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if useradd backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/useradd.present"
+    register: _sg_restore_useradd
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/default/useradd"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/useradd.present"
+      dest: "/etc/default/useradd"
+      remote_src: true
+    when: _sg_restore_useradd.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if shadow backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/shadow.present"
+    register: _sg_restore_shadow
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/shadow"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/shadow.present"
+      dest: "/etc/shadow"
+      remote_src: true
+    when: _sg_restore_shadow.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]

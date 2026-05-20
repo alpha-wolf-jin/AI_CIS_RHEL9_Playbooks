@@ -1,0 +1,233 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_1_14.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+
+- name: "Req 01 - Check if OpenSSH server is installed"
+  ansible.builtin.shell: "{{ check_sshd_installed_cmd }}"
+  args:
+    executable: /bin/bash
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Set installation status facts"
+  set_fact:
+    sshd_installed: "{{ result_01.rc == 0 }}"
+    task_01_name: "Check if OpenSSH server is installed"
+    task_01_cmd: "{{ check_sshd_installed_cmd }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'FAIL' }}"
+    details_01: "{{ 'OpenSSH server is installed' if result_01.rc == 0 else 'OpenSSH server is not installed' }}"
+
+- name: "Req 02 - Check if sshd service is running"
+  ansible.builtin.shell: "{{ check_sshd_running_cmd }}"
+  args:
+    executable: /bin/bash
+  register: result_02
+  when: sshd_installed | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Req 02 - Set running check facts"
+  set_fact:
+    sshd_running: "{{ sshd_installed | bool and (result_02.rc | default(1) == 0) }}"
+    task_02_name: "Check if sshd service is running"
+    task_02_cmd: "{{ check_sshd_running_cmd }}"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: >-
+      {% if not sshd_installed | bool %}
+        SKIP
+      {% elif result_02.rc | default(1) == 0 %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+    details_02: >-
+      {% if not sshd_installed | bool %}
+        Check skipped because OpenSSH server is not installed
+      {% elif result_02.rc | default(1) == 0 %}
+        sshd service is running
+      {% else %}
+        sshd service is not running
+      {% endif %}
+
+- name: "Req 03 - Check LoginGraceTime parameter"
+  ansible.builtin.shell: "{{ check_logingracetime_cmd }}"
+  args:
+    executable: /bin/bash
+  register: result_03
+  when:
+  - sshd_installed | bool
+  - sshd_running | bool
+  failed_when: false
+  changed_when: false
+
+- name: "Req 03 - Set LoginGraceTime reporting facts"
+  set_fact:
+    data_03_raw: "{{ result_03.stdout | default('') | trim }}"
+    task_03_name: "Check LoginGraceTime parameter"
+    task_03_cmd: "{{ check_logingracetime_cmd }}"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: >-
+      {% if not sshd_installed | bool %}
+        Not applicable - sshd not installed
+      {% elif not sshd_running | bool %}
+        Not applicable - sshd not running
+      {% else %}
+        {{ result_03.stdout | default('') | trim }}
+      {% endif %}
+    status_03: >-
+      {% if not sshd_installed | bool or not sshd_running | bool %}
+        SKIP
+      {% else %}
+        {% set login_value = result_03.stdout | default('') | regex_findall('logingracetime\\s+([0-9]+)') %}
+        {% set grace_time = login_value | first | default('0') | int %}
+        {% if grace_time >= 1 and grace_time <= 60 %}
+          PASS
+        {% else %}
+          FAIL
+        {% endif %}
+      {% endif %}
+    details_03: >-
+      {% if not sshd_installed | bool %}
+        Check skipped because OpenSSH server is not installed
+      {% elif not sshd_running | bool %}
+        Check skipped because sshd service is not running
+      {% else %}
+        {% set login_value = result_03.stdout | default('') | regex_findall('logingracetime\\s+([0-9]+)') %}
+        {% set grace_time = login_value | first | default('0') | int %}
+        {% if grace_time >= 1 and grace_time <= 60 %}
+          LoginGraceTime is within range 1-60 seconds
+        {% else %}
+          LoginGraceTime is out of range or could not be determined
+        {% endif %}
+      {% endif %}
+
+- name: "Req 04 - Summarize overall compliance"
+  set_fact:
+    task_04_name: "Evaluate overall compliance status"
+    task_04_cmd: "N/A (derived from previous requirements)"
+    task_04_rc: "0"
+    data_04: >-
+      {% if not sshd_installed | bool %}
+        Overall: SKIP - OpenSSH server is not installed
+      {% elif not sshd_running | bool %}
+        Overall: SKIP - sshd service is not running
+      {% else %}
+        Overall: {{ status_03 }} - LoginGraceTime is {{ 'correctly' if status_03 == 'PASS' else 'not correctly' }} configured
+      {% endif %}
+    status_04: >-
+      {% if not sshd_installed | bool or not sshd_running | bool %}
+        SKIP
+      {% elif status_03 | default('ERROR') | trim == 'PASS' %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+    details_04: >-
+      {% if not sshd_installed | bool %}
+        Audit cannot be completed because OpenSSH server is not installed.
+      {% elif not sshd_running | bool %}
+        Audit cannot be completed because sshd service is not running.
+      {% elif status_03 | default('ERROR') | trim == 'PASS' %}
+        LoginGraceTime is within the required range (1-60 seconds). System is compliant.
+      {% else %}
+        LoginGraceTime is out of the required range. System is non-compliant.
+      {% endif %}
+
+- name: "Req 05 - Store final audit result"
+  set_fact:
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    task_05_name: "Store final audit result"
+    task_05_cmd: "N/A (derived from requirement 04)"
+    task_05_rc: "0"
+    data_05: "cis_result = {{ status_04 | default('ERROR') | trim }}"
+    status_05: "PASS"
+    details_05: "The overall compliance status has been stored in cis_result"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.1.14"
+    - "Reference: CIS Benchmark checkpoint 5.1.14"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "========================================================"

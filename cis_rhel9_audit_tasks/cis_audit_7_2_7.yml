@@ -1,0 +1,80 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_7_2_7.yml
+
+- name: "Execute audit and ensure temporary script cleanup"
+  block:
+  - name: "Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    failed_when: false
+
+  - name: "Req 01 - Run duplicate group names audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+
+  always:
+  - name: "Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    failed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Execute audit script for duplicate group names"
+    task_01_cmd: "/bin/bash {{ audit_script }}"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('PASS' if (result_01.rc | default(-1)) | int == 0 else 'FAIL') | trim }}"
+    details_01: "{{ ('Audit script executed successfully' if (result_01.rc | default(-1)) | int == 0 else 'Audit script execution failed') | trim }}"
+
+- name: "Req 02 - Evaluate compliance with no duplicate group names"
+  set_fact:
+    task_02_name: "Evaluate duplicate group compliance"
+    task_02_cmd: "Check if audit script produced output"
+    task_02_rc: "{{ 0 if (result_01.stdout | default('') | trim == '') else 1 }}"
+    data_02: "{{ result_01.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if (result_01.stdout | default('') | trim == '') else 'FAIL') | trim }}"
+    details_02: >-
+      {{ "No duplicate group names found" if (result_01.stdout | default('') | trim == '') else "Duplicate group names found: " + (result_01.stdout | default('') | trim) }}
+
+- name: "Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_02 | default('UNKNOWN') | trim }}"
+
+- name: "Req 03 - Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 7.2.7"
+    - "Reference: CIS Benchmark checkpoint 7.2.7"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+    - "========================================================"

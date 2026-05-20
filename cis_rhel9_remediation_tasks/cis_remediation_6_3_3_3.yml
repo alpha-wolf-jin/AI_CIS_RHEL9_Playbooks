@@ -1,0 +1,209 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_3_3_3.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit rules file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_rules_file }}"
+  register: _snapshot_audit_rules
+  tags: [snapshot]
+- name: "Snapshot - Backup audit rules file if exists"
+  ansible.builtin.copy:
+    src: "{{ audit_rules_file }}"
+    dest: "{{ backup_dir }}/50-sudo.rules.present"
+    remote_src: true
+  when: _snapshot_audit_rules.stat.exists
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Check if sudo package is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Check if auditd package is installed"
+    ansible.builtin.shell: |
+      if command -v auditctl > /dev/null 2>&1; then
+        echo "auditd_installed"
+      else
+        echo "auditd_not_installed"
+      fi
+    args:
+      executable: /bin/bash
+    register: _auditd_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Set skip fact if prerequisites not met"
+    ansible.builtin.set_fact:
+      _prereqs_met: "{{ ('sudo' in ansible_facts.packages) and ('auditd_installed' in _auditd_check.stdout) }}"
+    tags: [execute]
+
+  - name: "Req 01 - Determine sudo log file path"
+    ansible.builtin.shell: |
+      {% raw %}
+      SUDO_LOG_FILE=$(grep -r logfile /etc/sudoers* 2>/dev/null | sed -e 's/.*logfile=//;s/,?.*//' -e 's/"//g' | head -1)
+      if [ -n "${SUDO_LOG_FILE}" ]; then
+        echo "${SUDO_LOG_FILE}"
+      else
+        echo "UNSET"
+      fi
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: _sudo_log_file
+    failed_when: false
+    changed_when: false
+    when: "_prereqs_met | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Create audit rule to monitor sudo log file modifications"
+    ansible.builtin.lineinfile:
+      path: "{{ audit_rules_file }}"
+      regexp: '^-w .* -p wa -k {{ audit_key }}$'
+      line: "-w {{ _sudo_log_file.stdout | trim }} -p wa -k {{ audit_key }}"
+      create: true
+      owner: root
+      group: root
+      mode: '0640'
+    when:
+    - "_prereqs_met | default(false) | bool"
+    - "_sudo_log_file.stdout | default('UNSET') | trim != 'UNSET'"
+    register: _audit_rule_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Load audit rules into active configuration"
+    ansible.builtin.shell: augenrules --load
+    args:
+      executable: /bin/bash
+    when:
+    - "_prereqs_met | default(false) | bool"
+    - "_sudo_log_file.stdout | default('UNSET') | trim != 'UNSET'"
+    register: _augenrules_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Verify audit rule for sudo log file exists"
+    ansible.builtin.shell: |
+      {% raw %}
+      set -o pipefail
+      SUDO_LOG_FILE=$(grep -r logfile /etc/sudoers* 2>/dev/null | sed -e 's/.*logfile=//;s/,?.*//' -e 's/"//g' | head -1)
+      if [ -n "${SUDO_LOG_FILE}" ]; then
+        auditctl -l | grep -F -- "-w ${SUDO_LOG_FILE} -p wa -k sudo_log_file" || echo "VERIFY_FAILED"
+      else
+        echo "VERIFY_SKIPPED_NO_SUDO_LOG"
+      fi
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: _verify_result
+    failed_when: false
+    changed_when: false
+    when: "_prereqs_met | default(false) | bool"
+    tags: [execute]
+
+  - name: "Req 01 - Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Create audit rule to monitor sudo log file modifications"
+      task_01_cmd: "lineinfile: {{ audit_rules_file }} with rule '-w <sudo_log_file> -p wa -k {{ audit_key }}'"
+      task_01_rc: "{{ _audit_rule_result.rc | default(0) if _audit_rule_result is defined else -1 }}"
+      data_01: "{{ _sudo_log_file.stdout | default('UNSET') | trim if _sudo_log_file is defined else 'Not collected' }}"
+      status_01: >-
+        {{ 'SKIPPED' if not (_prereqs_met | default(false) | bool)
+           else 'SKIPPED' if (_sudo_log_file.stdout | default('UNSET') | trim == 'UNSET')
+           else 'PASS' if (_audit_rule_result is defined and not _audit_rule_result.failed)
+           else 'FAIL' }}
+      details_01: >-
+        {{ 'Prerequisites not met (sudo or auditd not installed)' if not (_prereqs_met | default(false) | bool)
+           else 'No sudo log file configured' if (_sudo_log_file.stdout | default('UNSET') | trim == 'UNSET')
+           else 'Audit rule created and loaded successfully' if (_audit_rule_result is defined and not _audit_rule_result.failed)
+           else 'Failed to create audit rule' }}
+    tags: [execute]
+
+  - name: "Req 02 - Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify audit rule for sudo log file exists"
+      task_02_cmd: "auditctl -l | grep -F -- '-w <sudo_log_file> -p wa -k sudo_log_file'"
+      task_02_rc: "{{ _verify_result.rc | default(-1) if _verify_result is defined else -1 }}"
+      data_02: "{{ _verify_result.stdout | default('') | trim if _verify_result is defined else 'Not collected' }}"
+      status_02: >-
+        {{ 'SKIPPED' if not (_prereqs_met | default(false) | bool)
+           else 'SKIPPED' if ('VERIFY_SKIPPED_NO_SUDO_LOG' in (_verify_result.stdout | default('')))
+           else 'PASS' if (_verify_result is defined and _verify_result.rc | default(-1) == 0 and 'VERIFY_FAILED' not in (_verify_result.stdout | default('')))
+           else 'FAIL' }}
+      details_02: >-
+        {{ 'Prerequisites not met (sudo or auditd not installed)' if not (_prereqs_met | default(false) | bool)
+           else 'No sudo log file configured' if ('VERIFY_SKIPPED_NO_SUDO_LOG' in (_verify_result.stdout | default('')))
+           else 'Audit rule verified active' if (_verify_result is defined and _verify_result.rc | default(-1) == 0 and 'VERIFY_FAILED' not in (_verify_result.stdout | default('')))
+           else 'Audit rule not found in active configuration' }}
+    tags: [execute]
+
+  - name: "Set final cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "REMEDIATION REPORT — CIS 6.3.3.3"
+      - "Reference: CIS Benchmark checkpoint 6.3.3.3"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('Data collection failed') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/50-sudo.rules.present"
+    register: _restore_backup
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Overwrite with original audit rules file"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/50-sudo.rules.present"
+      dest: "{{ audit_rules_file }}"
+      remote_src: true
+    when: _restore_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

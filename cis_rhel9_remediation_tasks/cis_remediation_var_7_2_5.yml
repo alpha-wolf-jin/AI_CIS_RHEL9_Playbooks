@@ -1,0 +1,13 @@
+playbook_name: "cis_7_2_5"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Apply prerequisite check for tools like `awk`, `cut`, `sort`, `uniq`, `groupmod`, and `find` using command: `which awk cut sort uniq groupmod find`. Expected result: all commands return a valid path."
+req_02: "Apply identification of duplicate GIDs using command: `awk -F: '{print $3}' /etc/group | sort | uniq -d`. Expected result: list of duplicate GIDs, or no output if none exist."
+req_03: |
+  Apply listing of all groups with a specific duplicate GID using command: `awk -F: -v gid=\"<DUPLICATE_GID>\" '$3 == gid {print $1}' /etc/group`. Expected result: list of group names sharing that GID.
+req_04: |
+  Apply selection of a unique, unused GID for each duplicate group using command: `awk -F: '{print $3}' /etc/group | sort -n | awk '{if(NR==1) next; if($1!=prev+1) {print prev+1; exit} prev=$1}'`. Expected result: a single unused GID number.
+req_05: "Apply change of GID for a duplicate group using command: `groupmod -g <NEW_UNIQUE_GID> <group_name>`. Expected result: no output, group GID updated in /etc/group."
+req_06: |
+  Apply update of file ownership for files owned by the old GID using command: `find / -gid <OLD_GID> -exec chgrp <NEW_UNIQUE_GID> {} \\;`. Expected result: no errors, all files reassigned to new GID.
+req_07: "Apply verification that no duplicate GIDs remain using command: `awk -F: '{print $3}' /etc/group | sort | uniq -d`. Expected result: no output (empty list)."
+req_08: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

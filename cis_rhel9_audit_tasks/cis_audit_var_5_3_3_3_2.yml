@@ -1,0 +1,7 @@
+pwhistory_conf: "/etc/security/pwhistory.conf"
+req_01: "Check if pwhistory module is installed using command: `dpkg -l | grep -iE 'pwhistory|libpam-pwhistory' || rpm -qa | grep -i pwhistory`. Expected result: package is present."
+req_02: "Check if /etc/security/pwhistory.conf exists using command: `test -f /etc/security/pwhistory.conf && echo 'EXISTS'`. Expected result: EXISTS"
+req_03: |
+  Check if enforce_for_root option is enabled in /etc/security/pwhistory.conf using command: `grep -Pi -- '^\\h*enforce_for_root\\b' /etc/security/pwhistory.conf`. Expected result: enforce_for_root
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if pwhistory package is not installed, FAIL if package is installed but enforce_for_root is missing or misconfigured."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,3 @@
+req_01: "Check if openldap-clients package is installed using command: `rpm -q openldap-clients`. Expected result: package openldap-clients is not installed"
+req_02: "Verify overall compliance: the openldap-clients package must not be installed. Expected result: package openldap-clients is not installed"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

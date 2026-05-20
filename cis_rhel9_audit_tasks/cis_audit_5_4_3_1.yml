@@ -1,0 +1,136 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_5_4_3_1.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+
+- name: "Req 01 - Check if /etc/shells file exists"
+  ansible.builtin.stat:
+    path: /etc/shells
+  register: file_stat
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check /etc/shells existence"
+    task_01_cmd: "test -f /etc/shells"
+    task_01_rc: "{{ 0 if file_stat.stat.exists | default(false) else 1 }}"
+    data_01: "{{ 'File exists' if file_stat.stat.exists | default(false) else 'File does not exist' }}"
+    status_01: "{{ ('PASS' if file_stat.stat.exists | default(false) else 'FAIL') | trim }}"
+    details_01: "{{ ('File /etc/shells found' if file_stat.stat.exists | default(false) else 'File /etc/shells not found') | trim }}"
+
+- name: "Req 02 - Check nologin is not listed in /etc/shells"
+  ansible.builtin.shell: |
+    grep -Ps '^\h*([^#\n\r]+)?\/nologin\b' /etc/shells
+  args:
+    executable: /bin/bash
+  register: grep_result
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Grep for nologin in /etc/shells"
+    task_02_cmd: |
+      grep -Ps '^\\h*([^#\\n\\r]+)?\\/nologin\\b' /etc/shells
+    task_02_rc: "{{ grep_result.rc | default(1) }}"
+    data_02: "{{ grep_result.stdout | default('') | trim }}"
+    details_02: >-
+      {% if not (file_stat.stat.exists | default(false)) %}
+      /etc/shells does not exist, check skipped
+      {% elif (grep_result.stdout | default('') | trim) == '' %}
+      No nologin entries found
+      {% else %}
+      nologin entries found
+      {% endif %}
+    status_02: >-
+      {% if not (file_stat.stat.exists | default(false)) %}
+      SKIP
+      {% elif (grep_result.stdout | default('') | trim) == '' %}
+      PASS
+      {% else %}
+      FAIL
+      {% endif %}
+
+- name: "Req 03 - Determine overall compliance"
+  set_fact:
+    task_03_name: "Evaluate compliance"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "{{ 'Skipped (file missing)' if not (file_stat.stat.exists | default(false)) else ('Compliant' if (grep_result.stdout | default('') | trim) == '' else 'Non-compliant') | trim }}"
+    details_03: "{{ '/etc/shells does not exist, overall check skipped' if not (file_stat.stat.exists | default(false)) else ('No nologin found, system is compliant' if (grep_result.stdout | default('') | trim) == '' else 'nologin found in /etc/shells, system is NOT compliant') | trim }}"
+    status_03: "{{ 'SKIP' if not (file_stat.stat.exists | default(false)) else ('PASS' if (grep_result.stdout | default('') | trim) == '' else 'FAIL') | trim }}"
+
+- name: "Set cis_result"
+  set_fact:
+    cis_result: "{{ status_03 | default('ERROR') | trim }}"
+
+- name: "Req 04 - Store requirement 04 tracking details"
+  set_fact:
+    task_04_name: "Store cis_result"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "{{ cis_result | trim }}"
+    details_04: "Overall compliance: {{ cis_result | trim }}"
+    status_04: "{{ cis_result | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 5.4.3.1"
+    - "Reference: CIS Benchmark checkpoint 5.4.3.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "--------------------------------------------------------"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "--------------------------------------------------------"

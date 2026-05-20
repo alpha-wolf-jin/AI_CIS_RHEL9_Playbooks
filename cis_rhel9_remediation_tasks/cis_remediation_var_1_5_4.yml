@@ -1,0 +1,4 @@
+playbook_name: "cis_remediation_1_5_4"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "1. Run the provided remediation script to fix Ensure core dump storage is disabled. Create or edit /etc/systemd/coredump.conf, or a file in /etc/systemd/coredump.conf.d ending in .conf. Edit or add Storage=none in [Coredump] section. Expected result: Script applies the required changes"
+req_02: "2. VERIFY: Run audit check to confirm Ensure core dump storage is disabled is properly configured. Expected result: System is compliant"

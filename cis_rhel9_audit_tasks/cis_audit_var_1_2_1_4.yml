@@ -1,0 +1,6 @@
+req_01: "Check if dnf package manager is installed using command: `which dnf || rpm -q dnf`. Expected result: dnf is installed."
+req_02: "Check if repositories are configured and accessible using command: `dnf repolist`. Expected result: Output shows at least one repository with a status (e.g., 'fedora' and 'updates' with non-zero package counts)."
+req_03: "Check repository configuration files exist and are readable using command: `cat /etc/yum.repos.d/*.repo`. Expected result: Configuration files are present and contain valid repository settings."
+req_04: "Verify repository configuration settings comply with site policy using command: `grep -E '^(baseurl|mirrorlist|gpgcheck|enabled)' /etc/yum.repos.d/*.repo`. Expected result: Settings match site policy (e.g., gpgcheck=1, enabled=1, correct URLs)."
+req_05: "Summarize overall compliance status: Package manager repositories are configured and accessible, and configuration settings align with site policy."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

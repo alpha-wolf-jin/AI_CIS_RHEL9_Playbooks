@@ -1,0 +1,33 @@
+req_01: "Run the provided audit script to verify Ensure root path integrity. Run the following script to verify root's path does not include: • Locations that are not directories • An empty directory (::) • A trailing (:) • Current working directory (.) • Non root owned directories • Directories that less restrictive than mode 0755"
+req_02: "VERIFY: Summarise compliance status for Ensure root path integrity. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format: AUDIT REPORT — CIS 5.4.2.5 Reference: CIS Benchmark checkpoint 5.4.2.5 Then for each requirement: REQUIREMENT NN - {{ '{{ req_NN }}' }}: With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIP/ERROR), Details. End with OVERALL COMPLIANCE: section containing Result: {{ '{{ cis_result }}' }}"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     l_output2=""
+     l_pmask="0022"
+     l_maxperm="$( printf '%o' $(( 0777 & ~$l_pmask )) )"
+     l_root_path="$(sudo -Hiu root env | grep '^PATH' | cut -d= -f2)"
+     unset a_path_loc && IFS=":" read -ra a_path_loc <<< "$l_root_path"
+     grep -q "::" <<< "$l_root_path" && l_output2="$l_output2\n - root's path contains a empty directory (::)"
+     grep -Pq ":\h*$" <<< "$l_root_path" && l_output2="$l_output2\n - root's path contains a trailing (:)"
+     grep -Pq '(\h+|:)\.(:|\h*$)' <<< "$l_root_path" && l_output2="$l_output2\n - root's path contains current working directory (.)"
+     while read -r l_path; do
+        if [ -d "$l_path" ]; then
+           while read -r l_fmode l_fown; do
+              [ "$l_fown" != "root" ] && l_output2="$l_output2\n - Directory: \"$l_path\" is owned by: \"$l_fown\" should be owned by \"root\""
+              [ $(( $l_fmode & $l_pmask )) -gt 0 ] && l_output2="$l_output2\n - Directory: \"$l_path\" is mode: \"$l_fmode\" and should be mode: \"$l_maxperm\" or more restrictive"
+           done <<< "$(stat -Lc '%#a %U' "$l_path")"
+        else
+           l_output2="$l_output2\n - \"$l_path\" is not a directory"
+        fi
+     done <<< "$(printf "%s\n" "${a_path_loc[@]}")"
+     if [ -z "$l_output2" ]; then
+        echo -e "\n- Audit Result:\n  *** PASS ***\n - Root's path is correctly configured\n"
+     else
+        echo -e "\n- Audit Result:\n  ** FAIL **\n - * Reasons for audit failure * :\n$l_output2\n"
+     fi
+  }
+  {% endraw %}

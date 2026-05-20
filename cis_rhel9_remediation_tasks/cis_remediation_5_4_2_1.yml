@@ -1,0 +1,281 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_5_4_2_1.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore /etc/passwd from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/passwd.present"
+    dest: "/etc/passwd"
+    remote_src: true
+  when: _sg_flag.stat.exists
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: _sg_flag.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Backup /etc/passwd"
+  ansible.builtin.copy:
+    src: "/etc/passwd"
+    dest: "{{ state_guard_dir }}/passwd.present"
+    remote_src: true
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+# === STATE GUARD — EXECUTE PHASE ===
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "UNKNOWN"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "UNKNOWN"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "UNKNOWN"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "UNKNOWN"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "UNKNOWN"
+      details_05: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+    tags: [execute]
+
+# Requirement 1 - Prerequisite check for usermod
+  - name: "Req 01 - Check if usermod command is available"
+    ansible.builtin.shell: "command -v usermod"
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if usermod command is available"
+      task_01_cmd: "command -v usermod"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL' }}"
+      details_01: "{{ 'usermod found at: ' + (result_01.stdout | default('') | trim) if (result_01.rc | default(-1)) == 0 else 'usermod not found' }}"
+    tags: [execute]
+
+# Requirement 2 - Set root UID to 0
+  - name: "Req 02 - Set root account UID to 0"
+    ansible.builtin.shell: "usermod -u 0 root"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    when: "(result_01.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Set root account UID to 0"
+      task_02_cmd: "usermod -u 0 root"
+      task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
+      data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else 'Skipped' }}"
+      status_02: "{{ 'SKIPPED' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_02: "{{ 'Skipped - usermod not available' if (result_01.rc | default(-1)) != 0 else ('Root UID set to 0' if (result_02.rc | default(-1)) == 0 else 'Failed to set root UID') }}"
+    tags: [execute]
+
+# Requirement 3 - Assign new UIDs to non-root UID 0 accounts
+  - name: "Req 03 - Find non-root users with UID 0"
+    ansible.builtin.shell: |
+      awk -F: '($3 == 0 && $1 != "root") {print $1}' /etc/passwd
+    args:
+      executable: /bin/bash
+    register: result_03_find
+    failed_when: false
+    changed_when: false
+    when: "(result_01.rc | default(-1)) == 0"
+    tags: [execute]
+
+  - name: "Req 03 - Assign new UIDs to non-root UID 0 users"
+    ansible.builtin.shell: |
+      {% raw %}
+      new_uid=2000
+      for user in $(awk -F: '($3 == 0 && $1 != "root") {print $1}' /etc/passwd); do
+        while awk -F: -v uid="$new_uid" '($3 == uid) {exit 1}' /etc/passwd; do
+          new_uid=$((new_uid + 1))
+        done
+        usermod -u "$new_uid" "$user"
+        new_uid=$((new_uid + 1))
+      done
+      {% endraw %}
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when:
+    - "(result_01.rc | default(-1)) == 0"
+    - "result_03_find.stdout | default('') | trim != ''"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Assign new UIDs to non-root UID 0 users"
+      task_03_cmd: "usermod -u <new_uid> <username> (for each non-root UID 0 user)"
+      task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined else -1 }}"
+      data_03: "{{ result_03_find.stdout | default('') | trim if result_03_find is defined else 'Skipped' }}"
+      status_03: "{{ 'SKIPPED' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_03_find.stdout | default('') | trim) == '' else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL')) }}"
+      details_03: "{{ 'Skipped - usermod not available' if (result_01.rc | default(-1)) != 0 else ('No non-root UID 0 users found' if (result_03_find.stdout | default('') | trim) == '' else ('UIDs reassigned for: ' + (result_03_find.stdout | default('') | trim) if (result_03.rc | default(-1)) == 0 else 'Failed to reassign UIDs')) }}"
+    tags: [execute]
+
+# Requirement 4 - Verify only root has UID 0
+  - name: "Req 04 - Verify only root has UID 0"
+    ansible.builtin.shell: |
+      awk -F: '($3 == 0) {print $1}' /etc/passwd
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify only root has UID 0"
+      task_04_cmd: "awk -F: '($3 == 0) {print $1}' /etc/passwd"
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (result_04.stdout | default('') | trim) == 'root' else 'FAIL' }}"
+      details_04: "{{ 'Only root has UID 0' if (result_04.stdout | default('') | trim) == 'root' else 'Other UID 0 accounts found: ' + (result_04.stdout | default('') | trim) }}"
+    tags: [execute]
+
+# Requirement 5 - Store final remediation result in cis_result
+  - name: "Req 05 - Store final remediation result in cis_result"
+    set_fact:
+      task_05_name: "Store final remediation result"
+      task_05_cmd: "set_fact: cis_result = {{ status_04 | default('UNKNOWN') }}"
+      task_05_rc: 0
+      data_05: "cis_result = {{ status_04 | default('UNKNOWN') }}"
+      status_05: "{{ status_04 | default('UNKNOWN') }}"
+      details_05: "Overall remediation result is {{ status_04 | default('UNKNOWN') }}"
+      cis_result: "{{ status_04 | default('UNKNOWN') }}"
+    tags: [execute]
+
+# Final report
+  - name: "Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 5.4.2.1"
+      - "        Reference: CIS Benchmark checkpoint 5.4.2.1"
+      - "========================================================"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+# === STATE GUARD — RESTORE PHASE (GUARANTEED) ===
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if passwd backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/passwd.present"
+    register: _sg_restore_passwd
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore /etc/passwd from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/passwd.present"
+      dest: "/etc/passwd"
+      remote_src: true
+    when: "_sg_restore_passwd.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

@@ -1,0 +1,5 @@
+req_01: "Check if the system-wide crypto policy configuration file exists using command: `test -f /etc/crypto-policies/config`. Expected result: file exists."
+req_02: |
+  Check if the system-wide crypto policy is set to LEGACY using command: `grep -Pi '^\\h*LEGACY\\b' /etc/crypto-policies/config`. Expected result: no lines are returned.
+req_03: "Summarize overall compliance: if the file exists and no LEGACY policy is found, the system is compliant; otherwise, it is non-compliant."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."

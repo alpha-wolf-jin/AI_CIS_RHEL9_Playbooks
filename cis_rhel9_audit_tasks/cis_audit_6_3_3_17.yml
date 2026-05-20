@@ -1,0 +1,186 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_6_3_3_17.yml
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+
+- name: "Req 01 - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Req 01 - Set auditd installed fact"
+  ansible.builtin.set_fact:
+    auditd_installed: "{{ ('audit' in ansible_facts.packages) | bool }}"
+
+- name: "Req 01 - Check if chacl binary exists"
+  ansible.builtin.stat:
+    path: "{{ audit_command_path }}"
+  register: chacl_stat
+  failed_when: false
+
+- name: "Req 01 - Set chacl exists fact"
+  ansible.builtin.set_fact:
+    chacl_exists: "{{ chacl_stat.stat.exists | default(false) }}"
+
+- name: "Req 01 - Set prerequisite check fact"
+  ansible.builtin.set_fact:
+    prerequisite_met: "{{ (auditd_installed | bool) and (chacl_exists | bool) }}"
+
+- name: "Req 01 - Initialize default results when prerequisites missing"
+  ansible.builtin.set_fact:
+    ondisk_result:
+      stdout: ""
+      rc: -1
+    running_result:
+      stdout: ""
+      rc: -1
+  when: "not prerequisite_met | bool"
+
+- name: "Req 01 - Audit on-disk rules for chacl"
+  ansible.builtin.shell: |
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && awk "/^ *-a *always,exit/ &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) &&/ -F *auid>=${UID_MIN}/ &&/ -F *perm=x/ &&/ -F *path=\/usr\/bin\/{{ audit_command_name }}/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+  args:
+    executable: /bin/bash
+  register: ondisk_result
+  when: "prerequisite_met | bool"
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Set on-disk rule found fact"
+  ansible.builtin.set_fact:
+    ondisk_rule_found: >-
+      {{ (ondisk_result.stdout | default('') | trim | length > 0)
+         and ('ERROR' not in (ondisk_result.stdout | default(''))) }}
+  when: "prerequisite_met | bool"
+
+- name: "Req 01 - Audit running rules for chacl"
+  ansible.builtin.shell: |
+    UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+    [ -n "${UID_MIN}" ] && auditctl -l | awk "/^ *-a *always,exit/ &&(/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) &&/ -F *auid>=${UID_MIN}/ &&/ -F *perm=x/ &&/ -F *path=\/usr\/bin\/{{ audit_command_name }}/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" || printf "ERROR: Variable 'UID_MIN' is unset.\n"
+  args:
+    executable: /bin/bash
+  register: running_result
+  when: "prerequisite_met | bool"
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Set running rule found fact"
+  ansible.builtin.set_fact:
+    running_rule_found: >-
+      {{ (running_result.stdout | default('') | trim | length > 0)
+         and ('ERROR' not in (running_result.stdout | default(''))) }}
+  when: "prerequisite_met | bool"
+
+- name: "Req 01 - Store requirement 01 details"
+  ansible.builtin.set_fact:
+    status_01: >-
+      {{ 'NOT_APPLICABLE' if not (prerequisite_met | bool)
+         else ('PASS' if (ondisk_rule_found | default(false) | bool) and (running_rule_found | default(false) | bool)
+               else 'FAIL') | trim }}
+    details_01: >-
+      {% if not (prerequisite_met | bool) %}
+      Auditd or chacl not installed
+      {% elif (ondisk_rule_found | default(false) | bool) and (running_rule_found | default(false) | bool) %}
+      Expected audit rule found on disk and in running configuration
+      {% else %}
+      Non-compliant: on-disk rule {% if ondisk_rule_found | default(false) | bool %}found{% else %}missing{% endif %}, running rule {% if running_rule_found | default(false) | bool %}found{% else %}missing{% endif %}
+      {% endif %}
+    task_01_name: "Audit rules checks for chacl (on-disk and running)"
+    task_01_cmd: "CIS shell procedures (on-disk awk and auditctl -l)"
+    task_01_rc: "{{ ondisk_result.rc | default(-1) }}"
+    data_01: "{{ 'on-disk: ' ~ (ondisk_result.stdout | default('') | trim) ~ ' | running: ' ~ (running_result.stdout | default('') | trim) | trim }}"
+
+- name: "Req 02 - Determine overall compliance status"
+  ansible.builtin.set_fact:
+    compliance_status: >-
+      {% if not (prerequisite_met | bool) %}
+        NOT_APPLICABLE
+      {% elif (ondisk_rule_found | default(false) | bool) and (running_rule_found | default(false) | bool) %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+
+- name: "Req 02 - Store compliance result details"
+  ansible.builtin.set_fact:
+    status_02: "{{ compliance_status | trim }}"
+    details_02: >-
+      {{ 'Prerequisites not met: auditd or chacl missing' if not (prerequisite_met | bool)
+         else ('System is compliant: both on-disk and running rules found' if compliance_status | trim == 'PASS'
+         else 'System is non-compliant: ' ~ ('on-disk rule ' ~ ('found' if (ondisk_rule_found | default(false) | bool) else 'missing') ~ ', running rule ' ~ ('found' if (running_rule_found | default(false) | bool) else 'missing'))) | trim }}
+    task_02_name: "Compliance evaluation"
+    task_02_cmd: "N/A"
+    task_02_rc: 0
+    data_02: "{{ compliance_status | trim }}"
+
+- name: "Req 03 - Store cis_result variable"
+  ansible.builtin.set_fact:
+    cis_result: "{{ compliance_status | trim }}"
+
+- name: "Req 03 - Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Store cis_result variable"
+    task_03_cmd: "set_fact cis_result = {{ cis_result }}"
+    task_03_rc: 0
+    data_03: "{{ cis_result }}"
+    status_03: "PASS"
+    details_03: "cis_result stored as {{ cis_result }}"
+
+- name: "Req 04 - Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 6.3.3.17"
+    - "Reference: CIS Benchmark checkpoint 6.3.3.17"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug msg"
+    - "  Exit code: 0"
+    - "  Data: Report generated"
+    - "  Status: PASS"
+    - "  Details: Audit report generated"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - "========================================================"

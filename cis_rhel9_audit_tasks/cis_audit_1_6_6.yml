@@ -1,0 +1,172 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_6_6.yml
+
+- name: "Gather package facts for {{ package_name }}"
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: "Set installation status fact"
+  ansible.builtin.set_fact:
+    openssh_installed: "{{ package_name in ansible_facts.packages }}"
+  failed_when: false
+
+- name: "Req 01 - Run audit script to verify chacha20-poly1305 is disabled for SSH"
+  ansible.builtin.shell: |
+    {% raw %}
+    #!/usr/bin/env bash
+
+    {
+       l_output="" l_output2=""
+       if grep -Piq -- '^\h*cipher\h*=\h*([^#\n\r]+)?-CBC\b' /etc/crypto-policies/state/CURRENT.pol; then
+          if grep -Piq -- '^\h*cipher@(lib|open)ssh(-server|-client)?\h*=\h*' /etc/crypto-policies/state/CURRENT.pol; then
+             if ! grep -Piq -- '^\h*cipher@(lib|open)ssh(-server|- client)?\h*=\h*([^#\n\r]+)?\bchacha20-poly1305\b' /etc/crypto-policies/state/CURRENT.pol; then
+                l_output="$l_output\n - chacha20-poly1305 is disabled for SSH"
+             else
+                l_output2="$l_output2\n - chacha20-poly1305 is enabled for SSH"
+             fi
+          else
+             l_output2="$l_output2\n - chacha20-poly1305 is enabled for SSH"
+          fi
+       else
+          l_output=" - chacha20-poly1305 is disabled"
+       fi
+       if [ -z "$l_output2" ]; then # Provide output from checks
+          echo -e "\n- Audit Result:\n  ** PASS **\n$l_output\n"
+       else
+          echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output2\n"
+          [ -n "$l_output" ] && echo -e "\n- Correctly set:\n$l_output\n"
+       fi
+    }
+    {% endraw %}
+  args:
+    executable: /bin/bash
+  register: audit_script_result
+  failed_when: false
+  changed_when: false
+  when: "openssh_installed | bool"
+
+- name: "Set requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Run audit script to verify chacha20-poly1305 is disabled for SSH"
+    task_01_cmd: "Inline shell script (see playbook)"
+    task_01_rc: "{{ audit_script_result.rc | default(-1) }}"
+    data_01: "{{ audit_script_result.stdout | default('') | trim }}"
+    status_01: >-
+      {% if not openssh_installed | bool %}
+        SKIPPED
+      {% elif audit_script_result.rc | default(-1) | int == 0 %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+    details_01: >-
+      {% if not openssh_installed | bool %}
+        openssh-server is not installed, skipping audit
+      {% elif audit_script_result.rc | default(-1) | int == 0 %}
+        Script executed successfully
+      {% else %}
+        Script execution failed with rc={{ audit_script_result.rc | default(-1) }}
+      {% endif %}
+  when: true
+
+- name: "Determine compliance result from script output"
+  ansible.builtin.set_fact:
+    compliance_result: >-
+      {% if not openssh_installed | bool %}
+        NOT_APPLICABLE
+      {% elif "** PASS **" in audit_script_result.stdout | default('') %}
+        PASS
+      {% else %}
+        FAIL
+      {% endif %}
+  when: true
+
+- name: "Set requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Verify compliance status from script output"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_02: "{{ compliance_result }}"
+    status_02: "{{ compliance_result }}"
+    details_02: >-
+      {% if not openssh_installed | bool %}
+        openssh-server is not installed, audit not applicable
+      {% elif "** PASS **" in audit_script_result.stdout | default('') %}
+        System is compliant. chacha20-poly1305 is disabled for SSH.
+      {% elif "** FAIL **" in audit_script_result.stdout | default('') %}
+        System is non-compliant. chacha20-poly1305 is enabled for SSH.
+      {% else %}
+        Unable to determine compliance from script output.
+      {% endif %}
+  when: true
+
+- name: "Set final cis_result fact"
+  ansible.builtin.set_fact:
+    cis_result: "{{ compliance_result }}"
+  when: true
+
+- name: "Set requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Store final audit result"
+    task_03_cmd: "set_fact cis_result = {{ compliance_result }}"
+    task_03_rc: 0
+    data_03: "{{ cis_result }}"
+    status_03: "{{ cis_result }}"
+    details_03: "Overall compliance: {{ cis_result }}"
+  when: true
+
+- name: "Set requirement 04 details (report generation)"
+  ansible.builtin.set_fact:
+    task_04_name: "Generate audit report"
+    task_04_cmd: "debug msg"
+    task_04_rc: 0
+    data_04: "Audit report generated"
+    status_04: "PASS"
+    details_04: "Report displayed below"
+  when: true
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.6.6"
+    - "Reference: CIS Benchmark checkpoint 1.6.6"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+    - "========================================================"
+  when: true

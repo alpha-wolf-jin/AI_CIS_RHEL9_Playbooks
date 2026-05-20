@@ -1,0 +1,4 @@
+req_01: "Check if dhcp-server package is installed using command: `rpm -q dhcp-server`. Expected result: package dhcp-server is not installed"
+req_02: "If the package is required for dependencies, check that dhcpd.service and dhcpd6.service are not enabled using command: `systemctl is-enabled dhcpd.service dhcpd6.service 2>/dev/null | grep 'enabled'`. Expected result: Nothing should be returned"
+req_03: "If the package is required for dependencies, check that dhcpd.service and dhcpd6.service are not active using command: `systemctl is-active dhcpd.service dhcpd6.service 2>/dev/null | grep '^active'`. Expected result: Nothing should be returned"
+req_04: "Summarize overall compliance: Ensure that either the dhcp-server package is not installed, or if installed for dependencies, the services are not enabled or active and local site policy is followed for dependent packages and service masking."

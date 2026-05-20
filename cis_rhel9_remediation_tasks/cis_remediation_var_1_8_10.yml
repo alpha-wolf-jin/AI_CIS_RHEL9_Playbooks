@@ -1,0 +1,6 @@
+playbook_name: "cis_1_8_10"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+gdm_config: "/etc/gdm/custom.conf"
+req_01: "Apply prerequisite check for text editing tools using command: `which sed || which gedit || which nano`. Expected result: at least one text editor or sed is available."
+req_02: "Apply removal of the 'Enable=true' line from /etc/gdm/custom.conf using command: `sudo sed -i '/^Enable=true/d' /etc/gdm/custom.conf`. Expected result: the line 'Enable=true' is removed from the file."
+req_03: "Verify XDMCP is not enabled using command: `grep -i 'Enable=true' /etc/gdm/custom.conf`. Expected result: no output (the line should not exist)."

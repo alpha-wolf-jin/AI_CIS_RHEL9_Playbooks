@@ -1,0 +1,7 @@
+playbook_name: "cis_6_3_3_16_setfacl_audit"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+audit_rules_file: "/etc/audit/rules.d/50-perm_chng.rules"
+audit_rule_pattern: "path=/usr/bin/setfacl.*perm=x.*perm_chng"
+req_01: "Apply remediation for: Ensure successful and unsuccessful attempts to use the setfacl command are collected. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure successful and unsuccessful attempts to use the setfacl command are collected is properly configured. Expected result: Compliant"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,4 @@
+req_01: "Check if /etc/shadow exists using command: `test -f /etc/shadow && echo 'exists'`. Expected result: exists"
+req_02: |
+  Check for user accounts with empty password fields using command: `awk -F: '($2 == \"\" ) { print $1 \" does not have a password \"}' /etc/shadow`. Expected result: no output
+req_03: "Summarize overall compliance: if /etc/shadow exists and the awk command returns no output, then the system is compliant with checkpoint 7.2.2."

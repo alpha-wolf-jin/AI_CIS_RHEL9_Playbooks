@@ -1,0 +1,571 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_6_2_1_4.yml
+
+- name: "State Guard - Check for existing checkpoint"
+  ansible.builtin.stat:
+    path: "{{ state_guard_flag }}"
+  register: _sg_flag
+  tags: [snapshot]
+- name: "State Guard - Restore systemd-journald.service override from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/journald_override.present"
+    dest: "/etc/systemd/system/systemd-journald.service.d/override.conf"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore systemd-journal-upload.service override from prior checkpoint"
+  ansible.builtin.copy:
+    src: "{{ state_guard_dir }}/journal_upload_override.present"
+    dest: "/etc/systemd/system/systemd-journal-upload.service.d/override.conf"
+    remote_src: true
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Restore rsyslog service state from prior checkpoint"
+  ansible.builtin.shell: |
+    if [ -f "{{ state_guard_dir }}/rsyslog_enabled.state" ]; then
+      state=$(cat "{{ state_guard_dir }}/rsyslog_enabled.state")
+      if [ "$state" = "enabled" ]; then
+        systemctl unmask rsyslog.service 2>/dev/null || true
+        systemctl enable rsyslog.service 2>/dev/null || true
+        systemctl start rsyslog.service 2>/dev/null || true
+      fi
+    fi
+  args:
+    executable: /bin/bash
+  when: "_sg_flag.stat.exists"
+  failed_when: false
+  tags: [snapshot]
+- name: "State Guard - Remove old checkpoint"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: absent
+  when: "_sg_flag.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "State Guard - Check if systemd-journald override exists"
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/systemd-journald.service.d/override.conf"
+  register: _sg_journald_override
+  tags: [snapshot]
+- name: "State Guard - Backup systemd-journald override"
+  ansible.builtin.copy:
+    src: "/etc/systemd/system/systemd-journald.service.d/override.conf"
+    dest: "{{ state_guard_dir }}/journald_override.present"
+    remote_src: true
+  when: "_sg_journald_override.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Check if systemd-journal-upload override exists"
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/systemd-journal-upload.service.d/override.conf"
+  register: _sg_journal_upload_override
+  tags: [snapshot]
+- name: "State Guard - Backup systemd-journal-upload override"
+  ansible.builtin.copy:
+    src: "/etc/systemd/system/systemd-journal-upload.service.d/override.conf"
+    dest: "{{ state_guard_dir }}/journal_upload_override.present"
+    remote_src: true
+  when: "_sg_journal_upload_override.stat.exists"
+  tags: [snapshot]
+- name: "State Guard - Save rsyslog enabled state"
+  ansible.builtin.shell: |
+    systemctl is-enabled rsyslog.service 2>/dev/null || echo "disabled"
+  args:
+    executable: /bin/bash
+  register: _sg_rsyslog_enabled
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Persist rsyslog enabled state"
+  ansible.builtin.copy:
+    content: "{{ _sg_rsyslog_enabled.stdout | default('disabled') | trim }}"
+    dest: "{{ state_guard_dir }}/rsyslog_enabled.state"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "UNKNOWN"
+    details_01: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    data_02: "Not collected yet"
+    status_02: "UNKNOWN"
+    details_02: "Not evaluated"
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    data_03: "Not collected yet"
+    status_03: "UNKNOWN"
+    details_03: "Not evaluated"
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    data_04: "Not collected yet"
+    status_04: "UNKNOWN"
+    details_04: "Not evaluated"
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    data_05: "Not collected yet"
+    status_05: "UNKNOWN"
+    details_05: "Not evaluated"
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    data_06: "Not collected yet"
+    status_06: "UNKNOWN"
+    details_06: "Not evaluated"
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    data_07: "Not collected yet"
+    status_07: "UNKNOWN"
+    details_07: "Not evaluated"
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    data_08: "Not collected yet"
+    status_08: "UNKNOWN"
+    details_08: "Not evaluated"
+    task_08_name: "Not executed"
+    task_08_cmd: "N/A"
+    task_08_rc: -1
+  tags: [execute]
+- block:
+  - name: "Req 01 - Check if systemd-journald or rsyslog packages are installed"
+    ansible.builtin.shell: |
+      if command -v dpkg &>/dev/null; then
+        dpkg -l | grep -E 'systemd-journald|rsyslog' || echo "NOT_FOUND"
+      elif command -v rpm &>/dev/null; then
+        rpm -qa | grep -E 'systemd-journald|rsyslog' || echo "NOT_FOUND"
+      else
+        echo "NOT_FOUND"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_01
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check if systemd-journald or rsyslog packages are installed"
+      task_01_cmd: "dpkg -l | grep -E 'systemd-journald|rsyslog' (or rpm -qa)"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIPPED' if 'NOT_FOUND' in (result_01.stdout | default('')) else 'PASS' }}"
+      details_01: "{{ 'No logging package found - remediation skipped' if 'NOT_FOUND' in (result_01.stdout | default('')) else 'Logging package found' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Select logging system based on site policy"
+    ansible.builtin.set_fact:
+      selected_logging: "journald"
+      task_02_name: "Select logging system based on site policy"
+      task_02_cmd: "set_fact selected_logging=journald"
+      task_02_rc: 0
+      data_02: "{{ selected_logging }}"
+      status_02: "PASS"
+      details_02: "journald selected as the logging system"
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 02 - Skip logging selection (no packages found)"
+    ansible.builtin.set_fact:
+      task_02_name: "Select logging system based on site policy"
+      task_02_cmd: "set_fact selected_logging=journald"
+      task_02_rc: 0
+      data_02: "N/A"
+      status_02: "SKIPPED"
+      details_02: "No logging packages installed"
+    when: "'NOT_FOUND' in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 03 - Configure systemd-journald.service via drop-in override"
+    ansible.builtin.file:
+      path: "/etc/systemd/system/systemd-journald.service.d"
+      state: directory
+      mode: '0755'
+    when: "selected_logging == 'journald' and 'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 03 - Write systemd-journald override configuration"
+    ansible.builtin.copy:
+      dest: "/etc/systemd/system/systemd-journald.service.d/override.conf"
+      content: |
+        [Service]
+        # CIS 6.2.1.4 - Journald configured as primary logging system
+      mode: '0644'
+    register: result_03
+    when: "selected_logging == 'journald' and 'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Configure systemd-journald.service via drop-in override"
+      task_03_cmd: "copy override.conf to /etc/systemd/system/systemd-journald.service.d/"
+      task_03_rc: "{{ -1 if (result_03 is not defined or result_03 is skipped) else 0 }}"
+      data_03: "{{ 'override.conf written' if (result_03 is defined and result_03.changed | default(false)) else 'already configured or skipped' }}"
+      status_03: "{{ 'PASS' if selected_logging == 'journald' else 'SKIPPED' }}"
+      details_03: "{{ 'systemd-journald.service override configured' if selected_logging == 'journald' else 'rsyslog selected - journald config skipped' }}"
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 03 - Skip journald configuration (no packages)"
+    ansible.builtin.set_fact:
+      task_03_name: "Configure systemd-journald.service via drop-in override"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_03: "N/A"
+      status_03: "SKIPPED"
+      details_03: "No logging packages installed"
+    when: "'NOT_FOUND' in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 04 - Disable rsyslog service (journald selected)"
+    ansible.builtin.systemd:
+      name: "rsyslog.service"
+      state: stopped
+      enabled: false
+      masked: true
+    register: result_04
+    failed_when: false
+    when: "selected_logging == 'journald' and 'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Disable rsyslog service (journald selected)"
+      task_04_cmd: "systemctl stop rsyslog.service && systemctl disable rsyslog.service && systemctl mask rsyslog.service"
+      task_04_rc: "{{ 0 if (result_04 is defined and result_04.status is defined) else -1 }}"
+      data_04: "{{ 'rsyslog stopped, disabled, and masked' if (result_04 is defined and result_04.status is defined) else 'N/A' }}"
+      status_04: "{{ 'PASS' if (result_04 is defined and result_04.status is defined) else 'SKIPPED' }}"
+      details_04: "{{ 'rsyslog disabled - only journald active' if (result_04 is defined and result_04.status is defined) else 'No logging packages or rsyslog selected' }}"
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 04 - Skip single logging enforcement (no packages)"
+    ansible.builtin.set_fact:
+      task_04_name: "Disable rsyslog service (journald selected)"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_04: "N/A"
+      status_04: "SKIPPED"
+      details_04: "No logging packages installed"
+    when: "'NOT_FOUND' in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 05 - Verify only one logging service is active"
+    ansible.builtin.shell: |
+      if systemctl is-active --quiet systemd-journald.service 2>/dev/null; then
+        echo "journald=active"
+      else
+        echo "journald=inactive"
+      fi
+      if systemctl is-active --quiet rsyslog.service 2>/dev/null; then
+        echo "rsyslog=active"
+      else
+        echo "rsyslog=inactive"
+      fi
+    args:
+      executable: /bin/bash
+    register: result_05
+    failed_when: false
+    changed_when: false
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Store requirement 05 details"
+    ansible.builtin.set_fact:
+      task_05_name: "Verify only one logging service is active"
+      task_05_cmd: "systemctl is-active --quiet ... ; if active then echo ... else echo ... fi"
+      task_05_rc: "{{ result_05.rc | default(-1) }}"
+      data_05: "{{ result_05.stdout | default('') | trim }}"
+      status_05: "{{ 'PASS' if (result_05.stdout | default('')) is search('journald=active') and (result_05.stdout | default('')) is search('rsyslog=inactive') else 'FAIL' }}"
+      details_05: "{{ 'Only journald is active' if (result_05.stdout | default('')) is search('journald=active') and (result_05.stdout | default('')) is search('rsyslog=inactive') else 'Multiple services active or verification failed' }}"
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 05 - Skip verification (no packages)"
+    ansible.builtin.set_fact:
+      task_05_name: "Verify only one logging service is active"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      data_05: "N/A"
+      status_05: "SKIPPED"
+      details_05: "No logging packages installed"
+    when: "'NOT_FOUND' in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 06 - Configure systemd-journal-upload.service for remote logging"
+    ansible.builtin.file:
+      path: "/etc/systemd/system/systemd-journal-upload.service.d"
+      state: directory
+      mode: '0755'
+    when: "selected_logging == 'journald' and 'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 06 - Write systemd-journal-upload override configuration"
+    ansible.builtin.copy:
+      dest: "/etc/systemd/system/systemd-journal-upload.service.d/override.conf"
+      content: |
+        [Service]
+        # CIS 6.2.1.4 - Journal remote upload configured
+      mode: '0644'
+    register: result_06
+    when: "selected_logging == 'journald' and 'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Store requirement 06 details"
+    ansible.builtin.set_fact:
+      task_06_name: "Configure systemd-journal-upload.service for remote logging"
+      task_06_cmd: "copy override.conf to /etc/systemd/system/systemd-journal-upload.service.d/"
+      task_06_rc: "{{ 0 if (result_06 is defined and result_06.changed | default(false)) else 0 }}"
+      data_06: "{{ 'override.conf written' if (result_06 is defined and result_06.changed | default(false)) else 'already configured or skipped' }}"
+      status_06: "{{ 'PASS' if selected_logging == 'journald' else 'SKIPPED' }}"
+      details_06: "{{ 'systemd-journal-upload.service override configured' if selected_logging == 'journald' else 'rsyslog selected - journal-remote skipped' }}"
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 06 - Skip journal-remote configuration (no packages)"
+    ansible.builtin.set_fact:
+      task_06_name: "Configure systemd-journal-upload.service for remote logging"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      data_06: "N/A"
+      status_06: "SKIPPED"
+      details_06: "No logging packages installed"
+    when: "'NOT_FOUND' in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 07 - Restart systemd-journald to apply configuration changes"
+    ansible.builtin.systemd:
+      name: "systemd-journald.service"
+      state: restarted
+      daemon_reload: true
+    register: result_07
+    failed_when: false
+    when: "selected_logging == 'journald' and 'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Store requirement 07 details"
+    ansible.builtin.set_fact:
+      task_07_name: "Restart systemd-journald to apply configuration changes"
+      task_07_cmd: "systemctl restart systemd-journald"
+      task_07_rc: "{{ 0 if (result_07 is defined and result_07.state is defined) else -1 }}"
+      data_07: "{{ 'systemd-journald restarted successfully' if (result_07 is defined and result_07.state is defined) else 'N/A' }}"
+      status_07: "{{ 'PASS' if (result_07 is defined and result_07.state is defined) else 'SKIPPED' }}"
+      details_07: "{{ 'systemd-journald restarted' if (result_07 is defined and result_07.state is defined) else 'rsyslog selected or no packages' }}"
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 07 - Skip journald restart (no packages)"
+    ansible.builtin.set_fact:
+      task_07_name: "Restart systemd-journald to apply configuration changes"
+      task_07_cmd: "N/A"
+      task_07_rc: -1
+      data_07: "N/A"
+      status_07: "SKIPPED"
+      details_07: "No logging packages installed"
+    when: "'NOT_FOUND' in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 08 - Verify only one logging service is listed as active"
+    ansible.builtin.shell: |
+      systemctl list-units --type=service | grep -E 'systemd-journald|rsyslog' || echo "NONE_ACTIVE"
+    args:
+      executable: /bin/bash
+    register: result_08
+    failed_when: false
+    changed_when: false
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Store requirement 08 details"
+    ansible.builtin.set_fact:
+      task_08_name: "Verify only one logging service is listed as active"
+      task_08_cmd: "systemctl list-units --type=service | grep -E 'systemd-journald|rsyslog'"
+      task_08_rc: "{{ result_08.rc | default(-1) }}"
+      data_08: "{{ result_08.stdout | default('') | trim }}"
+      status_08: "{{ 'PASS' if (result_08.stdout | default('')) is search('systemd-journald') and (result_08.stdout | default('')) is not search('rsyslog') else 'FAIL' }}"
+      details_08: "{{ 'Only journald listed as active' if (result_08.stdout | default('')) is search('systemd-journald') and (result_08.stdout | default('')) is not search('rsyslog') else 'Multiple services active or verification failed' }}"
+    when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Req 08 - Skip final verification (no packages)"
+    ansible.builtin.set_fact:
+      task_08_name: "Verify only one logging service is listed as active"
+      task_08_cmd: "N/A"
+      task_08_rc: -1
+      data_08: "N/A"
+      status_08: "SKIPPED"
+      details_08: "No logging packages installed"
+    when: "'NOT_FOUND' in (result_01.stdout | default(''))"
+    tags: [execute]
+
+  - name: "Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_08 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 6.2.1.4"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 6.2.1.4"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Task not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Task not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Task not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_07 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 08 - {{ req_08 }}:"
+      - "  Task: {{ task_08_name | default('Task not recorded') }}"
+      - "  Command: {{ task_08_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_08_rc | default(-1) }}"
+      - "  Data: {{ data_08 | default('') | trim }}"
+      - "  Status: {{ status_08 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_08 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ details_08 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if journald override backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/journald_override.present"
+    register: _sg_restore_journald
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore systemd-journald override"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/journald_override.present"
+      dest: "/etc/systemd/system/systemd-journald.service.d/override.conf"
+      remote_src: true
+    when: "_sg_restore_journald.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if journal-upload override backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/journal_upload_override.present"
+    register: _sg_restore_journal_upload
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore systemd-journal-upload override"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/journal_upload_override.present"
+      dest: "/etc/systemd/system/systemd-journal-upload.service.d/override.conf"
+      remote_src: true
+    when: "_sg_restore_journal_upload.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved rsyslog enabled state"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/rsyslog_enabled.state"
+    register: _sg_restore_rsyslog_data
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore rsyslog service state"
+    ansible.builtin.shell: |
+      state=$(echo "{{ _sg_restore_rsyslog_data.content | b64decode | default('disabled') | trim }}")
+      if [ "$state" = "enabled" ]; then
+        systemctl unmask rsyslog.service 2>/dev/null || true
+        systemctl enable rsyslog.service 2>/dev/null || true
+        systemctl start rsyslog.service 2>/dev/null || true
+      fi
+    args:
+      executable: /bin/bash
+    when: "_sg_restore_rsyslog_data is not failed and _sg_restore_rsyslog_data.content is defined"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: "_sg_restore_flag.stat.exists | default(false)"
+    failed_when: false
+    tags: [restore]

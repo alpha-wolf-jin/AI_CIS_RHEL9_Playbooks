@@ -1,0 +1,15 @@
+checkpoint_id: "cis_5_1_2"
+state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
+state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+script_dest: "{{ state_guard_dir }}/remediate.sh"
+sshd_package_name: "openssh-server"
+req_01: "Apply remediation for: Ensure permissions on SSH private host key files are configured. Expected result: System is compliant"
+req_02: "VERIFY: Confirm Ensure permissions on SSH private host key files are configured is properly configured. Expected result: Compliant"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: !unsafe |
+  Create a task named 'Generate remediation report' using debug msg with EXACTLY this format:
+  REMEDIATION REPORT — CIS 5.1.2
+  Reference: CIS Benchmark checkpoint 5.1.2
+  Then for each requirement: REQUIREMENT NN - {{ req_NN }}:
+    With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIP/ERROR), Details.
+  End with OVERALL REMEDIATION: section containing Result: {{{ cis_result }}}

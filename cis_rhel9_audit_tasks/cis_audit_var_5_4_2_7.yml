@@ -1,0 +1,2 @@
+req_01: "Run the provided audit script to verify Ensure system accounts do not have a valid login shell."
+req_02: "VERIFY: Summarise compliance status for Ensure system accounts do not have a valid login shell. Expected result: PASS if compliant, FAIL otherwise"

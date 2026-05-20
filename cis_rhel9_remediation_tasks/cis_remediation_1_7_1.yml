@@ -1,0 +1,205 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_7_1.yml
+
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if backup files already exist"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/motd.present"
+  register: _snap_motd_backup_exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/motd exists"
+  ansible.builtin.stat:
+    path: /etc/motd
+  register: motd_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/motd if exists and not already backed up"
+  ansible.builtin.copy:
+    src: /etc/motd
+    dest: "{{ backup_dir }}/motd.present"
+    remote_src: true
+  when:
+  - motd_stat.stat.exists
+  - not (_snap_motd_backup_exists.stat.exists | default(false))
+  tags: [snapshot]
+- name: "Snapshot - Check if backup motd.d directory already exists"
+  ansible.builtin.stat:
+    path: "{{ backup_dir }}/motd.d"
+  register: _snap_motdd_backup_exists
+  tags: [snapshot]
+- name: "Snapshot - Check if /etc/motd.d is a directory"
+  ansible.builtin.stat:
+    path: /etc/motd.d
+  register: motdd_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup /etc/motd.d directory if not already backed up"
+  ansible.builtin.copy:
+    src: /etc/motd.d/
+    dest: "{{ backup_dir }}/motd.d/"
+    remote_src: true
+    directory_mode: '0700'
+  when:
+  - motdd_stat.stat.isdir is defined and motdd_stat.stat.isdir
+  - not (_snap_motdd_backup_exists.stat.isdir is defined and _snap_motdd_backup_exists.stat.isdir)
+  tags: [snapshot]
+
+- block:
+# === EXECUTE (tag: execute) ===
+  - name: "Req 01 - Get OS identifier from /etc/os-release"
+    ansible.builtin.shell: "grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '\"'"
+    args:
+      executable: /bin/bash
+    register: os_id
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Edit /etc/motd to remove system information patterns"
+    ansible.builtin.shell: |
+      if [ -f /etc/motd ]; then
+        sed -i -E '/\\\\(m|r|s|v)|(^|[^[:alnum:]]){{ os_id.stdout | trim }}([^[:alnum:]]|$)/d' /etc/motd
+      fi
+    args:
+      executable: /bin/bash
+    failed_when: false
+    tags: [execute]
+    register: cleanup_motd
+
+  - name: "Req 01 - Remove system information patterns from /etc/motd.d files"
+    ansible.builtin.shell: |
+      find /etc/motd.d -type f -exec sed -i -E '/\\\\(m|r|s|v)|(^|[^[:alnum:]]){{ os_id.stdout | trim }}([^[:alnum:]]|$)/d' {} \;
+    args:
+      executable: /bin/bash
+    failed_when: false
+    tags: [execute]
+    register: cleanup_sed
+
+  - name: "Req 01 - Copy provided audit script"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        {
+           a_files=()
+           for l_file in /etc/motd{,.d/*}; do
+              if grep -Psqi -- "(\\\v|\\\r|\\\m|\\\s|\b$(grep ^ID= /etc/os-release | cut -d= -f2 | sed -e 's/"//g')\b)" "$l_file"; then
+                 echo -e "\n - File: \"$l_file\" includes system information. Edit this file to remove these entries"
+              else
+              a_files+=("$l_file")
+              fi
+           done
+           if [ "${#a_files[@]}" -gt 0 ]; then
+              echo -e "\n-  ** Please review the following files and verify their contents follow local site policy **\n"
+              printf '%s\n' "${a_files[@]}"
+           fi
+        }
+        {% endraw %}
+      dest: /tmp/motd_audit.sh
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute audit script"
+    ansible.builtin.shell: /bin/bash /tmp/motd_audit.sh
+    args:
+      executable: /bin/bash
+    register: audit_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Delete audit script"
+    ansible.builtin.file:
+      path: /tmp/motd_audit.sh
+      state: absent
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Copy verify script"
+    ansible.builtin.copy:
+      content: |
+        {% raw %}
+        #!/usr/bin/env bash
+        if [ -f /etc/motd ]; then
+          if grep -Psiq -- "(\\v|\\r|\\m|\\s|\\b$(grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '"')\\b)" /etc/motd; then
+            echo "FAIL: /etc/motd contains system information"
+            exit 1
+          fi
+        fi
+        if grep -Psiq -- "(\\v|\\r|\\m|\\s|\\b$(grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '"')\\b)" /etc/motd.d/* 2>/dev/null; then
+          echo "FAIL: Found system information in /etc/motd.d"
+          exit 1
+        fi
+        echo "PASS: Compliant"
+        {% endraw %}
+      dest: /tmp/verify_motd.sh
+      mode: '0700'
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Execute verify script"
+    ansible.builtin.shell: /bin/bash /tmp/verify_motd.sh
+    args:
+      executable: /bin/bash
+    register: verify_result
+    changed_when: false
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Delete verify script"
+    ansible.builtin.file:
+      path: /tmp/verify_motd.sh
+      state: absent
+    failed_when: false
+    tags: [execute]
+
+  - name: "Set facts for report"
+    set_fact:
+      task_01_name: "MOTD Remediation"
+      task_01_cmd: "Edit /etc/motd and /etc/motd.d files to remove system info patterns, run audit script"
+      task_01_rc: "{{ os_id.rc | default(-1) if os_id is defined else -1 }}"
+      data_01: "{{ audit_result.stdout | default('') }}"
+      status_01: "{{ 'APPLIED' if (verify_result.rc | default(-1)) == 0 else 'FAILED' }}"
+      details_01: "{{ 'Remediation applied successfully' if (verify_result.rc | default(-1)) == 0 else 'Remediation incomplete - see verify results' }}"
+      task_02_name: "Verify MOTD compliance"
+      task_02_cmd: "grep for system info, check /etc/motd and /etc/motd.d contents"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: "{{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'Found violations' }}"
+    tags: [execute]
+
+  - name: "Req 03 - Generate remediation report"
+    debug:
+      msg:
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 1.7.1"
+      - "========================================================"
+      - "Reference: CIS Benchmark checkpoint 1.7.1"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Details: {{ 'System is compliant' if status_02 | default('UNKNOWN') | trim == 'PASS' else 'Further remediation required' }}"
+      - "========================================================"
+    tags: [execute]

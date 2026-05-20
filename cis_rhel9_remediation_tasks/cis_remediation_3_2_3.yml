@@ -1,0 +1,255 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_3_2_3.yml
+
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
+    state: directory
+    mode: "0700"
+  tags: [snapshot]
+- name: "State Guard - Check if /etc/modprobe.d/rds.conf exists"
+  ansible.builtin.stat:
+    path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+  register: _sg_rds_conf_stat
+  tags: [snapshot]
+- name: "State Guard - Backup existing rds.conf"
+  ansible.builtin.copy:
+    src: "/etc/modprobe.d/{{ kernel_module }}.conf"
+    dest: "{{ state_guard_dir }}/rds.conf.present"
+    remote_src: true
+  when: _sg_rds_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Mark rds.conf as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/rds.conf.absent"
+  when: not _sg_rds_conf_stat.stat.exists
+  tags: [snapshot]
+- name: "State Guard - Save current module load state"
+  ansible.builtin.shell: |
+    if lsmod | grep -q '^{{ kernel_module }} '; then echo LOADED; else echo NOT_LOADED; fi
+  args:
+    executable: /bin/bash
+  register: _sg_mod_load
+  changed_when: false
+  tags: [snapshot]
+- name: "State Guard - Persist module load state"
+  ansible.builtin.copy:
+    content: "{{ _sg_mod_load.stdout }}"
+    dest: "{{ state_guard_dir }}/rds_load.state"
+  tags: [snapshot]
+- name: "State Guard - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "{{ script_path }}"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "State Guard - Save script existence marker"
+  ansible.builtin.copy:
+    content: "{{ _sg_script_stat.stat.exists | lower }}"
+    dest: "{{ state_guard_dir }}/script_existed"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
+  tags: [snapshot]
+
+- block:
+  - name: "Req 01 - Copy remediation script to target"
+    ansible.builtin.copy:
+      dest: "{{ script_path }}"
+      content: "{{ remediation_script }}"
+      mode: "0700"
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: "/bin/bash {{ script_path }}"
+    args:
+      executable: /bin/bash
+    register: script_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Req 01 - Execute remediation script"
+      task_01_cmd: "/bin/bash {{ script_path }}"
+      task_01_rc: "{{ script_result.rc | default(-1) }}"
+      data_01: "{{ script_result.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if script_result.rc | default(-1) == 0 else 'FAIL' }}"
+      details_01: "{{ 'Script executed successfully' if script_result.rc | default(-1) == 0 else 'Script execution failed' }}"
+
+  - name: "Req 02 - Verify rds kernel module is disabled"
+    ansible.builtin.shell: |
+      kernel_module="{{ kernel_module }}"
+
+      if ! modinfo "$kernel_module" 2>/dev/null; then
+          echo "PASS: Module not available, no remediation needed"
+          exit 0
+      fi
+
+      if modinfo "$kernel_module" 2>/dev/null | grep -q 'filename:.*(builtin)'; then
+          echo "PASS: Module is built-in"
+          exit 0
+      fi
+
+      if lsmod | grep -q '^{{ kernel_module }} ' || lsmod | grep -q ' {{ kernel_module }} '; then
+          echo "FAIL: Module is still loaded"
+          exit 1
+      fi
+
+      if grep -rq "install {{ kernel_module }} /bin/false" /etc/modprobe.d/ && \
+         grep -rq "blacklist {{ kernel_module }}" /etc/modprobe.d/; then
+          echo "PASS: Configuration present"
+          exit 0
+      else
+          echo "FAIL: Configuration missing"
+          exit 1
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Req 02 - Verify rds kernel module is disabled"
+      task_02_cmd: "Shell verification script"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
+      details_02: "{{ verify_result.stdout | default('') | trim }}"
+
+  - name: "Req 03 - Store final remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Req 03 - Store final remediation result"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: ""
+      status_03: "PASS"
+      details_03: "Overall remediation status derived from verification"
+
+  - name: "Req 04 - Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 3.2.3"
+      - "Reference: CIS Benchmark checkpoint 3.2.3"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    tags: [execute]
+
+  always:
+  - name: "State Guard Restore - Check if checkpoint exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check absent marker"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/rds.conf.absent"
+    register: _sg_absent_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore rds.conf if it existed originally"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/rds.conf.present"
+      dest: "/etc/modprobe.d/{{ kernel_module }}.conf"
+      remote_src: true
+    when:
+    - _sg_restore_flag.stat.exists
+    - not _sg_absent_marker.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete rds.conf if originally absent"
+    ansible.builtin.file:
+      path: "/etc/modprobe.d/{{ kernel_module }}.conf"
+      state: absent
+    when:
+    - _sg_restore_flag.stat.exists
+    - _sg_absent_marker.stat.exists
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read saved module load state"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/rds_load.state"
+    register: _sg_restore_module_state
+    failed_when: false
+    when: _sg_restore_flag.stat.exists
+    tags: [restore]
+
+  - name: "State Guard Restore - Reload rds kernel module if it was loaded"
+    ansible.builtin.shell: "modprobe {{ kernel_module }}"
+    args:
+      executable: /bin/bash
+    when:
+    - _sg_restore_flag.stat.exists
+    - (_sg_restore_module_state.content | b64decode | trim) == "LOADED"
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Read script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ state_guard_dir }}/script_existed"
+    register: _sg_restore_script_marker
+    failed_when: false
+    when: _sg_restore_flag.stat.exists
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove remediation script if it did not exist before"
+    ansible.builtin.file:
+      path: "{{ script_path }}"
+      state: absent
+    when:
+    - _sg_restore_flag.stat.exists
+    - _sg_restore_script_marker.content is defined
+    - (_sg_restore_script_marker.content | b64decode | trim) == 'false'
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove checkpoint flag"
+    ansible.builtin.file:
+      path: "{{ state_guard_flag }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists
+    tags: [restore]
+
+  - name: "State Guard Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ state_guard_dir }}"
+      state: absent
+    when: _sg_restore_flag.stat.exists
+    tags: [restore]
