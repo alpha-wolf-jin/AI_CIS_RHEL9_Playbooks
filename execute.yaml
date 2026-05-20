@@ -1,0 +1,28 @@
+---
+#- name: Convert filtered indexes to file paths
+#  set_fact:
+#    audit_task_playbook: "{{ filtered_indexes | map('replace', '.', '_') | map('regex_replace', '^(.*)$', 'cis_rhel9_audit_tasks/cis_audit_\\1.yml') | list }}"
+
+- name: Reset cis_result before running task
+  ansible.builtin.set_fact:
+    cis_result: "ERROR"
+
+- name: script full path
+  ansible.builtin.set_fact:
+    execution_path: "cis_rhel9_audit_tasks/cis_audit_{{ cis_item | replace('.','_') }}.yml"
+
+- name: Ignoer Error from tasks
+  block:
+    - name: run {{ cis_action }} playbook for "{{ cis_rules[cis_item]['name'] }}"
+      ansible.builtin.include_tasks: "{{ execution_path }}"
+  rescue:
+    - name: The Taske Failed
+      debug:
+        msg: "The included tasks failed, but we are moving on anyway."
+
+
+# update result for reporting purpose
+- name: update CIS result for {{ cis_item }}
+  ansible.builtin.set_fact:
+    all_results: "{{ all_results|default({}) | combine({cis_item:cis_result}) }}"
+

@@ -1,0 +1,21 @@
+---
+- name: Reset cis_result before running task
+  ansible.builtin.set_fact:
+    cis_result: "ERROR"
+
+- name: Build remediation task path
+  ansible.builtin.set_fact:
+    execution_path: "cis_rhel9_remediation_tasks/cis_remediation_{{ cis_item | replace('.','_') }}.yml"
+
+- name: Run remediation task with error handling
+  block:
+    - name: "Run remediation for {{ cis_item }}"
+      ansible.builtin.include_tasks: "{{ execution_path }}"
+  rescue:
+    - name: Remediation task failed
+      debug:
+        msg: "The remediation tasks for {{ cis_item }} failed, but we are moving on."
+
+- name: Update remediation result for {{ cis_item }}
+  ansible.builtin.set_fact:
+    all_results: "{{ all_results | default({}) | combine({cis_item: cis_result | default('ERROR')}) }}"
