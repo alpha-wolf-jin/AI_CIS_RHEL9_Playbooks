@@ -41,6 +41,17 @@
     dest: "{{ backup_dir }}/jffs2_loaded.state"
   when: _loaded_state.stdout is defined
   tags: [snapshot]
+- name: "Snapshot - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "/tmp/remediate_jffs2.sh"
+  register: _snap_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark remediation script as absent (created by playbook)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/script.absent"
+  when: not _snap_script_stat.stat.exists
+  tags: [snapshot]
 
 - block:
 # Requirement 1 - Run remediation script
@@ -123,13 +134,24 @@
     changed_when: false
     tags: [execute]
 
-# Compute report variables
   - name: "Compute report variables"
     set_fact:
       status_01: "{{ 'APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED' }}"
       details_01: "{{ 'Script executed successfully' if result_01.rc | default(-1) == 0 else 'Script execution failed' }}"
       status_02: "{{ 'APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED' }}"
       details_02: "{{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant' }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result"
+    set_fact:
+      cis_result: "{{ 'PASS' if status_02 == 'APPLIED' else ('FAIL' if status_02 == 'FAILED' else 'UNKNOWN') }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      status_03: "PASS"
+      details_03: "cis_result set to {{ cis_result }}"
+      data_03: "{{ cis_result }}"
     tags: [execute]
 
   - name: "Generate remediation report"
@@ -154,10 +176,18 @@
       - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
       - "  Details: {{ details_02 | default('') | trim }}"
       - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: Store final remediation result"
+      - "  Command: set_fact: cis_result = ..."
+      - "  Exit code: 0"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('') | trim }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - "========================================================"
     tags: [execute]
 
@@ -205,6 +235,22 @@
     args:
       executable: /bin/bash
     when: _r_state_file.stat.exists
+    failed_when: false
+    tags: [restore]
+
+# NEW: Restore cleanup of remediation script
+  - name: "Restore - Check for remediation script absent marker"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/script.absent"
+    register: _r_script_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete remediation script if it was created"
+    ansible.builtin.file:
+      path: "/tmp/remediate_jffs2.sh"
+      state: absent
+    when: _r_script_marker.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 

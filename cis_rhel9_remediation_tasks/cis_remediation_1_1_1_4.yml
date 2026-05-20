@@ -83,6 +83,18 @@
     executable: /bin/bash
   failed_when: false
   tags: [snapshot]
+- name: "State Guard - Check if script file exists"
+  ansible.builtin.stat:
+    path: "{{ script_dest }}"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "State Guard - Mark script file as absent"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}/{{ script_dest | basename }}.absent"
+    state: touch
+  when: not _sg_script_stat.stat.exists
+  failed_when: false
+  tags: [snapshot]
 - name: "State Guard - Create checkpoint flag"
   ansible.builtin.file:
     path: "{{ state_guard_flag }}"
@@ -204,6 +216,11 @@
       details_02: "{{ ('System is compliant' if (result_2.rc | default(-1)) == 0 else 'System is not compliant - ' + (result_2.stdout | default('') | trim)) | trim }}"
     tags: [execute]
 
+  - name: "Set cis_result"
+    set_fact:
+      cis_result: "{{ 'PASS' if status_02 == 'APPLIED' else 'FAIL' }}"
+    tags: [execute]
+
   - name: "Generate remediation report"
     debug:
       msg:
@@ -227,7 +244,7 @@
       - "  Details: {{ details_02 }}"
       - ""
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ ('PASS' if status_02 == 'APPLIED' else 'FAIL') }}"
+      - "  Result: {{ cis_result }}"
       - "  Details: {{ details_02 }}"
     tags: [execute]
 
@@ -286,6 +303,22 @@
     - "_sg_restore_load_state is not failed"
     - "_sg_restore_load_state.content is defined"
     - "(_sg_restore_load_state.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+# NEW: Clean up the temporary script file that was created during execution
+  - name: "State Guard Restore - Check if script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/{{ script_dest | basename }}.absent"
+    register: _sg_restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete script file if it was absent before"
+    ansible.builtin.file:
+      path: "{{ script_dest }}"
+      state: absent
+    when: _sg_restore_script_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 

@@ -1,14 +1,22 @@
-checkpoint_id: "cis_1_1_1_1"
-state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
-state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+playbook_name: "CIS_1.1.1.1_cramfs_remediation"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+config_file: "/etc/modprobe.d/cramfs.conf"
 kernel_module: "cramfs"
-script_dest: "/tmp/remediate_cramfs.sh"
-req_01: "Run the provided remediation script to unload and disable the cramfs kernel module"
-req_02: "VERIFY - Run audit check to confirm Ensure cramfs kernel module is not available is properly configured"
-req_03: "Generate remediation report"
-
-# The full remediation script exactly as provided
-remediation_script: |
+check_script: "/tmp/cis_check_cramfs.sh"
+check_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  module_name="cramfs"
+  module_type="fs"
+  mod_path=$(find /lib/modules -type d -path "*/kernel/$module_type/${module_name}" 2>/dev/null | head -n1)
+  if [ -n "$mod_path" ] && [ "$(ls -A "$mod_path" 2>/dev/null)" ]; then
+    echo "AVAILABLE"
+  else
+    echo "NOT_AVAILABLE"
+  fi
+  {% endraw %}
+remediate_script: "/tmp/cis_remediate_cramfs.sh"
+remediate_script_content: |
   {% raw %}
   #!/usr/bin/env bash
   {
@@ -18,12 +26,12 @@ remediation_script: |
      l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
      f_module_fix()
      {
-        l_dl="y"
-        a_showconfig=()
+        l_dl="y" # Set to ignore duplicate checks
+        a_showconfig=() # Create array with modprobe output
         while IFS= read -r l_showconfig; do
            a_showconfig+=("$l_showconfig")
         done < <(modprobe --showconfig | grep -P -- '\b(install|blacklist)\h+'"${l_mod_name//-/_}"'\b')
-        if lsmod | grep "$l_mod_name" &> /dev/null; then
+        if  lsmod | grep "$l_mod_name" &> /dev/null; then # Check if the module is currently loaded
            a_output2+=(" - unloading kernel module: \"$l_mod_name\"")
            modprobe -r "$l_mod_name" 2>/dev/null; rmmod "$l_mod_name" 2>/dev/null
         fi
@@ -36,7 +44,7 @@ remediation_script: |
            printf '%s\n' "blacklist $l_mod_name" >> /etc/modprobe.d/"$l_mod_name".conf
         fi
      }
-     for l_mod_base_directory in $l_mod_path; do
+     for l_mod_base_directory in $l_mod_path; do # Check if the module exists on the system
         if [ -d "$l_mod_base_directory/${l_mod_name/-/\/}" ] && [ -n "$(ls -A $l_mod_base_directory/${l_mod_name/-/\/})" ]; then
            l_output3="$l_output3\n  - \"$l_mod_base_directory\""
            [[ "$l_mod_name" =~ overlay ]] && l_mod_name="${l_mod_name::-2}"
@@ -50,3 +58,7 @@ remediation_script: |
      echo -e "\n - remediation of kernel module: \"$l_mod_name\" complete\n"
   }
   {% endraw %}
+req_01: "Run the provided remediation script to fix Ensure cramfs kernel module is not available. Run the following script to unload and disable the cramfs module: [...]"
+req_02: "VERIFY: Run audit check to confirm Ensure cramfs kernel module is not available is properly configured. Expected result: System is compliant"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate remediation report' using debug msg with EXACTLY this format:..."

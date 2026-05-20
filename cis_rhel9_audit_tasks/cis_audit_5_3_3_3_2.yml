@@ -23,9 +23,8 @@
     task_01_cmd: "N/A"
     task_01_rc: -1
 
-# Requirement 01
-- name: "Req 01 - Check if pwhistory package is installed"
-  ansible.builtin.shell: dpkg -l | grep -iE 'pwhistory|libpam-pwhistory' || rpm -qa | grep -i pwhistory
+- name: "Req 01 - Check if pwhistory module is installed"
+  ansible.builtin.shell: "dpkg -l | grep -i pwhistory || rpm -qa | grep -i pwhistory"
   args:
     executable: /bin/bash
   register: result_01
@@ -34,17 +33,15 @@
 
 - name: "Store requirement 01 details"
   set_fact:
-    task_01_name: "Check if pwhistory package is installed"
-    task_01_cmd: "dpkg -l | grep -iE 'pwhistory|libpam-pwhistory' || rpm -qa | grep -i pwhistory"
+    task_01_name: "Check if pwhistory module is installed"
+    task_01_cmd: "dpkg -l | grep -i pwhistory || rpm -qa | grep -i pwhistory"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
     data_01: "{{ result_01.stdout | default('') | trim }}"
     status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' | trim }}"
-    details_01: "{{ 'Package installed' if result_01.rc | default(-1) == 0 else 'Package not installed' | trim }}"
-    pwhistory_installed: "{{ result_01.rc | default(-1) == 0 }}"
+    details_01: "{{ 'pwhistory package found' if result_01.rc | default(-1) == 0 else 'pwhistory package not found' | trim }}"
 
-# Requirement 02
-- name: "Req 02 - Check if pwhistory configuration file exists"
-  ansible.builtin.shell: test -f "{{ pwhistory_conf }}" && echo 'EXISTS'
+- name: "Req 02 - Check if /etc/security/pwhistory.conf exists"
+  ansible.builtin.shell: "test -f /etc/security/pwhistory.conf && echo 'EXISTS'"
   args:
     executable: /bin/bash
   register: result_02
@@ -53,16 +50,15 @@
 
 - name: "Store requirement 02 details"
   set_fact:
-    task_02_name: "Check if pwhistory configuration file exists"
-    task_02_cmd: "test -f {{ pwhistory_conf }} && echo 'EXISTS'"
+    task_02_name: "Check if /etc/security/pwhistory.conf exists"
+    task_02_cmd: "test -f /etc/security/pwhistory.conf && echo 'EXISTS'"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
-    status_02: "{{ 'SKIP' if not (pwhistory_installed | default(false) | bool) else ('PASS' if result_02.rc | default(-1) == 0 and 'EXISTS' in result_02.stdout else 'FAIL') | trim }}"
-    details_02: "{{ 'Skipped - pwhistory package not installed' if not (pwhistory_installed | default(false) | bool) else ('File exists' if result_02.rc | default(-1) == 0 else 'File not found') | trim }}"
+    status_02: "{{ 'PASS' if result_02.rc | default(-1) == 0 and 'EXISTS' in result_02.stdout else 'FAIL' | trim }}"
+    details_02: "{{ 'File exists' if result_02.rc | default(-1) == 0 else 'File not found' | trim }}"
 
-# Requirement 03
-- name: "Req 03 - Check if enforce_for_root option is enabled in pwhistory configuration"
-  ansible.builtin.shell: grep -Pi -- '^\h*enforce_for_root\b' "{{ pwhistory_conf }}"
+- name: "Req 03 - Check if enforce_for_root option is enabled"
+  ansible.builtin.shell: "grep -Pi -- '^\\h*enforce_for_root\\b' /etc/security/pwhistory.conf"
   args:
     executable: /bin/bash
   register: result_03
@@ -71,50 +67,46 @@
 
 - name: "Store requirement 03 details"
   set_fact:
-    task_03_name: "Check if enforce_for_root option is enabled in pwhistory configuration"
+    task_03_name: "Check if enforce_for_root option is enabled"
     task_03_cmd: |
-      grep -Pi -- '^\\h*enforce_for_root\\b' {{ pwhistory_conf }}
+      grep -Pi -- '^\\h*enforce_for_root\\b' /etc/security/pwhistory.conf
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     data_03: "{{ result_03.stdout | default('') | trim }}"
-    status_03: "{{ 'SKIP' if not (pwhistory_installed | default(false) | bool) else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') | trim }}"
-    details_03: "{{ 'Skipped - pwhistory package not installed' if not (pwhistory_installed | default(false) | bool) else ('enforce_for_root is set' if result_03.rc | default(-1) == 0 else 'enforce_for_root not found') | trim }}"
+    status_03: "{{ 'PASS' if result_03.rc | default(-1) == 0 else 'FAIL' | trim }}"
+    details_03: "{{ 'enforce_for_root is set' if result_03.rc | default(-1) == 0 else 'enforce_for_root not found' | trim }}"
 
-# Requirement 04 – Summarize overall compliance
 - name: "Req 04 - Summarize overall compliance"
   set_fact:
     status_04: >-
-      {%- if not (pwhistory_installed | default(false) | bool) -%}
-        SKIP
-      {%- elif status_02 | default('ERROR') == 'PASS' and status_03 | default('ERROR') == 'PASS' -%}
-        PASS
+      {%- if status_02 | default('ERROR') == 'PASS' and status_03 | default('ERROR') == 'PASS' -%}
+      PASS
       {%- else -%}
-        FAIL
+      FAIL
       {%- endif -%}
     details_04: >-
-      {%- if not (pwhistory_installed | default(false) | bool) -%}
-        Pwhistory package not installed
-      {%- elif status_02 | default('ERROR') == 'PASS' and status_03 | default('ERROR') == 'PASS' -%}
-        All checks passed
+      {%- if status_02 | default('ERROR') == 'PASS' and status_03 | default('ERROR') == 'PASS' -%}
+      All checks passed
       {%- else -%}
-        One or more checks failed
+      One or more checks failed
       {%- endif -%}
     task_04_name: "Summarize overall compliance"
-    task_04_cmd: "N/A"
-    task_04_rc: -1
-    data_04: "N/A"
+    task_04_cmd: "Evaluation based on status_02 and status_03"
+    task_04_rc: "0"
 
-# Requirement 05 – Store cis_result
+- name: "Store requirement 04 data"
+  set_fact:
+    data_04: "{{ status_04 | default('ERROR') | trim }}"
+
 - name: "Req 05 - Store final audit result in cis_result"
   set_fact:
     cis_result: "{{ status_04 | default('ERROR') | trim }}"
-    task_05_name: "Store final audit result"
-    task_05_cmd: "N/A"
-    task_05_rc: -1
+    task_05_name: "Store final audit result in cis_result"
+    task_05_cmd: "set_fact cis_result = {{ status_04 | default('ERROR') }}"
+    task_05_rc: "0"
     data_05: "{{ status_04 | default('ERROR') | trim }}"
     status_05: "{{ status_04 | default('ERROR') | trim }}"
-    details_05: "{{ 'cis_result stored as ' + (status_04 | default('ERROR') | trim) }}"
+    details_05: "Overall result stored"
 
-# Final report
 - name: "Generate audit report"
   debug:
     msg:

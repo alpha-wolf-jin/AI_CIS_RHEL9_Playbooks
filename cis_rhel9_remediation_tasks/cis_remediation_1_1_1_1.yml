@@ -2,228 +2,298 @@
 - name: Initialize meta data variables
   include_vars: cis_remediation_var_1_1_1_1.yml
 
-- name: "State Guard - Check for existing checkpoint"
-  ansible.builtin.stat:
-    path: "{{ state_guard_flag }}"
-  register: _sg_flag
-  tags: [snapshot]
-- name: "State Guard - Restore /etc/modprobe.d/cramfs.conf from prior checkpoint"
-  ansible.builtin.copy:
-    src: "{{ state_guard_dir }}/cramfs.conf.present"
-    dest: "/etc/modprobe.d/cramfs.conf"
-    remote_src: true
-  when: _sg_flag.stat.exists
-  failed_when: false
-  tags: [snapshot]
-- name: "State Guard - Check for absent marker"
-  ansible.builtin.stat:
-    path: "{{ state_guard_dir }}/cramfs.conf.absent"
-  register: _sg_absent_marker
-  when: _sg_flag.stat.exists
-  failed_when: false
-  tags: [snapshot]
-- name: "State Guard - Delete /etc/modprobe.d/cramfs.conf (absent from prior run)"
+- name: "Snapshot - Create backup directory"
   ansible.builtin.file:
-    path: "/etc/modprobe.d/cramfs.conf"
-    state: absent
-  when:
-  - _sg_flag.stat.exists
-  - _sg_absent_marker.stat.exists | default(false)
-  failed_when: false
-  tags: [snapshot]
-- name: "State Guard - Remove old checkpoint"
-  ansible.builtin.file:
-    path: "{{ state_guard_dir }}"
-    state: absent
-  when: _sg_flag.stat.exists
-  tags: [snapshot]
-- name: "State Guard - Create checkpoint directory"
-  ansible.builtin.file:
-    path: "{{ state_guard_dir }}"
+    path: "{{ backup_dir }}"
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "State Guard - Check if /etc/modprobe.d/cramfs.conf exists"
+- name: "Snapshot - Check if config file exists"
   ansible.builtin.stat:
-    path: "/etc/modprobe.d/cramfs.conf"
-  register: _sg_conf_stat
+    path: "{{ config_file }}"
+  register: _snap_config_stat
   tags: [snapshot]
-- name: "State Guard - Backup /etc/modprobe.d/cramfs.conf (present)"
+- name: "Snapshot - Backup config file if exists"
   ansible.builtin.copy:
-    src: "/etc/modprobe.d/cramfs.conf"
-    dest: "{{ state_guard_dir }}/cramfs.conf.present"
+    src: "{{ config_file }}"
+    dest: "{{ backup_dir }}/cramfs.conf.present"
     remote_src: true
-  when: _sg_conf_stat.stat.exists
+  when: _snap_config_stat.stat.exists
   tags: [snapshot]
-- name: "State Guard - Mark /etc/modprobe.d/cramfs.conf as absent"
+- name: "Snapshot - Mark config file as absent"
   ansible.builtin.copy:
     content: "absent"
-    dest: "{{ state_guard_dir }}/cramfs.conf.absent"
-  when: not _sg_conf_stat.stat.exists
+    dest: "{{ backup_dir }}/cramfs.conf.absent"
+  when: not _snap_config_stat.stat.exists
   tags: [snapshot]
-- name: "State Guard - Check if kernel module is currently loaded"
-  ansible.builtin.shell: |
-    lsmod | grep -q '^{{ kernel_module }} ' && echo loaded || echo not_loaded
-  args:
-    executable: /bin/bash
-  register: _sg_mod_state
-  changed_when: false
-  failed_when: false
+- name: "Snapshot - Check if check script already exists"
+  ansible.builtin.stat:
+    path: "{{ check_script }}"
+  register: _snap_check_script_stat
   tags: [snapshot]
-- name: "State Guard - Persist kernel module load state to file"
+- name: "Snapshot - Mark check script as absent if not present"
   ansible.builtin.copy:
-    content: "{{ _sg_mod_state.stdout | trim }}"
-    dest: "{{ state_guard_dir }}/{{ kernel_module }}_load_state"
+    content: "absent"
+    dest: "{{ backup_dir }}/check_script.absent"
+  when: not _snap_check_script_stat.stat.exists
   tags: [snapshot]
-- name: "State Guard - Create checkpoint flag"
+- name: "Snapshot - Check if remediate script already exists"
+  ansible.builtin.stat:
+    path: "{{ remediate_script }}"
+  register: _snap_remediate_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark remediate script as absent if not present"
   ansible.builtin.copy:
-    content: "checkpoint"
-    dest: "{{ state_guard_flag }}"
+    content: "absent"
+    dest: "{{ backup_dir }}/remediate_script.absent"
+  when: not _snap_remediate_script_stat.stat.exists
   tags: [snapshot]
 
 - block:
-# === EXECUTE (tag: execute) ===
-  - name: "Copy remediation script to target"
+# === EXECUTE ===
+  - name: "Check if cramfs kernel module is available"
     ansible.builtin.copy:
-      content: "{{ remediation_script }}"
-      dest: "{{ script_dest }}"
+      dest: "{{ check_script }}"
       mode: '0700'
-    failed_when: false
+      content: "{{ check_script_content }}"
+    changed_when: false
     tags: [execute]
 
-  - name: "Req 01 - Run the provided remediation script"
-    ansible.builtin.shell: "/bin/bash {{ script_dest }}"
+  - name: "Execute check script"
+    ansible.builtin.shell: /bin/bash "{{ check_script }}"
     args:
       executable: /bin/bash
-    register: result_01
-    failed_when: false
-    tags: [execute]
-
-  - name: "Req 02 - Verify cramfs kernel module is not available"
-    ansible.builtin.shell: |
-      if ! find /lib/modules -type d -name cramfs -path "*/kernel/fs/*" 2>/dev/null | grep -q cramfs; then
-        echo "COMPLIANT: cramfs module not found on filesystem"
-        exit 0
-      fi
-      if modprobe --showconfig | grep -q 'install cramfs /bin/false' && \
-         modprobe --showconfig | grep -q 'blacklist cramfs' && \
-         ! lsmod | grep -q '^cramfs '; then
-        echo "COMPLIANT: cramfs is properly configured and not loaded"
-        exit 0
-      fi
-      echo "NON-COMPLIANT: cramfs configuration or load state is incorrect"
-      exit 1
-    args:
-      executable: /bin/bash
-    register: result_02
+    register: check_result
     failed_when: false
     changed_when: false
     tags: [execute]
 
-  - name: "Store requirement details for report"
-    set_fact:
-      task_01_name: "Req 01 - {{ req_01 }}"
-      task_01_cmd: "/bin/bash {{ script_dest }}"
-      task_01_rc: "{{ result_01.rc | default(-1) }}"
-      data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ ('APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED') | trim }}"
-      details_01: "{{ ('Remediation script executed successfully' if result_01.rc | default(-1) == 0 else 'Remediation script failed with exit code ' ~ (result_01.rc | default(-1))) | trim }}"
-      task_02_name: "Req 02 - {{ req_02 }}"
-      task_02_cmd: "verify script (find + modprobe + lsmod)"
-      task_02_rc: "{{ result_02.rc | default(-1) }}"
-      data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') | trim }}"
-      details_02: "{{ ('Compliance verified' if result_02.rc | default(-1) == 0 else 'Verification failed') | trim }}"
+  - name: "Remove check script"
+    ansible.builtin.file:
+      path: "{{ check_script }}"
+      state: absent
+    changed_when: false
     tags: [execute]
 
-  - name: "Req 03 - Generate remediation report"
+  - name: "Store module availability"
+    ansible.builtin.set_fact:
+      cramfs_available: "{{ (check_result.stdout | trim) == 'AVAILABLE' }}"
+    tags: [execute]
+
+  - name: "Req 1 - Run remediation script for cramfs"
+    ansible.builtin.copy:
+      dest: "{{ remediate_script }}"
+      mode: '0700'
+      content: "{{ remediate_script_content }}"
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash "{{ remediate_script }}"
+    args:
+      executable: /bin/bash
+    register: remediate_result
+    failed_when: false
+    changed_when: false
+    when: cramfs_available | bool
+    tags: [execute]
+
+  - name: "Req 1 - Remove remediation script"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 1 - Store remediation details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute remediation script for cramfs"
+      task_01_cmd: "/bin/bash /tmp/cis_remediate_cramfs.sh"
+      task_01_rc: "{{ remediate_result.rc | default(-1) }}"
+      data_01: >-
+        {{ remediate_result.stdout | default('Module not available - no action needed') | trim }}
+      status_01: >-
+        {{ 'PASS' if (remediate_result.rc | default(-1)) == 0 else 'SKIP' if remediate_result is skipped else 'FAIL' }}
+      details_01: >-
+        {{ 'Remediation completed' if (remediate_result.rc | default(-1)) == 0 else 'No action required - module not available' if remediate_result is skipped else 'Remediation failed' }}
+    tags: [execute]
+
+  - name: "Req 2 - Verify cramfs kernel module is not available"
+    ansible.builtin.shell: |
+      MODULE="cramfs"
+      if lsmod | grep -q "^${MODULE} "; then
+        echo "FAIL - module loaded"
+        exit 1
+      fi
+      MOD_PATH="/lib/modules/$(uname -r)/kernel/fs/${MODULE}"
+      if [ -d "${MOD_PATH}" ] && [ -n "$(ls -A "${MOD_PATH}" 2>/dev/null)" ]; then
+        if [ -f /etc/modprobe.d/${MODULE}.conf ]; then
+          if grep -q "^install ${MODULE} /bin/false" /etc/modprobe.d/${MODULE}.conf && \
+             grep -q "^blacklist ${MODULE}" /etc/modprobe.d/${MODULE}.conf; then
+            echo "COMPLIANT"
+            exit 0
+          else
+            echo "FAIL - conf file missing required lines"
+            exit 1
+          fi
+        else
+          echo "FAIL - conf file not found"
+          exit 1
+        fi
+      else
+        echo "COMPLIANT (module not available)"
+        exit 0
+      fi
+    args:
+      executable: /bin/bash
+    register: verify_result
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 2 - Store verification details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify cramfs module not available"
+      task_02_cmd: "Verify cramfs kernel module not available script"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if (verify_result.rc | default(-1)) == 0 and 'COMPLIANT' in verify_result.stdout else 'FAIL') | trim }}"
+      details_02: "Verification completed"
+    tags: [execute]
+
+  - name: "Req 3 - Store cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store cis_result"
+      task_03_cmd: "set_fact: cis_result = {{ status_02 | default('ERROR') | trim }}"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to status_02"
+    tags: [execute]
+
+  - name: "Req 4 - Generate remediation report"
     ansible.builtin.debug:
       msg:
       - "REMEDIATION REPORT — CIS 1.1.1.1"
       - "Reference: CIS Benchmark checkpoint 1.1.1.1"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
       - ""
-      - "OVERALL REMEDIATION"
-      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
     tags: [execute]
 
   always:
-# === STATE GUARD — RESTORE (tag: restore) ===
-  - name: "State Guard Restore - Check if checkpoint exists"
+# === RESTORE ===
+  - name: "Restore - Check if backup directory exists"
     ansible.builtin.stat:
-      path: "{{ state_guard_flag }}"
-    register: _sg_restore_flag
+      path: "{{ backup_dir }}"
+    register: _restore_dir_stat
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Check if backup exists"
+  - name: "Restore - Check if config backup exists"
     ansible.builtin.stat:
-      path: "{{ state_guard_dir }}/cramfs.conf.present"
-    register: _sg_restore_backup
+      path: "{{ backup_dir }}/cramfs.conf.present"
+    register: _restore_present
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Restore /etc/modprobe.d/cramfs.conf from backup"
+  - name: "Restore - Restore original config file"
     ansible.builtin.copy:
-      src: "{{ state_guard_dir }}/cramfs.conf.present"
-      dest: "/etc/modprobe.d/cramfs.conf"
+      src: "{{ backup_dir }}/cramfs.conf.present"
+      dest: "{{ config_file }}"
       remote_src: true
-    when: _sg_restore_backup.stat.exists | default(false)
+    when: _restore_present.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Check for absent marker"
+  - name: "Restore - Check if config absent marker exists"
     ansible.builtin.stat:
-      path: "{{ state_guard_dir }}/cramfs.conf.absent"
-    register: _sg_restore_absent
+      path: "{{ backup_dir }}/cramfs.conf.absent"
+    register: _restore_absent
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Delete /etc/modprobe.d/cramfs.conf (absent)"
+  - name: "Restore - Delete config file (was absent before remediation)"
     ansible.builtin.file:
-      path: "/etc/modprobe.d/cramfs.conf"
+      path: "{{ config_file }}"
       state: absent
-    when: _sg_restore_absent.stat.exists | default(false)
+    when: _restore_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Read saved module load state"
-    ansible.builtin.slurp:
-      src: "{{ state_guard_dir }}/{{ kernel_module }}_load_state"
-    register: _sg_restore_mod_state
-    failed_when: false
-    tags: [restore]
-
-  - name: "State Guard Restore - Reload kernel module if previously loaded"
-    ansible.builtin.shell: "modprobe {{ kernel_module }} 2>/dev/null || true"
-    args:
-      executable: /bin/bash
-    when:
-    - _sg_restore_mod_state.content is defined
-    - (_sg_restore_mod_state.content | b64decode | trim) == 'loaded'
-    failed_when: false
-    tags: [restore]
-
-  - name: "State Guard Restore - Remove checkpoint"
+  - name: "Restore - Remove check script (if it exists)"
     ansible.builtin.file:
-      path: "{{ state_guard_dir }}"
+      path: "{{ check_script }}"
       state: absent
-    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove remediation script (if it exists)"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if check script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/check_script.absent"
+    register: _restore_check_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove check script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ check_script }}"
+      state: absent
+    when: _restore_check_script_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if remediate script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediate_script.absent"
+    register: _restore_remediate_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove remediate script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    when: _restore_remediate_script_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    when: _restore_dir_stat.stat.exists | default(false)
     failed_when: false
     tags: [restore]

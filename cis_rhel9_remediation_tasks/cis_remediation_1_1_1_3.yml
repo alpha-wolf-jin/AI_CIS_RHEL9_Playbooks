@@ -48,6 +48,18 @@
     mode: '0700'
     force: false
   tags: [snapshot]
+- name: "Snapshot - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "/tmp/remediate_hfs.sh"
+  register: _snap_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Record whether remediation script existed"
+  ansible.builtin.copy:
+    content: "{{ _snap_script_stat.stat.exists | default(false) }}"
+    dest: "{{ backup_dir }}/remediate_script_existed"
+    force: true
+  when: _snap_script_stat.stat is defined
+  tags: [snapshot]
 
 - block:
 # ---- Execute remediation ----
@@ -130,6 +142,12 @@
     changed_when: false
     tags: [execute]
 
+# ---- Store final result in cis_result ----
+  - name: "Store final remediation result"
+    set_fact:
+      cis_result: "{{ 'PASS' if (remediation_result.rc | default(-1) == 0) and (verify_result.rc | default(-1) == 0) else 'FAIL' }}"
+    tags: [execute]
+
 # ---- Report ----
   - name: "Generate remediation report"
     debug:
@@ -144,21 +162,21 @@
       - "  Command: /bin/bash /tmp/remediate_hfs.sh"
       - "  Exit code: {{ remediation_result.rc | default(-1) }}"
       - "  Data: {{ remediation_result.stdout | default('') | trim }}"
-      - "  Status: {{ 'APPLIED' if remediation_result.rc | default(-1) == 0 else 'FAILED' }}"
-      - "  Details: {{ 'Script executed successfully' if remediation_result.rc | default(-1) == 0 else 'Script execution failed' }}"
+      - "  Status: {{ 'PASS' if remediation_result.rc | default(-1) == 0 else 'FAIL' }}"
+      - "  Details: {{ 'Completed successfully' if remediation_result.rc | default(-1) == 0 else 'Failed' }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
       - "  Task: Verify module not loaded and blacklisted"
       - "  Command: Shell verification check"
       - "  Exit code: {{ verify_result.rc | default(-1) }}"
       - "  Data: {{ verify_result.stdout | default('') | trim }}"
-      - "  Status: {{ 'APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED' }}"
+      - "  Status: {{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
       - "  Details: {{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant' }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ 'APPLIED' if (remediation_result.rc | default(-1) == 0) and (verify_result.rc | default(-1) == 0) else 'FAILED' }}"
-      - "  Details: {{ 'All requirements satisfied' if (remediation_result.rc | default(-1) == 0) and (verify_result.rc | default(-1) == 0) else 'Remediation or verification failed' }}"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ 'All requirements satisfied' if cis_result == 'PASS' else 'Remediation or verification failed' }}"
       - "========================================================"
     tags: [execute]
 
@@ -209,6 +227,32 @@
     when:
     - "_restore_mod_state.content is defined"
     - "(_restore_mod_state.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+# ---- New: cleanup of the remediation script ----
+  - name: "Restore - Check if script existence marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediate_script_existed"
+    register: _restore_script_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read script existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/remediate_script_existed"
+    register: _restore_script_existed
+    failed_when: false
+    when: _restore_script_marker.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "Restore - Delete remediation script if it did not exist before"
+    ansible.builtin.file:
+      path: "/tmp/remediate_hfs.sh"
+      state: absent
+    when:
+    - "_restore_script_existed.content is defined"
+    - "(_restore_script_existed.content | b64decode | trim) == 'False'"
     failed_when: false
     tags: [restore]
 

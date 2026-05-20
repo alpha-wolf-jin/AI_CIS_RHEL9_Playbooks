@@ -1,12 +1,14 @@
-req_01: "Run the provided audit script to verify Ensure freevxfs kernel module is not available. Run the following script to verify: IF - the freevxfs kernel module is available in ANY installed kernel, verify: • An entry including /bin/true or /bin/false exists in a file within the /etc/modprobe.d/ directory • The module is deny listed in a file within the /etc/modprobe.d/ directory • The module is not loaded in the running kernel; IF - the freevxfs kernel module is not available on the system, or pre-compiled into the kernel, no additional configuration is necessary. Execute the COMPLETE script as-is."
-req_02: "VERIFY: Summarise compliance status for Ensure freevxfs kernel module is not available. Expected result: PASS if compliant, FAIL otherwise"
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
-req_04: "Generate audit report with overall compliance result"
-
-audit_script: "/tmp/cis_1.1.1.2_audit.sh"
+playbook_name: "cis_1_1_1_2_audit"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Run the provided audit script to verify Ensure freevxfs kernel module is not available."
+req_02: "2. VERIFY: Summarise compliance status for Ensure freevxfs kernel module is not available. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
+req_03: "3. Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "4. Create a task named 'Generate audit report' using debug msg with EXACTLY this format:"
+audit_script: "/tmp/cis_1_1_1_2_audit.sh"
 audit_script_content: |
   {% raw %}
   #!/usr/bin/env bash
+
   {
      l_output3="" l_dl="" # clear variables
      unset a_output; unset a_output2 # unset arrays
@@ -54,4 +56,3 @@ audit_script_content: |
      fi
   }
   {% endraw %}
-audit_command: "/bin/bash {{ audit_script }}"

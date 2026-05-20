@@ -1,5 +1,5 @@
 playbook_name: "cis_1_1_1_3"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
 kernel_module: "hfs"
-req_01: "Run the provided remediation script to fix Ensure hfs kernel module is not available"
+req_01: "Run the provided remediation script to fix Ensure hfs kernel module is not available. Expected result: Script applies the required changes"
 req_02: "VERIFY: Run audit check to confirm Ensure hfs kernel module is not available is properly configured. Expected result: System is compliant"

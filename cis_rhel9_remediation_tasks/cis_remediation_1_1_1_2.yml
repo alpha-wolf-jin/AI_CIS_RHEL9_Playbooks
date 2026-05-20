@@ -77,6 +77,24 @@
     content: "{{ _sg_load_state.stdout }}"
     dest: "{{ state_guard_dir }}/{{ kernel_module }}_load.state"
   tags: [snapshot]
+- name: "State Guard - Check if /tmp/remediate_freevxfs.sh exists"
+  ansible.builtin.stat:
+    path: "/tmp/remediate_freevxfs.sh"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "State Guard - Backup /tmp/remediate_freevxfs.sh if present"
+  ansible.builtin.copy:
+    src: "/tmp/remediate_freevxfs.sh"
+    dest: "{{ state_guard_dir }}/freevxfs_script.present"
+    remote_src: true
+  when: _sg_script_stat.stat.exists | default(false)
+  tags: [snapshot]
+- name: "State Guard - Mark /tmp/remediate_freevxfs.sh as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/freevxfs_script.absent"
+  when: not (_sg_script_stat.stat.exists | default(false))
+  tags: [snapshot]
 - name: "State Guard - Create checkpoint flag"
   ansible.builtin.copy:
     content: "checkpoint"
@@ -179,14 +197,19 @@
       task_01_cmd: "/bin/bash /tmp/remediate_freevxfs.sh"
       task_01_rc: "{{ remediate_result.rc | default(-1) }}"
       data_01: "{{ remediate_result.stdout | default('') | trim }}"
-      status_01: "{{ 'APPLIED' if remediate_result.rc | default(-1) == 0 else 'FAILED' }}"
+      status_01: "{{ 'PASS' if remediate_result.rc | default(-1) == 0 else 'FAIL' }}"
       details_01: "{{ 'Script executed successfully' if remediate_result.rc | default(-1) == 0 else 'Script execution failed' }}"
       task_02_name: "Verify freevxfs is not available"
       task_02_cmd: "lsmod + grep + modprobe config check"
       task_02_rc: "{{ verify_result.rc | default(-1) }}"
       data_02: "{{ verify_result.stdout | default('') | trim }}"
-      status_02: "{{ 'APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED' }}"
+      status_02: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
       details_02: "{{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant' }}"
+    tags: [execute]
+
+  - name: "Set final remediation result (cis_result)"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
     tags: [execute]
 
   - name: "Generate remediation report"
@@ -197,26 +220,25 @@
       - "========================================================"
       - "Reference: CIS Benchmark checkpoint 1.1.1.2"
       - ""
-      - "Requirement 1: Run provided remediation script"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
       - "  Task: {{ task_01_name | default('N/A') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
       - "  Details: {{ details_01 | default('') | trim }}"
       - ""
-      - "Requirement 2: Verify compliance"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
       - "  Task: {{ task_02_name | default('N/A') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
       - "  Details: {{ details_02 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('') | trim }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
       - "========================================================"
     tags: [execute]
 
@@ -258,6 +280,21 @@
     args:
       executable: /bin/bash
     when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Check if script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/freevxfs_script.absent"
+    register: _sg_restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /tmp/remediate_freevxfs.sh if it was absent before"
+    ansible.builtin.file:
+      path: "/tmp/remediate_freevxfs.sh"
+      state: absent
+    when: _sg_restore_script_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 

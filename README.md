@@ -187,6 +187,96 @@ end of the play, keyed by checkpoint ID.
 | 6.x | Logging and Auditing (journald, auditd) |
 | 7.x | System Maintenance (file permissions, accounts) |
 
+## Pipeline — Generate, Convert, Cross-check, Push
+
+For generating **new** playbooks from scratch (or regenerating existing ones),
+a pipeline script automates the entire workflow:
+
+```
+Step 1: Generate audit playbook      (LLM-powered, from CIS benchmark JSON)
+Step 2: Generate remediation playbook (LLM-powered, from CIS benchmark JSON)
+Step 3: Convert audit playbook to task file
+Step 4: Convert remediation playbook to task file
+Step 5: Cross-check audit vs remediation (run both, compare results, auto-fix)
+Step 6: Push updated playbooks to Git repository
+```
+
+### Run the full pipeline for a checkpoint
+
+```bash
+python cis_pipeline.py \
+  --checkpoint 1.6.3 \
+  -t 192.168.122.57 \
+  -u ansi
+```
+
+### Run for multiple checkpoints
+
+```bash
+python cis_pipeline.py \
+  --checkpoint 1.6.3,5.1.1,5.4.2.4 \
+  -t 192.168.122.57 \
+  -u ansi
+```
+
+### Run from a checkpoint file
+
+```bash
+# checkpoints.txt: one checkpoint ID per line
+python cis_pipeline.py \
+  --checkpoint-file checkpoints.txt \
+  -t 192.168.122.57 \
+  -u ansi
+```
+
+### Skip specific steps
+
+```bash
+# Only cross-check and push (playbooks already generated and converted)
+python cis_pipeline.py \
+  -c 1.6.3 -t 192.168.122.57 \
+  --skip-audit-gen --skip-remediation-gen --skip-convert
+
+# Generate without cross-check or push
+python cis_pipeline.py \
+  -c 1.6.3 -t 192.168.122.57 \
+  --skip-crosscheck --skip-push
+```
+
+### Push to Git
+
+The push step requires environment variables:
+
+```bash
+export git_user=<github-username>
+export git_token=<github-personal-access-token>
+export git_url=https://github.com/<user>/<repo>.git
+
+python cis_pipeline.py -c 1.6.3 -t 192.168.122.57 -u ansi
+```
+
+The push step only runs when **all** checkpoints in the batch pass.
+If any checkpoint fails, push is skipped to avoid pushing broken playbooks.
+
+### Pipeline options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--checkpoint`, `-c` | — | Checkpoint ID(s), comma-separated |
+| `--checkpoint-file` | — | File with checkpoint IDs (one per line) |
+| `--host`, `-t` | — | Target host for testing (required) |
+| `--user`, `-u` | `ansi` | SSH user |
+| `--polish` | `6` | Polish iterations for LLM generation |
+| `--thinking` / `--no-thinking` | enabled | Enable/disable LLM thinking mode |
+| `--max-regen` | `3` | Max auto-fix rounds in cross-check |
+| `--regen-timeout` | `5400` | Timeout per regen attempt (seconds) |
+| `--gen-timeout` | `7200` | Timeout per generation step (seconds) |
+| `--skip-audit-gen` | — | Skip audit playbook generation |
+| `--skip-remediation-gen` | — | Skip remediation playbook generation |
+| `--skip-convert` | — | Skip playbook-to-task conversion |
+| `--skip-crosscheck` | — | Skip cross-check step |
+| `--skip-push` | — | Skip git push step |
+
 ## License
 
 This project is provided as-is for CIS compliance automation.

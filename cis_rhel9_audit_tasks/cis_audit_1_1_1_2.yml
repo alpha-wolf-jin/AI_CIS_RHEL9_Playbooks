@@ -2,63 +2,272 @@
 - name: Initialize meta data variables
   include_vars: cis_audit_var_1_1_1_2.yml
 
-- name: "Req 01 - Copy audit script to remote"
-  ansible.builtin.copy:
-    dest: "{{ audit_script }}"
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
     mode: '0700'
-    content: "{{ audit_script_content }}"
-  changed_when: false
-  failed_when: false
-- name: "Req 01 - Execute audit script"
-  ansible.builtin.shell: "{{ audit_command }}"
-  args:
-    executable: /bin/bash
-  register: audit_result
-  failed_when: false
-  changed_when: false
-- name: "Req 02 - Evaluate compliance status"
-  ansible.builtin.set_fact:
-    compliance_status: "{{ 'PASS' if '** PASS **' in audit_result.stdout | default('') else 'FAIL' }}"
-- name: "Req 03 - Store final audit result"
-  ansible.builtin.set_fact:
-    cis_result: "{{ compliance_status }}"
-- name: "Generate audit report"
-  ansible.builtin.debug:
-    msg:
-    - "AUDIT REPORT — CIS 1.1.1.2"
-    - "Reference: CIS Benchmark checkpoint 1.1.1.2"
-    - ""
-    - "REQUIREMENT 01 - {{ req_01 }}:"
-    - "  Task: Req 01 - Execute audit script"
-    - "  Command: {{ audit_command }}"
-    - "  Exit code: {{ audit_result.rc | default(-1) }}"
-    - "  Data: {{ audit_result.stdout | default('') | trim }}"
-    - "  Status: {{ ('PASS' if audit_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
-    - "  Details: {{ 'Audit script executed successfully' if audit_result.rc | default(-1) == 0 else 'Audit script failed' }}"
-    - ""
-    - "REQUIREMENT 02 - {{ req_02 }}:"
-    - "  Task: Req 02 - Evaluate compliance status"
-    - "  Command: set_fact module"
-    - "  Exit code: N/A"
-    - "  Data: {{ compliance_status | default('UNKNOWN') }}"
-    - "  Status: PASS"
-    - "  Details: Compliance status determined from audit output"
-    - ""
-    - "REQUIREMENT 03 - {{ req_03 }}:"
-    - "  Task: Req 03 - Store final audit result"
-    - "  Command: set_fact module"
-    - "  Exit code: N/A"
-    - "  Data: {{ cis_result | default('UNKNOWN') }}"
-    - "  Status: PASS"
-    - "  Details: cis_result variable stored"
-    - ""
-    - "REQUIREMENT 04 - {{ req_04 }}:"
-    - "  Task: Generate audit report"
-    - "  Command: debug module"
-    - "  Exit code: N/A"
-    - "  Data: See report above"
-    - "  Status: PASS"
-    - "  Details: Audit report generated"
-    - ""
-    - "OVERALL COMPLIANCE:"
-    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script file exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: _snap_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Write existence marker"
+  ansible.builtin.copy:
+    dest: "{{ backup_dir }}/script_existed.marker"
+    content: "{{ 'yes' if _snap_script_stat.stat.exists else 'no' }}"
+    mode: '0600'
+  tags: [snapshot]
+
+- block:
+        # ============================================================
+        # EXECUTE — tag: execute
+# ============================================================
+  - name: "Prerequisite check - Ensure modprobe command is available"
+    ansible.builtin.command: command -v modprobe
+    register: modprobe_available
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set prerequisite flag"
+    set_fact:
+      prereq_met: "{{ modprobe_available.rc == 0 }}"
+    tags: [execute]
+
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+    tags: [execute]
+
+        # ============================================================
+        # Audit execution when prerequisite is met
+        # ============================================================
+  - block:
+    - name: "Req 01 - Copy audit script to remote"
+      ansible.builtin.copy:
+        dest: "{{ audit_script }}"
+        mode: '0700'
+        content: "{{ audit_script_content }}"
+      changed_when: false
+      failed_when: false
+      tags: [execute]
+
+    - name: "Req 01 - Execute audit script for freevxfs kernel module"
+      ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+      args:
+        executable: /bin/bash
+      register: result_01
+      failed_when: false
+      changed_when: false
+      tags: [execute]
+
+    - name: "Req 01 - Remove temporary audit script"
+      ansible.builtin.file:
+        path: "{{ audit_script }}"
+        state: absent
+      changed_when: false
+      failed_when: false
+      tags: [execute]
+
+    - name: "Req 01 - Store requirement 01 details"
+      set_fact:
+        task_01_name: "Execute CIS audit script for freevxfs kernel module"
+        task_01_cmd: "/bin/bash {{ audit_script }}"
+        task_01_rc: "{{ result_01.rc | default(-1) }}"
+        data_01: "{{ result_01.stdout | default('') | trim }}"
+        status_01: "{{ ('PASS' if (result_01.rc | default(-1) == 0) else 'FAIL') | trim }}"
+        details_01: "{{ 'Audit script executed successfully' if (result_01.rc | default(-1) == 0) else 'Audit script execution failed with rc=' ~ (result_01.rc | default(-1) | string) }}"
+      tags: [execute]
+
+    - name: "Req 02 - Determine compliance status from audit output"
+      set_fact:
+        status_02: >-
+          {%- set out = result_01.stdout | default('') -%}
+          {%- if '** PASS **' in out %}PASS{% elif '** FAIL **' in out %}FAIL{% else %}ERROR{% endif %}
+        data_02: "{{ result_01.stdout | default('') | trim }}"
+        details_02: >-
+          {%- set out = result_01.stdout | default('') -%}
+          {%- if '** PASS **' in out %}Module freevxfs is not available or properly denied{% elif '** FAIL **' in out %}Module freevxfs is not properly denied or is loaded{% else %}Unable to determine compliance from script output{% endif %}
+        task_02_name: "Summarize compliance from script output"
+        task_02_cmd: "Parse audit script output"
+        task_02_rc: 0
+      tags: [execute]
+
+    - name: "Req 03 - Store final audit result in cis_result"
+      set_fact:
+        cis_result: "{{ status_02 | default('ERROR') | trim }}"
+        data_03: "{{ status_02 | default('ERROR') | trim }}"
+        status_03: "{{ status_02 | default('ERROR') | trim }}"
+        details_03: "Overall compliance status stored in cis_result"
+        task_03_name: "Store final audit result"
+        task_03_cmd: "set_fact cis_result"
+        task_03_rc: 0
+      tags: [execute]
+
+    - name: "Req 04 - Set requirement 04 details prior to generating report"
+      set_fact:
+        status_04: "PASS"
+        data_04: "Audit report generation task running"
+        details_04: "The audit report is being printed by this requirement"
+        task_04_name: "Generate audit report"
+        task_04_cmd: "debug msg"
+        task_04_rc: 0
+      tags: [execute]
+    when: prereq_met
+    tags: [execute]
+
+        # ============================================================
+        # Skip when prerequisite not met
+        # ============================================================
+  - block:
+    - name: "Set SKIP status for requirement 01"
+      set_fact:
+        status_01: "SKIP"
+        details_01: "Prerequisite not met: modprobe command not available"
+        task_01_name: "Audit script for freevxfs"
+        task_01_cmd: "N/A"
+        task_01_rc: -1
+        data_01: "N/A"
+      tags: [execute]
+
+    - name: "Set SKIP status for requirement 02"
+      set_fact:
+        status_02: "SKIP"
+        details_02: "Prerequisite not met: modprobe command not available"
+        task_02_name: "Compliance summary"
+        task_02_cmd: "N/A"
+        task_02_rc: -1
+        data_02: "N/A"
+      tags: [execute]
+
+    - name: "Set SKIP status for requirement 03 and store cis_result"
+      set_fact:
+        cis_result: "SKIP"
+        status_03: "SKIP"
+        details_03: "Prerequisite not met: modprobe command not available"
+        task_03_name: "Store cis_result"
+        task_03_cmd: "N/A"
+        task_03_rc: -1
+        data_03: "N/A"
+      tags: [execute]
+
+    - name: "Set SKIP status for requirement 04"
+      set_fact:
+        status_04: "SKIP"
+        details_04: "Prerequisite not met"
+        task_04_name: "Generate audit report"
+        task_04_cmd: "N/A"
+        task_04_rc: -1
+        data_04: "N/A"
+      tags: [execute]
+    when: not prereq_met
+    tags: [execute]
+
+        # ============================================================
+        # FINAL REPORT
+# ============================================================
+  - name: "Generate audit report"
+    debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.1.1.2"
+      - "Reference: CIS Benchmark checkpoint 1.1.1.2"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+        # ============================================================
+        # RESTORE — tag: restore
+        # Cleanup temporary audit script if it was created during this run
+# ============================================================
+  - name: "Restore - Read existence marker"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/script_existed.marker"
+    register: _restore_marker_content
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Check if audit script currently exists"
+    ansible.builtin.stat:
+      path: "{{ audit_script }}"
+    register: _restore_script_stat
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Delete audit script if it was created"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when:
+    - _restore_marker_content.content | default('') | b64decode | trim == 'no'
+    - _restore_script_stat.stat.exists | default(false)
+    tags: [restore]
+    failed_when: false
+
+  - name: "Restore - Clean up backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    tags: [restore]
+    failed_when: false
