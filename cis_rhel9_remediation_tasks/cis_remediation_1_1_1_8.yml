@@ -64,6 +64,24 @@
   changed_when: false
   failed_when: false
   tags: [snapshot]
+- name: "Snapshot - Check if remediation script {{ script_path }} exists"
+  ansible.builtin.stat:
+    path: "{{ script_path }}"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Backup remediation script if present"
+  ansible.builtin.copy:
+    src: "{{ script_path }}"
+    dest: "{{ state_guard_dir }}/script.present"
+    remote_src: true
+  when: _sg_script_stat.stat.exists | bool
+  tags: [snapshot]
+- name: "Snapshot - Mark remediation script as absent if not present"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/script.absent"
+  when: not (_sg_script_stat.stat.exists | bool)
+  tags: [snapshot]
 - name: "Snapshot - Create checkpoint flag"
   ansible.builtin.copy:
     content: "checkpoint"
@@ -163,15 +181,22 @@
       task_01_name: "Req 01 - Deploy and execute remediation script"
       task_01_cmd: "/bin/bash {{ script_path }}"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
-      status_01: "{{ 'APPLIED' if (result_01.rc | default(-1) == 0) else 'FAILED' }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1) == 0) else 'FAIL' }}"
       details_01: "{{ 'Script executed successfully' if (result_01.rc | default(-1) == 0) else 'Script failed' }}"
       task_02_name: "Req 02 - Verify compliance"
       task_02_cmd: "shell: verify script"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
-      status_02: "{{ 'APPLIED' if (result_02.stdout | default('') | trim == 'COMPLIANT') else 'FAILED' }}"
+      status_02: "{{ 'PASS' if (result_02.stdout | default('') | trim == 'COMPLIANT') else 'FAIL' }}"
       details_02: "{{ 'System is compliant' if (result_02.stdout | default('') | trim == 'COMPLIANT') else 'System not compliant' }}"
     tags: [execute]
 
+# Requirement 3 - Store cis_result
+  - name: "Set cis_result fact"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+# Requirement 4 - Generate report
   - name: "Generate remediation report"
     ansible.builtin.debug:
       msg:
@@ -179,26 +204,27 @@
       - "        REMEDIATION REPORT — CIS 1.1.1.8"
       - "========================================================"
       - ""
+      - "Reference: CIS Benchmark checkpoint 1.1.1.8"
+      - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
       - "  Task: {{ task_01_name | default('Task not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ result_01.stdout | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_01 | default('UNKNOWN') }}"
+      - "  Details: {{ details_01 | default('Not evaluated') }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
       - "  Task: {{ task_02_name | default('Task not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ result_02.stdout | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_02 | default('UNKNOWN') }}"
+      - "  Details: {{ details_02 | default('Not evaluated') }}"
       - ""
       - "========================================================"
-      - "OVERALL REMEDIATION RESULT:"
-      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('UNKNOWN') }}"
       - "========================================================"
     tags: [execute]
 
@@ -257,6 +283,38 @@
     args:
       executable: /bin/bash
     when: _sg_restore_module_state is not failed and _sg_restore_module_state.content is defined
+    failed_when: false
+    tags: [restore]
+
+# NEW: restore the temporary script file (cleanup)
+  - name: "Restore - Check if remediation script backup exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/script.present"
+    register: _sg_restore_script_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore remediation script from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/script.present"
+      dest: "{{ script_path }}"
+      remote_src: true
+    when: _sg_restore_script_present.stat.exists | bool
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if remediation script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/script.absent"
+    register: _sg_restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete remediation script if marked absent"
+    ansible.builtin.file:
+      path: "{{ script_path }}"
+      state: absent
+    when: _sg_restore_script_absent.stat.exists | bool
     failed_when: false
     tags: [restore]
 

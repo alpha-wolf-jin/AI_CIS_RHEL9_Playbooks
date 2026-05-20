@@ -30,7 +30,7 @@
   failed_when: false
   tags: [snapshot]
 - name: "State Guard - Reload squashfs if previously loaded"
-  ansible.builtin.shell: modprobe squashfs
+  ansible.builtin.shell: modprobe {{ kernel_module }}
   when:
   - _sg_flag.stat.exists
   - _sg_prev_loaded.content | b64decode | trim == 'loaded'
@@ -67,7 +67,7 @@
   when: not _sg_conf_stat.stat.exists
   tags: [snapshot]
 - name: "State Guard - Record current squashfs module load state"
-  ansible.builtin.shell: lsmod | grep -q '^squashfs ' && echo 'loaded' || echo 'not_loaded'
+  ansible.builtin.shell: lsmod | grep -q '^{{ kernel_module }} ' && echo 'loaded' || echo 'not_loaded'
   register: _sg_loaded_state
   failed_when: false
   changed_when: false
@@ -77,6 +77,17 @@
     content: "{{ _sg_loaded_state.stdout | trim }}"
     dest: "{{ state_guard_dir }}/squashfs_loaded.state"
   tags: [snapshot]
+- name: "State Guard - Check if /tmp/remediate_squashfs.sh exists"
+  ansible.builtin.stat:
+    path: /tmp/remediate_squashfs.sh
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "State Guard - Mark /tmp/remediate_squashfs.sh as absent (created by playbook)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/remediate_squashfs.sh.absent"
+  when: not _sg_script_stat.stat.exists
+  tags: [snapshot]
 - name: "State Guard - Create checkpoint flag"
   ansible.builtin.copy:
     content: "checkpoint"
@@ -85,9 +96,27 @@
 
 - block:
         # ============================================================
-        # EXECUTE: remediation + verification + report
-# ============================================================
-  - name: "Req 01 - Deploy remediation script to disable squashfs kernel module"
+        # EXECUTE: remediation + verification + status storage + report
+        # ============================================================
+
+# ---- SQUASHFS CHECK (prerequisite) ----
+  - name: "Req 00 - Check if {{ kernel_module }} kernel module is available"
+    ansible.builtin.shell: |
+      find /lib/modules -type d -name {{ kernel_module }} -path "*/kernel/fs/*" 2>/dev/null | head -1
+    args:
+      executable: /bin/bash
+    register: module_check
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Set module availability fact"
+    ansible.builtin.set_fact:
+      squashfs_module_available: "{{ module_check.stdout_lines | length > 0 }}"
+    tags: [execute]
+
+# ---- SQUASHFS REMEDIATE (only when module present) ----
+  - name: "Req 01 - Deploy remediation script to disable {{ kernel_module }} kernel module"
     ansible.builtin.copy:
       content: |
         {% raw %}
@@ -133,6 +162,7 @@
         {% endraw %}
       dest: "/tmp/remediate_squashfs.sh"
       mode: "0700"
+    when: squashfs_module_available | bool
     failed_when: false
     tags: [execute]
 
@@ -141,9 +171,11 @@
     args:
       executable: /bin/bash
     register: remediate_result
+    when: squashfs_module_available | bool
     failed_when: false
     tags: [execute]
 
+# ---- SQUASHFS VERIFY ----
   - name: "Req 02 - Verify squashfs kernel module is not available"
     ansible.builtin.shell: |
       if ! find /lib/modules -type d -name squashfs -path "*/kernel/fs/*" 2>/dev/null | grep -q squashfs; then
@@ -165,7 +197,34 @@
     changed_when: false
     tags: [execute]
 
-  - name: "Req 03 - Generate remediation report"
+# ---- SQUASHFS RESULT ----
+  - name: "Req 03 - Store overall remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Store overall remediation result in cis_result"
+      task_03_cmd: "cis_result = 'PASS' if verify_result.rc == 0 else 'FAIL'"
+      task_03_rc: 0
+      data_03: "{{ cis_result }}"
+      status_03: "PASS"
+      details_03: "cis_result stored as {{ cis_result }}"
+    tags: [execute]
+
+# ---- SQUASHFS REPORT ----
+  - name: "Req 04 - Prepare report details"
+    ansible.builtin.set_fact:
+      task_04_name: "Generate remediation report"
+      task_04_cmd: "debug msg"
+      task_04_rc: 0
+      data_04: "Report generated"
+      status_04: "PASS"
+      details_04: "Remediation report generated successfully"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
     ansible.builtin.debug:
       msg:
       - "========================================================"
@@ -178,21 +237,37 @@
       - "  Command: /bin/bash /tmp/remediate_squashfs.sh"
       - "  Exit code: {{ remediate_result.rc | default(-1) }}"
       - "  Data: {{ remediate_result.stdout | default('') | trim }}"
-      - "  Status: {{ ('APPLIED' if remediate_result.rc | default(-1) == 0 else 'FAILED') }}"
-      - "  Details: {{ ('Script executed successfully' if remediate_result.rc | default(-1) == 0 else 'Script execution failed') }}"
+      - "  Status: {{ 'SKIP' if not (squashfs_module_available | default(false) | bool) else ('PASS' if remediate_result.rc | default(-1) == 0 else 'FAIL') }}"
+      - "  Details: {{ 'Module not present, no remediation needed' if not (squashfs_module_available | default(false) | bool) else ('Script executed successfully' if remediate_result.rc | default(-1) == 0 else 'Script execution failed') }}"
       - ""
       - "REQUIREMENT 02 — {{ req_02 }}:"
       - "  Task: Audit verification"
       - "  Command: verification shell script"
       - "  Exit code: {{ verify_result.rc | default(-1) }}"
       - "  Data: {{ verify_result.stdout | default('') | trim }}"
-      - "  Status: {{ ('APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED') }}"
-      - "  Details: {{ ('System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant') }}"
+      - "  Status: {{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
+      - "  Details: {{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'System is not compliant' }}"
+      - ""
+      - "REQUIREMENT 03 — {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 — {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
       - ""
       - "========================================================"
-      - "OVERALL RESULT:"
-      - "  Result: {{ ('APPLIED' if verify_result.rc | default(-1) == 0 else 'FAILED') }}"
-      - "  Details: {{ ('All checks passed' if verify_result.rc | default(-1) == 0 else 'Some checks failed') }}"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result }}"
+      - "  Details: {{ 'All checks passed' if cis_result == 'PASS' else 'Some checks failed' }}"
       - "========================================================"
     tags: [execute]
 
@@ -246,10 +321,28 @@
     tags: [restore]
 
   - name: "State Guard Restore - Reload squashfs module if originally loaded"
-    ansible.builtin.shell: modprobe squashfs
+    ansible.builtin.shell: modprobe {{ kernel_module }}
     when:
     - _sg_restore_loaded is not failed and _sg_restore_loaded.content is defined
     - "(_sg_restore_loaded.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+        # ------------------------------------------------------------
+        # Clean up temporary remediation script
+# ------------------------------------------------------------
+  - name: "State Guard Restore - Check if remediate script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/remediate_squashfs.sh.absent"
+    register: _sg_restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete /tmp/remediate_squashfs.sh if created"
+    ansible.builtin.file:
+      path: /tmp/remediate_squashfs.sh
+      state: absent
+    when: _sg_restore_script_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 

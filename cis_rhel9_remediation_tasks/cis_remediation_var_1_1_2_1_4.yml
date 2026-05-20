@@ -1,2 +1,7 @@
 playbook_name: "CIS_1.1.2.1.4_noexec_tmp"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if /tmp is a separate partition using command: `mount | grep ' /tmp '`. Expected result: output shows a separate partition for /tmp."
+req_02: "Edit /etc/fstab to add noexec to the mounting options for /tmp partition. Expected result: the fourth field for /tmp entry includes noexec."
+req_03: "Remount /tmp with the configured options using command: `mount -o remount /tmp`. Expected result: /tmp is remounted with noexec option."
+req_04: "Verify noexec option is set on /tmp partition using command: `mount | grep ' /tmp ' | grep noexec`. Expected result: output shows noexec in the mount options."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -28,6 +28,7 @@
 
 
 - block:
+# ---- REQUIREMENT 1 ----
   - name: "Req 1 - Check if a separate partition exists for /tmp"
     ansible.builtin.shell: mount | grep -E '\s/tmp\s'
     args:
@@ -41,25 +42,45 @@
       partition_found: "{{ tmp_check.rc == 0 }}"
     tags: [execute]
 
+  - name: "Extract /tmp device"
+    set_fact:
+      tmp_device: "{{ tmp_check.stdout.split()[0] }}"
+    when: partition_found | default(false)
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Req 1 - Check if a separate partition exists for /tmp"
+      task_01_cmd: |
+        mount | grep -E '\\s/tmp\\s'
+      task_01_rc: "{{ tmp_check.rc | default(-1) }}"
+      data_01: "{{ tmp_check.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if partition_found | default(false) else 'SKIP' }}"
+      details_01: "{{ 'Separate /tmp partition found' if partition_found | default(false) else 'No separate /tmp partition - remediation not applicable' }}"
+    tags: [execute]
+
+# ---- REQUIREMENT 2 ----
   - name: "Req 2 - Capture /tmp fstab entry before modification"
     ansible.builtin.shell: grep -E '^\S+\s+/tmp\s+' /etc/fstab || true
     args:
       executable: /bin/bash
     register: fstab_before
     failed_when: false
-    when: partition_found | default(true)
+    when: partition_found | default(false)
     tags: [execute]
 
   - name: "Req 2 - Add noexec to /tmp in /etc/fstab (if not present)"
     ansible.builtin.shell: |
-      if ! grep -qE '^\S+\s+/tmp\s+\S+\s+[^#]*\bnoexec\b' /etc/fstab; then
-        sed -i 's|\(\s/tmp\s\+\S\+\s\+\)\S\+|\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab
+      if grep -q "^{{ tmp_device }}\s" /etc/fstab; then
+        if ! grep "^{{ tmp_device }}\s" /etc/fstab | grep -q '\bnoexec\b'; then
+          sed -i "s|^\\({{ tmp_device }}\s\+/tmp\s\+\S\+\s\+\\)\S\+|\\1defaults,rw,nosuid,nodev,noexec,relatime|" /etc/fstab
+        fi
       fi
     args:
       executable: /bin/bash
     register: fstab_update
     failed_when: false
-    when: partition_found | default(true)
+    when: partition_found | default(false)
     tags: [execute]
 
   - name: "Req 2 - Capture /tmp fstab entry after modification"
@@ -68,67 +89,116 @@
       executable: /bin/bash
     register: fstab_after
     failed_when: false
-    when: partition_found | default(true)
+    when: partition_found | default(false)
     tags: [execute]
 
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Req 2 - Edit /etc/fstab to add noexec"
+      task_02_cmd: "sed -i to add noexec (see task)"
+      task_02_rc: "{{ fstab_update.rc | default(-1) }}"
+      data_02: |
+        Before: {{ fstab_before.stdout | default('') | trim }}\nAfter: {{ fstab_after.stdout | default('') | trim }}
+      status_02: "{{ 'PASS' if (partition_found | default(false) and fstab_update.rc | default(-1) == 0) else 'SKIP' if not (partition_found | default(false)) else 'FAIL' }}"
+      details_02: "{{ 'noexec added to fstab' if (partition_found | default(false) and fstab_update.rc | default(-1) == 0) else 'Skipped because no separate /tmp partition' if not (partition_found | default(false)) else 'Failed to update fstab' }}"
+    tags: [execute]
+
+# ---- REQUIREMENT 3 ----
   - name: "Req 3 - Remount /tmp with new options"
     ansible.builtin.shell: mount -o remount /tmp
     args:
       executable: /bin/bash
     register: remount_result
     failed_when: false
-    when: partition_found | default(true)
+    when: partition_found | default(false)
     tags: [execute]
 
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Req 3 - Remount /tmp with new options"
+      task_03_cmd: "mount -o remount /tmp"
+      task_03_rc: "{{ remount_result.rc | default(-1) }}"
+      data_03: "{{ remount_result.stderr | default('') | trim }}"
+      status_03: "{{ 'PASS' if (partition_found | default(false) and remount_result.rc | default(-1) == 0) else 'SKIP' if not (partition_found | default(false)) else 'FAIL' }}"
+      details_03: "{{ 'Remount succeeded' if (partition_found | default(false) and remount_result.rc | default(-1) == 0) else 'Skipped because no separate /tmp partition' if not (partition_found | default(false)) else 'Remount failed' }}"
+    tags: [execute]
+
+# ---- REQUIREMENT 4 ----
   - name: "Req 4 - Verify noexec option is active on /tmp"
     ansible.builtin.shell: mount | grep -E '\s/tmp\s' | grep -o 'noexec'
     args:
       executable: /bin/bash
     register: verify_result
     failed_when: false
-    when: partition_found | default(true)
+    when: partition_found | default(false)
     tags: [execute]
 
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Req 4 - Verify noexec option is active on /tmp"
+      task_04_cmd: |
+        mount | grep -E '\\s/tmp\\s' | grep -o 'noexec'
+      task_04_rc: "{{ verify_result.rc | default(-1) }}"
+      data_04: "{{ verify_result.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (partition_found | default(false) and verify_result.rc | default(-1) == 0 and 'noexec' in verify_result.stdout | default('')) else 'SKIP' if not (partition_found | default(false)) else 'FAIL' }}"
+      details_04: "{{ 'noexec option confirmed' if (partition_found | default(false) and verify_result.rc | default(-1) == 0 and 'noexec' in verify_result.stdout | default('')) else 'No separate /tmp partition' if not (partition_found | default(false)) else 'noexec not found or verification failed' }}"
+    tags: [execute]
+
+# ---- cis_result ----
+  - name: "Set cis_result fact"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    tags: [execute]
+
+# ---- REPORT ----
   - name: "Generate remediation report"
     debug:
       msg:
       - "REMEDIATION REPORT — CIS 1.1.2.1.4"
       - "Reference: CIS Benchmark checkpoint 1.1.2.1.4"
       - ""
-      - "Requirement 1: Check /tmp partition exists"
-      - "  Task: Req 1 - Check if a separate partition exists for /tmp"
-      - "  Command: mount | grep -E '\\s/tmp\\s'"
-      - "  Exit code: {{ tmp_check.rc }}"
-      - "  Data: {{ tmp_check.stdout | default('') }}"
-      - "  Status: {{ 'APPLIED' if tmp_check.rc == 0 else 'FAILED' }}"
-      - "  Details: {{ 'Partition /tmp found' if tmp_check.rc == 0 else 'Partition /tmp not found' }}"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
-      - "Requirement 2: Apply noexec to /tmp in /etc/fstab"
-      - "  Task: Req 2 - Add noexec to /tmp in /etc/fstab"
-      - "  Command: if noexec not already present: sed -i 's|\\(\\s/tmp\\s\\+\\S\\+\\s\\+\\)\\S\\+|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab"
-      - "  Exit code: {{ fstab_update.rc }}"
-      - "  Data before: {{ fstab_before.stdout | default('(none)') }}"
-      - "  Data after:  {{ fstab_after.stdout | default('(none)') }}"
-      - "  Status: {{ ('APPLIED' if fstab_update.rc == 0 else 'FAILED') if partition_found | default(false) else 'SKIPPED' }}"
-      - "  Details: {{ 'noexec added to fstab' if fstab_update.rc == 0 and partition_found | default(false) else 'Failed to update fstab' if partition_found | default(false) else 'Skipped because no separate /tmp partition' }}"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
       - ""
-      - "Requirement 3: Remount /tmp"
-      - "  Task: Req 3 - Remount /tmp with new options"
-      - "  Command: mount -o remount /tmp"
-      - "  Exit code: {{ remount_result.rc }}"
-      - "  Data: {{ remount_result.stderr | default('(no error)') }}"
-      - "  Status: {{ ('APPLIED' if remount_result.rc == 0 else 'FAILED') if partition_found | default(false) else 'SKIPPED' }}"
-      - "  Details: {{ 'Remount succeeded' if remount_result.rc == 0 else 'Remount failed' if partition_found | default(false) else 'Skipped because no separate /tmp partition' }}"
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
-      - "Requirement 4: Verify noexec active on /tmp"
-      - "  Task: Req 4 - Verify noexec option is active on /tmp"
-      - "  Command: mount | grep -E '\\s/tmp\\s' | grep -o 'noexec'"
-      - "  Exit code: {{ verify_result.rc }}"
-      - "  Data: {{ verify_result.stdout | default('') }}"
-      - "  Status: {{ ('APPLIED' if verify_result.rc == 0 and 'noexec' in verify_result.stdout | default('') else 'FAILED') if partition_found | default(false) else 'SKIPPED' }}"
-      - "  Details: {{ 'noexec option confirmed' if verify_result.rc == 0 and 'noexec' in verify_result.stdout | default('') else 'noexec not found' if partition_found | default(false) else 'Skipped because no separate /tmp partition' }}"
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
       - ""
-      - "OVERALL REMEDIATION: {{ ('SUCCESS' if verify_result.rc == 0 and 'noexec' in verify_result.stdout | default('') else 'FAILED') if partition_found | default(false) else 'SKIPPED - no separate /tmp partition' }}"
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: Set cis_result fact"
+      - "  Command: N/A"
+      - "  Exit code: N/A"
+      - "  Data: N/A"
+      - "  Status: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: cis_result stored successfully"
+      - ""
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
     tags: [execute]
 
   always:

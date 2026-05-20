@@ -51,6 +51,21 @@
   tags: [snapshot]
   failed_when: false
 
+- name: "Snapshot - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: /tmp/cis_remediate_udf.sh
+  register: _snap_script_stat
+  tags: [snapshot]
+  failed_when: false
+
+- name: "Snapshot - Mark remediation script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/cis_remediate_udf.sh.absent"
+  when: "not _snap_script_stat.stat.exists | default(false)"
+  tags: [snapshot]
+  failed_when: false
+
 
 - block:
   - name: "Req 01 - Copy remediation script to target"
@@ -105,6 +120,11 @@
       details_02: "{{ ('System is compliant' if (result_02.rc | default(-1)) == 0 else 'System not compliant') | trim }}"
     tags: [execute]
 
+  - name: "Set cis_result for CIS 1.1.1.7"
+    set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
   - name: "Generate remediation report"
     debug:
       msg:
@@ -128,7 +148,7 @@
       - "  Details: {{ details_02 }}"
       - ""
       - "OVERALL REMEDIATION"
-      - "  Result: {{ status_02 }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
       - "  Details: {{ details_02 }}"
     tags: [execute]
 
@@ -178,6 +198,21 @@
     when:
     - "_restore_mod_state.content is defined"
     - "(_restore_mod_state.content | b64decode | trim) == 'loaded'"
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/cis_remediate_udf.sh.absent"
+    register: _rest_script_absent_stat
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete remediation script if it was absent before"
+    ansible.builtin.file:
+      path: /tmp/cis_remediate_udf.sh
+      state: absent
+    when: "_rest_script_absent_stat.stat.exists | default(false)"
     failed_when: false
     tags: [restore]
 

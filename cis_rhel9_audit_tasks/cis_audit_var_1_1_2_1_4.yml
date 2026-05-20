@@ -1,4 +1,4 @@
 req_01: "Check if a separate partition exists for /tmp using command: `findmnt -kn /tmp`. Expected result: output should show a mount point for /tmp."
 req_02: "Check if the noexec option is set on /tmp partition using command: `findmnt -kn /tmp | grep -v noexec`. Expected result: no output should be returned."
-req_03: "Summarize overall compliance status: if the /tmp partition exists and noexec is set, the system is compliant; otherwise, it is non-compliant."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_03: "Summarize overall compliance: PASS if both checks pass, SKIP if no separate /tmp partition exists, FAIL if partition exists but noexec is not set."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

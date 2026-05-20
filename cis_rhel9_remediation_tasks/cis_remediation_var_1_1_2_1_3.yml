@@ -1,3 +1,11 @@
 checkpoint_id: "cis_1_1_2_1_3"
 state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
 state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+req_01: |
+  Check if a separate partition exists for /tmp using command: mount | grep -E '\\s/tmp\\s'. Expected result: output shows a line with /tmp partition.
+req_02: |
+  Edit /etc/fstab to add nosuid to the fourth field for /tmp partition using command: sed -i 's|^\\([^#]*\\s/tmp\\s\\S*\\s\\)\\(defaults\\|rw\\)|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab. Expected result: /tmp entry in /etc/fstab contains nosuid in options.
+req_03: "Remount /tmp with the configured options using command: mount -o remount /tmp. Expected result: /tmp is remounted with nosuid option."
+req_04: |
+  Verify nosuid option is set on /tmp partition using command: mount | grep -E '\\s/tmp\\s' | grep -o 'nosuid'. Expected result: output contains 'nosuid'.
+req_05: "Store final remediation result in cis_result using set_fact. Set cis_result from the last requirement's status variable."
