@@ -19,7 +19,7 @@
 
     - name: Parse comma-separated index into selection list
       ansible.builtin.set_fact:
-        selections: "{{ index.replace(' ', '').split(',') | list }}"
+        selections: "{{ (index | string).replace(' ', '').split(',') | list }}"
 
     - debug: var=selections
 
