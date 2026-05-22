@@ -1,0 +1,23 @@
+version: 3
+
+images:
+  base_image: 
+    name: 'registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest'
+
+dependencies:
+  galaxy:
+    collections:
+      - community.windows
+      - community.general
+      - ansible.windows
+
+  system:
+    - python3-pip
+    - python3-devel
+    - systemd-devel
+    - gcc
+    - pkgconfig
+    - libxml2-devel   # Fixes the current 'libxml/xmlreader.h' error
+    - krb5-devel      # Prevents potential errors with krb5/gssapi modules
+options:
+  package_manager_path: /usr/bin/microdnf
