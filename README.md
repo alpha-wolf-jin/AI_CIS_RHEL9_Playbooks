@@ -136,6 +136,10 @@ ansible-navigator run audit.yml \
   -i <your-host>, --become
 ```
 
+### 8. Create Execution Image
+```bash
+ansible-builder build -f general-ee-01.yml -t general-ee-01:latest -v 3
+```
 ## Playbook Lifecycle Tags
 
 Each remediation playbook supports three lifecycle phases via tags:
