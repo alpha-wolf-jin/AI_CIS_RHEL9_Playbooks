@@ -75,7 +75,7 @@
     task_03_cmd: "N/A (manual review)"
     task_03_rc: -1
     data_03: "{{ (result_02.stdout | default('') | trim) if sshd_installed | default(false) else 'N/A' }}"
-    status_03: "{{ 'NOT_APPLICABLE' if not (sshd_installed | default(false)) else 'SKIPPED' | trim }}"
+    status_03: "{{ 'NOT_APPLICABLE' if not (sshd_installed | default(false)) else 'SKIP' | trim }}"
     details_03: "{{ 'sshd not installed - not applicable' if not (sshd_installed | default(false)) else 'Manual review required for local policy compliance' | trim }}"
   when: true
 
@@ -109,7 +109,7 @@
     data_04: "{{ result_04.stdout | default('') | trim if sshd_installed | default(false) and match_blocks_exist.rc | default(1) == 0 else 'N/A' }}"
     status_04: >-
       {{ 'NOT_APPLICABLE' if not (sshd_installed | default(false)) else
-         ('SKIPPED' if match_blocks_exist.rc | default(1) != 0 else
+         ('SKIP' if match_blocks_exist.rc | default(1) != 0 else
           ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL')) | trim }}
     details_04: >-
       {{ 'sshd not installed - not applicable' if not (sshd_installed | default(false)) else

@@ -92,7 +92,7 @@
       task_01_cmd: "/bin/bash /tmp/audit_cis_5_1_3.sh"
       task_01_rc: "{{ (script_result | default({})).rc | default(-1) }}"
       data_01: "{{ (script_result | default({})).stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not_applicable else ('PASS' if '** PASS **' in ((script_result | default({})).stdout | default('') | trim) else ('FAIL' if '** FAIL **' in ((script_result | default({})).stdout | default('') | trim) else 'UNKNOWN')) | trim }}"
+      status_01: "{{ 'SKIP' if not_applicable else ('PASS' if '** PASS **' in ((script_result | default({})).stdout | default('') | trim) else ('FAIL' if '** FAIL **' in ((script_result | default({})).stdout | default('') | trim) else 'UNKNOWN')) | trim }}"
       details_01: "{{ 'Not applicable - openssh-server is not installed' if not_applicable else ('Compliance audit passed' if '** PASS **' in ((script_result | default({})).stdout | default('') | trim) else ('Compliance audit failed; see script output' if '** FAIL **' in ((script_result | default({})).stdout | default('') | trim) else 'Unable to determine compliance')) | trim }}"
 
 # Requirement 2 - VERIFY compliance status
@@ -102,7 +102,7 @@
       task_02_cmd: "set_fact evaluation"
       task_02_rc: "0"
       data_02: "{{ (script_result | default({})).stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not_applicable else ('PASS' if '** PASS **' in ((script_result | default({})).stdout | default('') | trim) else ('FAIL' if '** FAIL **' in ((script_result | default({})).stdout | default('') | trim) else 'UNKNOWN')) | trim }}"
+      status_02: "{{ 'SKIP' if not_applicable else ('PASS' if '** PASS **' in ((script_result | default({})).stdout | default('') | trim) else ('FAIL' if '** FAIL **' in ((script_result | default({})).stdout | default('') | trim) else 'UNKNOWN')) | trim }}"
       details_02: "{{ 'Not applicable' if not_applicable else ('Compliance verified as PASS' if '** PASS **' in ((script_result | default({})).stdout | default('') | trim) else ('Compliance verified as FAIL' if '** FAIL **' in ((script_result | default({})).stdout | default('') | trim) else 'Unable to verify')) | trim }}"
 
 # Requirement 3 - Store cis_result fact

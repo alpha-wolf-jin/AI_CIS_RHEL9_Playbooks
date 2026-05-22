@@ -10,188 +10,233 @@
   tags: [snapshot]
 - name: "Snapshot - Check if /etc/fstab exists"
   ansible.builtin.stat:
-    path: /etc/fstab
-  register: _fstab_stat
+    path: "/etc/fstab"
+  register: _snap_fstab_stat
   tags: [snapshot]
-- name: "Snapshot - Backup /etc/fstab"
+- name: "Snapshot - Backup /etc/fstab if exists"
   ansible.builtin.copy:
-    src: /etc/fstab
-    dest: "{{ backup_dir }}/fstab.bak"
+    src: "/etc/fstab"
+    dest: "{{ backup_dir }}/fstab.present"
     remote_src: true
-  when: _fstab_stat.stat.exists
+  when: _snap_fstab_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Save current mount options for /dev/shm"
+  ansible.builtin.shell: "findmnt -n -o OPTIONS {{ mount_point }} 2>/dev/null || echo NOTMOUNTED"
+  args:
+    executable: /bin/bash
+  register: _snap_mount_opts
+  changed_when: false
+  failed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Persist mount options to file"
+  ansible.builtin.copy:
+    content: "{{ _snap_mount_opts.stdout | default('NOTMOUNTED') | trim }}"
+    dest: "{{ backup_dir }}/mount_options.state"
   tags: [snapshot]
 
 - block:
-        # === EXECUTE PHASE ===
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
 
-# Req 01 – Check separate partition
-  - name: "Req 01 - Check if separate partition exists for /dev/shm"
-    ansible.builtin.shell: "mount | grep /dev/shm"
+  - name: "Req 01 - Check if a separate partition exists for /dev/shm"
+    ansible.builtin.shell: "mount | grep -E '\\s/dev/shm\\s'"
     args:
       executable: /bin/bash
     register: result_01
     failed_when: false
-    tags: [execute]
+    changed_when: false
 
-  - name: "Store Req 01 facts"
-    set_fact:
-      partition_exists: "{{ result_01.rc == 0 }}"
-      data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'APPLIED' if result_01.rc == 0 else 'FAILED' }}"
-      details_01: "{{ 'Separate partition for /dev/shm detected' if result_01.rc == 0 else 'No separate partition for /dev/shm found' }}"
-      task_01_name: "Req 01 - Check separate partition"
-      task_01_cmd: "mount | grep /dev/shm"
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Check partition existence"
+      task_01_cmd: |
+        mount | grep -E '\\s/dev/shm\\s'
       task_01_rc: "{{ result_01.rc | default(-1) }}"
-    tags: [execute]
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0) else 'FAIL' }}"
+      details_01: "{{ 'Partition /dev/shm exists' if result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0) else 'Partition /dev/shm not found or error' }}"
 
-# Pre-check: does /dev/shm line already contain nosuid?
-  - name: "Check if nosuid already set in /etc/fstab for /dev/shm"
-    ansible.builtin.shell: "grep /dev/shm /etc/fstab | grep -q nosuid"
-    args:
-      executable: /bin/bash
-    register: nosuid_check
-    when: partition_exists
-    failed_when: false
-    tags: [execute]
-
-  - name: "Set nosuid_already_set flag"
-    set_fact:
-      nosuid_already_set: "{{ (nosuid_check.rc | default(1)) == 0 }}"
-    tags: [execute]
-
-# Req 02 – Edit /etc/fstab
-  - name: "Req 02 - Edit /etc/fstab to add nosuid option"
-    ansible.builtin.shell: "sed -i '/\\/dev\\/shm/s/defaults.*/defaults,rw,nosuid,nodev,noexec,relatime/' /etc/fstab"
-    args:
-      executable: /bin/bash
+  - name: "Req 02 - Add nosuid to /dev/shm entry in /etc/fstab"
+    ansible.builtin.lineinfile:
+      path: "/etc/fstab"
+      regexp: |
+        ^(\S+\s+/dev/shm\s+\S+\s+)(?!\S*\bnosuid\b)(\S+)(\s+\S+\s+\S+\s*)$
+      line: |
+        \1\2,nosuid\3
+      backrefs: true
     register: result_02
-    when:
-    - partition_exists
-    - not nosuid_already_set
     failed_when: false
-    tags: [execute]
 
-  - name: "Store Req 02 facts"
-    set_fact:
-      task_02_name: "Req 02 - Edit fstab"
-      task_02_cmd: |
-        sed -i '/\\/dev\\/shm/s/defaults.*/defaults,rw,nosuid,nodev,noexec,relatime/' /etc/fstab
-      task_02_rc: "{{ result_02.rc | default(-1) if (partition_exists and not nosuid_already_set) else 0 }}"
-      data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if (not partition_exists or nosuid_already_set) else 'APPLIED' if (result_02.rc | default(1)) == 0 else 'FAILED' }}"
-      details_02: "{{ 'fstab updated with nosuid' if (partition_exists and not nosuid_already_set and (result_02.rc | default(1)) == 0) else 'nosuid already present, no change needed' if nosuid_already_set else 'No separate partition, skipped' if not partition_exists else 'Failed to update' }}"
-    tags: [execute]
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Edit /etc/fstab to add nosuid"
+      task_02_cmd: "lineinfile: regexp add nosuid to /dev/shm options"
+      task_02_rc: "{{ 0 if not result_02.failed else -1 }}"
+      data_02: "{{ 'nosuid added' if result_02.changed else 'nosuid already present' }}"
+      status_02: "{{ 'PASS' if not result_02.failed else 'FAIL' }}"
+      details_02: "{{ 'nosuid option added to /etc/fstab' if result_02.changed else 'nosuid option already present in /etc/fstab' }}"
 
-# Req 03 – Remount /dev/shm
-  - name: "Req 03 - Remount /dev/shm with configured options"
-    ansible.builtin.shell: "mount -o remount /dev/shm"
+  - name: "Req 03 - Remount /dev/shm with updated options"
+    ansible.builtin.shell: "mount -o remount {{ mount_point }}"
     args:
       executable: /bin/bash
     register: result_03
-    when:
-    - partition_exists
-    - not nosuid_already_set
-    - (result_02.rc | default(1)) == 0
     failed_when: false
-    tags: [execute]
 
-  - name: "Store Req 03 facts"
-    set_fact:
-      task_03_name: "Req 03 - Remount /dev/shm"
+  - name: "Store requirement 03 details"
+    ansible.builtin.set_fact:
+      task_03_name: "Remount /dev/shm"
       task_03_cmd: "mount -o remount /dev/shm"
-      task_03_rc: "{{ result_03.rc | default(-1) if (partition_exists and not nosuid_already_set and (result_02.rc | default(1)) == 0) else 0 }}"
+      task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if (not partition_exists or nosuid_already_set or (result_02.rc | default(1)) != 0) else 'APPLIED' if result_03.rc == 0 else 'FAILED' }}"
-      details_03: "{{ 'Remounted /dev/shm with new options' if (partition_exists and not nosuid_already_set and (result_02.rc | default(1)) == 0 and result_03.rc == 0) else 'Skipped - partition missing or nosuid already present' if (not partition_exists or nosuid_already_set) else 'Remount failed' }}"
-    tags: [execute]
+      status_03: "{{ 'PASS' if result_03.rc | default(-1) == 0 else 'FAIL' }}"
+      details_03: "{{ '/dev/shm remounted successfully' if result_03.rc | default(-1) == 0 else 'Failed to remount /dev/shm' }}"
 
-# Req 04 – Verify nosuid is active
-  - name: "Req 04 - Verify nosuid option set on /dev/shm"
-    ansible.builtin.shell: "mount | grep /dev/shm | grep nosuid"
+  - name: "Req 04 - Verify nosuid option is set on /dev/shm"
+    ansible.builtin.shell: "mount | grep -E '\\s/dev/shm\\s' | grep -o 'nosuid'"
     args:
       executable: /bin/bash
     register: result_04
-    when: partition_exists
     failed_when: false
-    tags: [execute]
+    changed_when: false
 
-  - name: "Store Req 04 facts"
-    set_fact:
-      task_04_name: "Req 04 - Verify nosuid"
-      task_04_cmd: "mount | grep /dev/shm | grep nosuid"
-      task_04_rc: "{{ result_04.rc | default(-1) if partition_exists else -1 }}"
+  - name: "Store requirement 04 details"
+    ansible.builtin.set_fact:
+      task_04_name: "Verify nosuid option"
+      task_04_cmd: |
+        mount | grep -E '\\s/dev/shm\\s' | grep -o 'nosuid'
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
-      status_04: "{{ 'APPLIED' if (partition_exists and result_04.rc == 0) else 'FAILED' if partition_exists else 'SKIPPED' }}"
-      details_04: "{{ 'nosuid option verified on /dev/shm' if (partition_exists and result_04.rc == 0) else 'nosuid not found' if partition_exists else 'No separate partition, skipped' }}"
-    tags: [execute]
+      status_04: "{{ 'PASS' if result_04.stdout | default('') | trim == 'nosuid' else 'FAIL' }}"
+      details_04: "{{ 'nosuid option is set' if result_04.stdout | default('') | trim == 'nosuid' else 'nosuid option not set' }}"
 
-# Final report
+  - name: "Req 05 - Store final remediation result"
+    ansible.builtin.set_fact:
+      task_05_name: "Store cis_result"
+      task_05_cmd: "N/A"
+      task_05_rc: "N/A"
+      data_05: ""
+      status_05: "{{ status_04 | default('ERROR') | trim }}"
+      details_05: "cis_result set to {{ status_04 | default('ERROR') | trim }}"
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+
   - name: "Generate remediation report"
-    debug:
+    ansible.builtin.debug:
       msg:
-      - "REMEDIATION REPORT — CIS 1.1.2.2.3"
-      - "Reference: CIS Benchmark checkpoint 1.1.2.2.3"
+      - "========================================================"
+      - "        REMEDIATION REPORT — CIS 1.1.2.2.3"
+      - "        Reference: CIS Benchmark checkpoint 1.1.2.2.3"
+      - "========================================================"
       - ""
-      - "Requirement 01 - Check separate partition:"
-      - "  Task:     {{ task_01_name | default('N/A') }}"
-      - "  Command:  {{ task_01_cmd | default('N/A') }}"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
-      - "  Data:     {{ data_01 | default('') }}"
-      - "  Status:   {{ status_01 | default('UNKNOWN') }}"
-      - "  Details:  {{ details_01 | default('None') }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
       - ""
-      - "Requirement 02 - Edit fstab:"
-      - "  Task:     {{ task_02_name | default('N/A') }}"
-      - "  Command:  {{ task_02_cmd | default('N/A') }}"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
-      - "  Data:     {{ data_02 | default('') }}"
-      - "  Status:   {{ status_02 | default('UNKNOWN') }}"
-      - "  Details:  {{ details_02 | default('None') }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - ""
-      - "Requirement 03 - Remount /dev/shm:"
-      - "  Task:     {{ task_03_name | default('N/A') }}"
-      - "  Command:  {{ task_03_cmd | default('N/A') }}"
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
       - "  Exit code: {{ task_03_rc | default(-1) }}"
-      - "  Data:     {{ data_03 | default('') }}"
-      - "  Status:   {{ status_03 | default('UNKNOWN') }}"
-      - "  Details:  {{ details_03 | default('None') }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
       - ""
-      - "Requirement 04 - Verify nosuid:"
-      - "  Task:     {{ task_04_name | default('N/A') }}"
-      - "  Command:  {{ task_04_cmd | default('N/A') }}"
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
       - "  Exit code: {{ task_04_rc | default(-1) }}"
-      - "  Data:     {{ data_04 | default('') }}"
-      - "  Status:   {{ status_04 | default('UNKNOWN') }}"
-      - "  Details:  {{ details_04 | default('None') }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
       - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - ""
+      - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result:   {{ status_04 | default('UNKNOWN') }}"
-      - "  Details:  {{ details_04 | default('None') }}"
-    tags: [execute]
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+      - "========================================================"
 
   always:
-# === RESTORE PHASE (always runs) ===
   - name: "Restore - Check if fstab backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/fstab.bak"
+      path: "{{ backup_dir }}/fstab.present"
     register: _restore_fstab
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore /etc/fstab from backup"
+  - name: "Restore - Overwrite /etc/fstab with original"
     ansible.builtin.copy:
-      src: "{{ backup_dir }}/fstab.bak"
-      dest: /etc/fstab
+      src: "{{ backup_dir }}/fstab.present"
+      dest: "/etc/fstab"
       remote_src: true
     when: _restore_fstab.stat.exists | default(false)
+    register: _restore_fstab_result
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read saved mount options"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/mount_options.state"
+    register: _restore_mount_data
     failed_when: false
     tags: [restore]
 
   - name: "Restore - Remount /dev/shm with original options"
-    ansible.builtin.shell: "mount -o remount /dev/shm"
+    ansible.builtin.shell: "mount -o remount,{{ _restore_mount_data.content | b64decode | trim }} {{ mount_point }}"
     args:
       executable: /bin/bash
-    when: _restore_fstab.stat.exists | default(false)
+    when:
+    - _restore_mount_data is not failed
+    - _restore_mount_data.content is defined
+    - (_restore_mount_data.content | b64decode | trim) != 'NOTMOUNTED'
     failed_when: false
     tags: [restore]
 
@@ -199,6 +244,5 @@
     ansible.builtin.file:
       path: "{{ backup_dir }}"
       state: absent
-    when: _restore_fstab.stat.exists | default(false)
     failed_when: false
     tags: [restore]

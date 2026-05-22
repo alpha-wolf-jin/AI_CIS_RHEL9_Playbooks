@@ -72,7 +72,7 @@
       grep -P -- '\\bpam_pwquality\\.so\\b' /etc/pam.d/password-auth
     task_02_rc: "{% if result_02.skipped is defined and result_02.skipped %}-1{% else %}{{ result_02.rc | default(-1) }}{% endif %}"
     data_02: "{% if result_02.skipped is defined and result_02.skipped %}N/A (skipped){% else %}{{ result_02.stdout | default('') | trim }}{% endif %}"
-    status_02: "{% if result_02.skipped is defined and result_02.skipped %}SKIPPED{% elif result_02.rc | default(-1) == 0 %}PASS{% else %}FAIL{% endif %}"
+    status_02: "{% if result_02.skipped is defined and result_02.skipped %}SKIP{% elif result_02.rc | default(-1) == 0 %}PASS{% else %}FAIL{% endif %}"
     details_02: "{% if result_02.skipped is defined and result_02.skipped %}Skipped because pam_pwquality module is not installed{% elif result_02.rc | default(-1) == 0 %}pam_pwquality is enabled in password-auth{% else %}pam_pwquality is not enabled in password-auth{% endif %}"
   when: "true"
 
@@ -92,7 +92,7 @@
       grep -P -- '\\bpam_pwquality\\.so\\b' /etc/pam.d/system-auth
     task_03_rc: "{% if result_03.skipped is defined and result_03.skipped %}-1{% else %}{{ result_03.rc | default(-1) }}{% endif %}"
     data_03: "{% if result_03.skipped is defined and result_03.skipped %}N/A (skipped){% else %}{{ result_03.stdout | default('') | trim }}{% endif %}"
-    status_03: "{% if result_03.skipped is defined and result_03.skipped %}SKIPPED{% elif result_03.rc | default(-1) == 0 %}PASS{% else %}FAIL{% endif %}"
+    status_03: "{% if result_03.skipped is defined and result_03.skipped %}SKIP{% elif result_03.rc | default(-1) == 0 %}PASS{% else %}FAIL{% endif %}"
     details_03: "{% if result_03.skipped is defined and result_03.skipped %}Skipped because pam_pwquality module is not installed{% elif result_03.rc | default(-1) == 0 %}pam_pwquality is enabled in system-auth{% else %}pam_pwquality is not enabled in system-auth{% endif %}"
   when: "true"
 

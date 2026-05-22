@@ -5,16 +5,16 @@
 - name: "Initialize data variables"
   set_fact:
     data_01: "Not collected yet"
-    status_01: "UNKNOWN"
+    status_01: "ERROR"
     details_01: "Not evaluated"
     data_02: "Not collected yet"
-    status_02: "UNKNOWN"
+    status_02: "ERROR"
     details_02: "Not evaluated"
     data_03: "Not collected yet"
-    status_03: "UNKNOWN"
+    status_03: "ERROR"
     details_03: "Not evaluated"
     data_04: "Not collected yet"
-    status_04: "UNKNOWN"
+    status_04: "ERROR"
     details_04: "Not evaluated"
     task_01_name: "Not executed"
     task_01_cmd: "N/A"
@@ -29,74 +29,62 @@
     task_04_cmd: "N/A"
     task_04_rc: -1
 
-# Requirement 1 – partition existence
-- name: "Req 01 - Check if a separate partition exists for /var/log"
+- name: "Req 01 - Check if /var/log is a separate partition"
   ansible.builtin.command: "findmnt -kn {{ mount_point }}"
   register: result_01
   failed_when: false
   changed_when: false
 
-- name: "Store partition existence flag"
-  set_fact:
-    partition_exists: "{{ result_01.rc == 0 and result_01.stdout | default('') | trim != '' }}"
-
 - name: "Store requirement 01 details"
   set_fact:
-    task_01_name: "Check if a separate partition exists for /var/log using findmnt"
+    task_01_name: "Check if /var/log is a separate partition"
     task_01_cmd: "findmnt -kn {{ mount_point }}"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
     data_01: "{{ result_01.stdout | default('') | trim }}"
-    status_01: "{{ 'PASS' if partition_exists else 'SKIPPED' }}"
-    details_01: "{{ 'Partition exists and output is non-empty' if partition_exists else 'Partition not found, further checks skipped' }}"
+    status_01: "{{ 'PASS' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'SKIP' }}"
+    details_01: "{{ 'Partition exists' if (result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'No separate partition, audit skipped' }}"
 
-# Requirement 2 – noexec check (only if partition exists)
-- name: "Req 02 - Check if noexec option is set on /var/log partition"
-  ansible.builtin.shell: "findmnt -kn {{ mount_point }} | grep -v noexec"
+- name: "Req 02 - Check if noexec option is set on /var/log"
+  ansible.builtin.shell: "mount | grep {{ mount_point }} | grep -o {{ mount_option }}"
   args:
     executable: /bin/bash
   register: result_02
   failed_when: false
   changed_when: false
-  when: partition_exists
+  when:
+  - "status_01 | trim == 'PASS'"
 
 - name: "Store requirement 02 details"
   set_fact:
-    task_02_name: "Check if noexec option is set using findmnt and grep"
-    task_02_cmd: "{{ 'findmnt -kn ' + mount_point + ' | grep -v noexec' if partition_exists else 'N/A (no separate partition)' }}"
-    task_02_rc: "{{ result_02.rc | default(-1) if partition_exists else 'N/A' }}"
-    data_02: "{{ result_02.stdout | default('') | trim if partition_exists else 'N/A' }}"
-    status_02: >-
-      {{ 'SKIPPED' if not partition_exists else ('PASS' if (result_02.rc | default(-1)) != 0 else 'FAIL') }}
-    details_02: >-
-      {{ 'Partition does not exist, check not applicable' if not partition_exists else ('noexec option is set (no output from grep)' if (result_02.rc | default(-1)) != 0 else 'noexec option is missing') }}
+    task_02_name: "Check if noexec option is set on /var/log"
+    task_02_cmd: "mount | grep {{ mount_point }} | grep -o {{ mount_option }}"
+    task_02_rc: "{{ result_02.rc | default(-1) if status_01 | trim == 'PASS' else 'N/A' }}"
+    data_02: "{{ result_02.stdout | default('') | trim if status_01 | trim == 'PASS' else 'N/A' }}"
+    status_02: "{{ 'PASS' if (status_01 | trim == 'PASS' and (result_02.rc | default(-1) == 0) and (result_02.stdout | default('') | trim == mount_option)) else ('SKIP' if status_01 | trim != 'PASS' else 'FAIL') }}"
+    details_02: "{{ 'noexec option is set' if (status_01 | trim == 'PASS' and (result_02.rc | default(-1) == 0) and (result_02.stdout | default('') | trim == mount_option)) else ('noexec option is NOT set' if status_01 | trim == 'PASS' else 'Skipped: no separate /var/log partition') }}"
 
-# Requirement 3 – overall compliance
-- name: "Set compliance fact for overall compliance"
+- name: "Store requirement 03 details"
   set_fact:
-    status_03: >-
-      {{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' else
-         'SKIPPED' if not partition_exists else 'FAIL' }}
-    details_03: >-
-      {{ 'Both partition exists and noexec option set' if status_01 == 'PASS' and status_02 == 'PASS'
-         else 'No separate /var/log partition, requirement not applicable' if not partition_exists
-         else 'Partition exists but noexec option not set' }}
-    task_03_name: "Overall compliance evaluation"
+    task_03_name: "Summarize overall compliance"
     task_03_cmd: "N/A"
-    task_03_rc: 0
-    data_03: "Partition existence: {{ status_01 }}; noexec status: {{ status_02 }}"
+    task_03_rc: "N/A"
+    data_03: "N/A"
+    status_03: "{{ status_02 | default('ERROR') | trim }}"
+    details_03: "{{ details_02 | default('Not evaluated') | trim }}"
 
-# Requirement 4 – store cis_result
-- name: "Req 04 - Store cis_result variable"
+- name: "Store requirement 04 details"
   set_fact:
-    cis_result: "{{ status_03 | trim }}"
-    task_04_name: "Store cis_result"
+    task_04_name: "Store final audit result"
     task_04_cmd: "N/A"
-    task_04_rc: 0
-    data_04: "{{ status_03 | trim }}"
-    status_04: "{{ status_03 | trim }}"
-    details_04: "Stored cis_result from overall compliance status"
+    task_04_rc: "N/A"
+    data_04: "N/A"
+    status_04: "{{ status_02 | default('ERROR') | trim }}"
+    details_04: "{{ details_02 | default('Not evaluated') | trim }}"
 
-# Audit report
+- name: "Store final audit result"
+  set_fact:
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
+
 - name: "Generate audit report"
   debug:
     msg:
@@ -108,7 +96,7 @@
     - "  Command: {{ task_01_cmd | default('N/A') }}"
     - "  Exit code: {{ task_01_rc | default(-1) }}"
     - "  Data: {{ data_01 | default('') | trim }}"
-    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
     - "  Details: {{ details_01 | default('') | trim }}"
     - ""
     - "REQUIREMENT 02 - {{ req_02 }}:"
@@ -116,7 +104,7 @@
     - "  Command: {{ task_02_cmd | default('N/A') }}"
     - "  Exit code: {{ task_02_rc | default(-1) }}"
     - "  Data: {{ data_02 | default('') | trim }}"
-    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
     - "  Details: {{ details_02 | default('') | trim }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -124,7 +112,7 @@
     - "  Command: {{ task_03_cmd | default('N/A') }}"
     - "  Exit code: {{ task_03_rc | default(-1) }}"
     - "  Data: {{ data_03 | default('') | trim }}"
-    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
     - "  Details: {{ details_03 | default('') | trim }}"
     - ""
     - "REQUIREMENT 04 - {{ req_04 }}:"
@@ -132,11 +120,11 @@
     - "  Command: {{ task_04_cmd | default('N/A') }}"
     - "  Exit code: {{ task_04_rc | default(-1) }}"
     - "  Data: {{ data_04 | default('') | trim }}"
-    - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
     - "  Details: {{ details_04 | default('') | trim }}"
     - ""
     - "========================================================"
     - "OVERALL COMPLIANCE:"
-    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
-    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
     - "========================================================"

@@ -187,7 +187,7 @@
         sed -ri 's/(^\\s*password\\s+(requisite|required|sufficient)\\s+pam_unix\\.so\\s+.*)$/& use_authtok/g' + authselect apply-changes
       task_01_rc: "{{ remediate_result.rc | default(-1) }}"
       data_01: "{{ remediate_result.stdout | default('') | trim }}"
-      status_01: "{{ ('SKIPPED' if playbook_skipped | default(false) else ('PASS' if (audit_result.stdout | default('') | trim != '' or (audit_result.stdout | default('') | trim == '' and remediate_result.rc | default(-1) == 0)) else 'FAILED')) | trim }}"
+      status_01: "{{ ('SKIP' if playbook_skipped | default(false) else ('PASS' if (audit_result.stdout | default('') | trim != '' or (audit_result.stdout | default('') | trim == '' and remediate_result.rc | default(-1) == 0)) else 'FAILED')) | trim }}"
       details_01: "{{ ('authselect not installed' if playbook_skipped | default(false) else ('use_authtok already present' if audit_result.stdout | default('') | trim != '' else ('Remediation applied successfully' if remediate_result.rc | default(-1) == 0 else 'Remediation failed'))) | trim }}"
     tags: [execute]
 
@@ -215,7 +215,7 @@
         grep -P -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_unix\\.so\\h+([^#\\n\\r]+\\h+)?use_authtok\\b' password-auth system-auth
       task_02_rc: "{{ verify_result.rc | default(-1) }}"
       data_02: "{{ verify_result.stdout | default('') | trim }}"
-      status_02: "{{ ('SKIPPED' if playbook_skipped | default(false) else ('PASS' if verify_result.stdout | default('') | trim != '' else 'FAIL')) | trim }}"
+      status_02: "{{ ('SKIP' if playbook_skipped | default(false) else ('PASS' if verify_result.stdout | default('') | trim != '' else 'FAIL')) | trim }}"
       details_02: "{{ ('authselect not installed' if playbook_skipped | default(false) else ('use_authtok confirmed present' if verify_result.stdout | default('') | trim != '' else 'use_authtok NOT found')) | trim }}"
     tags: [execute]
 

@@ -1,7 +1,7 @@
 playbook_name: "cis_1_3_1_3_selinux_policy"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-
-# Requirement texts (used in the final report)
-req_01: "Ensure that the system has SELinux utilities installed using command: `rpm -q selinux-policy-targeted`. Expected result: package is installed."
-req_02: "Apply SELinux policy configuration to targeted using command: `sudo sed -i 's/^SELINUXTYPE=.*/SELINUXTYPE=targeted/' /etc/selinux/config`. Expected result: SELINUXTYPE is set to targeted."
-req_03: "Verify SELinux policy configuration using command: `grep -E '^SELINUXTYPE=' /etc/selinux/config`. Expected result: SELINUXTYPE=targeted"
+config_file: "/etc/selinux/config"
+req_01: "Apply prerequisite check using command: `which sed && which grep`. Expected result: commands exist and return paths."
+req_02: "Apply SELinux policy configuration using command: `sudo sed -i 's/^SELINUXTYPE=.*/SELINUXTYPE=targeted/' /etc/selinux/config`. Expected result: SELINUXTYPE is set to targeted."
+req_03: "Verify SELinux policy configuration using command: `grep '^SELINUXTYPE=targeted' /etc/selinux/config`. Expected result: output contains 'SELINUXTYPE=targeted'."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

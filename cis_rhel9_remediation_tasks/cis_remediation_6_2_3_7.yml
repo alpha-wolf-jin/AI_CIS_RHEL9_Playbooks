@@ -126,7 +126,7 @@
       task_01_cmd: "which rsyslogd"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'SKIPPED' }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'SKIP' }}"
       details_01: "{{ 'rsyslog found at: ' ~ (result_01.stdout | default('') | trim) if result_01.rc | default(-1) == 0 else 'rsyslog not installed, skipping remediation' }}"
       playbook_skipped: "{{ true if result_01.rc | default(-1) != 0 else false }}"
     tags: [execute]
@@ -149,7 +149,7 @@
         sed -i '/^module(load=\"imtcp\")/d' /etc/rsyslog.conf
       task_02_rc: 0
       data_02: "{{ 'Line removed' if result_02.changed | default(false) else 'Line not present' }}"
-      status_02: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_02: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_02: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Advanced format module load line removed if present' }}"
     when: "result_02 is defined"
     tags: [execute]
@@ -172,7 +172,7 @@
         sed -i '/^input(type=\"imtcp\" port=\"514\")/d' /etc/rsyslog.conf
       task_03_rc: 0
       data_03: "{{ 'Line removed' if result_03.changed | default(false) else 'Line not present' }}"
-      status_03: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_03: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_03: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Advanced format input line removed if present' }}"
     when: "result_03 is defined"
     tags: [execute]
@@ -195,7 +195,7 @@
         sed -i '/^\\$ModLoad imtcp/d' /etc/rsyslog.conf
       task_04_rc: 0
       data_04: "{{ 'Line removed' if result_04.changed | default(false) else 'Line not present' }}"
-      status_04: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_04: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_04: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Legacy $ModLoad imtcp line removed if present' }}"
     when: "result_04 is defined"
     tags: [execute]
@@ -218,7 +218,7 @@
         sed -i '/^\\$InputTCPServerRun/d' /etc/rsyslog.conf
       task_05_rc: 0
       data_05: "{{ 'Line removed' if result_05.changed | default(false) else 'Line not present' }}"
-      status_05: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_05: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_05: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Legacy $InputTCPServerRun line removed if present' }}"
     when: "result_05 is defined"
     tags: [execute]
@@ -245,7 +245,7 @@
         sed -i '/^module(load=\"imtcp\")/d' /etc/rsyslog.d/*.conf
       task_06_rc: "{{ result_06.rc | default(0) }}"
       data_06: "{{ 'Lines removed' if result_06.rc | default(0) == 0 else 'Error executing sed' }}"
-      status_06: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_06: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_06: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Advanced format module load lines removed from rsyslog.d files if present' }}"
     when: "result_06 is defined"
     tags: [execute]
@@ -272,7 +272,7 @@
         sed -i '/^input(type=\"imtcp\" port=\"514\")/d' /etc/rsyslog.d/*.conf
       task_07_rc: "{{ result_07.rc | default(0) }}"
       data_07: "{{ 'Lines removed' if result_07.rc | default(0) == 0 else 'Error executing sed' }}"
-      status_07: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_07: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_07: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Advanced format input lines removed from rsyslog.d files if present' }}"
     when: "result_07 is defined"
     tags: [execute]
@@ -299,7 +299,7 @@
         sed -i '/^\\$ModLoad imtcp/d' /etc/rsyslog.d/*.conf
       task_08_rc: "{{ result_08.rc | default(0) }}"
       data_08: "{{ 'Lines removed' if result_08.rc | default(0) == 0 else 'Error executing sed' }}"
-      status_08: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_08: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_08: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Legacy $ModLoad imtcp lines removed from rsyslog.d files if present' }}"
     when: "result_08 is defined"
     tags: [execute]
@@ -326,7 +326,7 @@
         sed -i '/^\\$InputTCPServerRun/d' /etc/rsyslog.d/*.conf
       task_09_rc: "{{ result_09.rc | default(0) }}"
       data_09: "{{ 'Lines removed' if result_09.rc | default(0) == 0 else 'Error executing sed' }}"
-      status_09: "{{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      status_09: "{{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       details_09: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else 'Legacy $InputTCPServerRun lines removed from rsyslog.d files if present' }}"
     when: "result_09 is defined"
     tags: [execute]
@@ -346,7 +346,7 @@
       task_10_cmd: "systemctl restart rsyslog"
       task_10_rc: "{{ result_10.rc | default(0) if result_10 is defined else -1 }}"
       data_10: "{{ result_10.state | default('unknown') if result_10 is defined else 'Not executed' }}"
-      status_10: "{{ 'SKIPPED' if playbook_skipped | default(false) else ('APPLIED' if result_10 is defined and result_10.state | default('') == 'started' else 'FAILED') }}"
+      status_10: "{{ 'SKIP' if playbook_skipped | default(false) else ('APPLIED' if result_10 is defined and result_10.state | default('') == 'started' else 'FAILED') }}"
       details_10: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else ('Service restarted successfully' if result_10 is defined and result_10.state | default('') == 'started' else 'Service restart failed') }}"
     when: "result_10 is defined"
     tags: [execute]
@@ -371,7 +371,7 @@
         grep -rE '^module\(load="imtcp"\)|^input\(type="imtcp" port="514"\)|^\$ModLoad imtcp|^\$InputTCPServerRun' /etc/rsyslog.conf /etc/rsyslog.d/ 2>/dev/null || true
       task_11_rc: "{{ result_11.rc | default(-1) }}"
       data_11: "{{ result_11.stdout | default('') | trim }}"
-      status_11: "{{ 'SKIPPED' if playbook_skipped | default(false) else ('PASS' if result_11.stdout | default('') | trim == '' else 'FAIL') }}"
+      status_11: "{{ 'SKIP' if playbook_skipped | default(false) else ('PASS' if result_11.stdout | default('') | trim == '' else 'FAIL') }}"
       details_11: "{{ 'Skipped - rsyslog not installed' if playbook_skipped | default(false) else ('No remote receive configuration found - compliant' if result_11.stdout | default('') | trim == '' else 'Remote receive configuration still present: ' ~ (result_11.stdout | default('') | trim)) }}"
     when: "result_11 is defined"
     tags: [execute]

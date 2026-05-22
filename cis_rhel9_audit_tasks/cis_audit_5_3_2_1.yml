@@ -124,56 +124,56 @@
     task_03_cmd: "N/A (profile missing)"
     task_03_rc: -1
     data_03: "N/A"
-    status_03: "SKIPPED"
+    status_03: "SKIP"
     details_03: "Skipped because no active authselect profile"
         # Requirement 04
     task_04_name: "Req 04 - Check pam_pwquality.so in system-auth"
     task_04_cmd: "N/A (profile missing)"
     task_04_rc: -1
     data_04: "N/A"
-    status_04: "SKIPPED"
+    status_04: "SKIP"
     details_04: "Skipped because no active authselect profile"
         # Requirement 05
     task_05_name: "Req 05 - Check pam_pwhistory.so in password-auth"
     task_05_cmd: "N/A (profile missing)"
     task_05_rc: -1
     data_05: "N/A"
-    status_05: "SKIPPED"
+    status_05: "SKIP"
     details_05: "Skipped because no active authselect profile"
         # Requirement 06
     task_06_name: "Req 06 - Check pam_pwhistory.so in system-auth"
     task_06_cmd: "N/A (profile missing)"
     task_06_rc: -1
     data_06: "N/A"
-    status_06: "SKIPPED"
+    status_06: "SKIP"
     details_06: "Skipped because no active authselect profile"
         # Requirement 07
     task_07_name: "Req 07 - Check pam_faillock.so in password-auth"
     task_07_cmd: "N/A (profile missing)"
     task_07_rc: -1
     data_07: "N/A"
-    status_07: "SKIPPED"
+    status_07: "SKIP"
     details_07: "Skipped because no active authselect profile"
         # Requirement 08
     task_08_name: "Req 08 - Check pam_faillock.so in system-auth"
     task_08_cmd: "N/A (profile missing)"
     task_08_rc: -1
     data_08: "N/A"
-    status_08: "SKIPPED"
+    status_08: "SKIP"
     details_08: "Skipped because no active authselect profile"
         # Requirement 09
     task_09_name: "Req 09 - Check pam_unix.so in password-auth"
     task_09_cmd: "N/A (profile missing)"
     task_09_rc: -1
     data_09: "N/A"
-    status_09: "SKIPPED"
+    status_09: "SKIP"
     details_09: "Skipped because no active authselect profile"
         # Requirement 10
     task_10_name: "Req 10 - Check pam_unix.so in system-auth"
     task_10_cmd: "N/A (profile missing)"
     task_10_rc: -1
     data_10: "N/A"
-    status_10: "SKIPPED"
+    status_10: "SKIP"
     details_10: "Skipped because no active authselect profile"
   when: cis_applicable and not profile_found
 
@@ -353,7 +353,7 @@
     data_11: "N/A"
     status_11: >-
       {%- if not cis_applicable -%} NOT_APPLICABLE
-      {%- elif not profile_found -%} SKIPPED
+      {%- elif not profile_found -%} SKIP
       {%- elif status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS' and status_06 == 'PASS' and status_07 == 'PASS' and status_08 == 'PASS' and status_09 == 'PASS' and status_10 == 'PASS' -%} PASS
       {%- else -%} FAIL
       {%- endif -%}

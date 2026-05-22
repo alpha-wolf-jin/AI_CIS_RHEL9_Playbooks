@@ -111,7 +111,7 @@
       task_02_cmd: "usermod -u 0 root"
       task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
       data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else 'Skipped' }}"
-      status_02: "{{ 'SKIPPED' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
       details_02: "{{ 'Skipped - usermod not available' if (result_01.rc | default(-1)) != 0 else ('Root UID set to 0' if (result_02.rc | default(-1)) == 0 else 'Failed to set root UID') }}"
     tags: [execute]
 
@@ -154,7 +154,7 @@
       task_03_cmd: "usermod -u <new_uid> <username> (for each non-root UID 0 user)"
       task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined else -1 }}"
       data_03: "{{ result_03_find.stdout | default('') | trim if result_03_find is defined else 'Skipped' }}"
-      status_03: "{{ 'SKIPPED' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_03_find.stdout | default('') | trim) == '' else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL')) }}"
+      status_03: "{{ 'SKIP' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_03_find.stdout | default('') | trim) == '' else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL')) }}"
       details_03: "{{ 'Skipped - usermod not available' if (result_01.rc | default(-1)) != 0 else ('No non-root UID 0 users found' if (result_03_find.stdout | default('') | trim) == '' else ('UIDs reassigned for: ' + (result_03_find.stdout | default('') | trim) if (result_03.rc | default(-1)) == 0 else 'Failed to reassign UIDs')) }}"
     tags: [execute]
 

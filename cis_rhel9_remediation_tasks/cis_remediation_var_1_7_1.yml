@@ -1,6 +1,34 @@
-playbook_name: "cis_1.7.1_motd"
+playbook_name: "cis_1_7_1_motd"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
 req_01: |
-  Run the provided remediation script to fix Ensure message of the day is configured properly. Edit files in /etc/motd.d/*, remove \\m, \\r, \\s, \\v or references to the OS platform; also remove /etc/motd if not used; execute audit script.
+  Run the provided remediation script to fix Ensure message of the day is configured properly. Edit the file found in /etc/motd.d/* with the appropriate contents according to your site policy, remove any instances of \\m , \\r , \\s , \\v or references to the OS platform - OR - IF - the motd is not used, this file can be removed. Run the following command to remove the motd file: # rm /etc/motd. Run the following script and review and/or update all returned files' contents to: • Remove all system information (\\v, \\r; \\m, \\s) • Remove any refence to the operating system • Ensure contents foll Execute the COMPLETE script as-is. Expected result: Script applies the required changes
 req_02: "VERIFY: Run audit check to confirm Ensure message of the day is configured properly is properly configured. Expected result: System is compliant"
-req_03: "Generate remediation report"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+audit_script: "/tmp/audit_motd.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     l_output="" l_output2=""
+     a_files=()
+     for l_file in /etc/motd{,.d/*}; do
+        if grep -Psqi -- "(\\\v|\\\r|\\\m|\\\s|\b$(grep ^ID= /etc/os-release | cut -d= -f2 | sed -e 's/"//g')\b)" "$l_file"; then
+           l_output2="$l_output2\n - File: \"$l_file\" includes system information"
+        else
+           a_files+=("$l_file")
+        fi
+     done
+     if [ "${#a_files[@]}" -gt 0 ]; then
+        echo -e "\n-  ** Please review the following files and verify their contents follow local site policy **\n"
+        printf '%s\n' "${a_files[@]}"
+     elif [ -z "$l_output2" ]; then
+        echo -e "- ** No MOTD files with any size were found. Please verify this conforms to local site policy ** -"
+     fi
+     if [ -z "$l_output2" ]; then
+        l_output=" - No MOTD files include system information"
+        echo -e "\n- Audit Result:\n  ** PASS **\n$l_output\n"
+     else
+        echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output2\n"
+     fi
+  }
+  {% endraw %}

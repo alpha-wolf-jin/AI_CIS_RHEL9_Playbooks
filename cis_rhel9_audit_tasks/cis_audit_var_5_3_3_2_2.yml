@@ -6,4 +6,4 @@ req_03: |
 req_04: |
   Check that no PAM configuration overrides minlen to less than 14 using command: `grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?minlen\\h*=\\h*([0-9]|1[0-3])\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: nothing returned.
 req_05: "Summarize overall compliance status: password length is configured to 14 or more characters and conforms to local site policy."
-req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

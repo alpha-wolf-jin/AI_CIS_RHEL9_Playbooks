@@ -30,7 +30,7 @@
     task_01_cmd: "{{ ondisk_result.cmd | default('N/A') }}"
     task_01_rc: "{{ ondisk_result.rc | default(-1) }}"
     data_01: "{{ ondisk_result.stdout | default('') | trim }}"
-    status_01: "{{ 'SKIPPED' if not auditd_installed | bool else 'PASS' }}"
+    status_01: "{{ 'SKIP' if not auditd_installed | bool else 'PASS' }}"
     details_01: >-
       {{ 'auditd package not installed, audit skipped' if not auditd_installed | bool
          else 'Audit procedure executed successfully' }}
@@ -49,7 +49,7 @@
     task_02_rc: "{{ task_01_rc | default(-1) }}"
     data_02: "{{ data_01 | default('') | trim }}"
     status_02: >-
-      {{ 'SKIPPED' if not auditd_installed | bool
+      {{ 'SKIP' if not auditd_installed | bool
          else ('PASS' if rule_found | default(false) | bool else 'FAIL') }}
     details_02: >-
       {{ 'auditd package not installed' if not auditd_installed | bool
@@ -62,7 +62,7 @@
     task_03_cmd: "N/A"
     task_03_rc: "{{ task_02_rc | default(-1) }}"
     data_03: "{{ status_02 | default('UNKNOWN') | trim }}"
-    status_03: "{{ 'SKIPPED' if not auditd_installed | bool else 'PASS' }}"
+    status_03: "{{ 'SKIP' if not auditd_installed | bool else 'PASS' }}"
     details_03: >-
       {{ 'Compliance status stored in cis_result' if auditd_installed | bool
          else 'Skipped' }}

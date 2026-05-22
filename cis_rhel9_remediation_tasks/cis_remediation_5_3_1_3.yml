@@ -73,7 +73,7 @@
       task_02_cmd: "dnf install -y {{ package_name }}"
       task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
       data_02: "{{ result_02.msg | default('') | trim if result_02 is defined else 'Skipped - dnf not available' }}"
-      status_02: "{{ 'SKIPPED' if result_02 is not defined or result_02.skipped | default(false) else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if result_02 is not defined or result_02.skipped | default(false) else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
       details_02: "{{ 'Skipped - dnf not available' if result_02 is not defined or result_02.skipped | default(false) else ('Package installed successfully' if (result_02.rc | default(-1)) == 0 else 'Installation failed') }}"
     tags: [execute]
 
@@ -106,7 +106,7 @@
       task_03_cmd: "dnf upgrade -y {{ package_name }}"
       task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined else -1 }}"
       data_03: "{{ result_03.msg | default('') | trim if result_03 is defined else 'Skipped' }}"
-      status_03: "{{ 'SKIPPED' if result_03 is not defined or result_03.skipped | default(false) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if result_03 is not defined or result_03.skipped | default(false) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
       details_03: "{{ 'Skipped - version already meets minimum or dnf not available' if result_03 is not defined or result_03.skipped | default(false) else ('Upgraded successfully' if (result_03.rc | default(-1)) == 0 else 'Upgrade failed') }}"
     tags: [execute]
 
@@ -127,7 +127,7 @@
       task_04_cmd: "rpm -q --qf '%{version}-%{release}' {{ package_name }}"
       task_04_rc: "{{ result_04.rc | default(-1) if result_04 is defined else -1 }}"
       data_04: "{{ result_04.stdout | default('') | trim if result_04 is defined else 'Skipped' }}"
-      status_04: "{{ 'SKIPPED' if result_04 is not defined or result_04.skipped | default(false) else ('PASS' if (result_04.stdout | default('0') | trim is version(min_version, '>=')) else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if result_04 is not defined or result_04.skipped | default(false) else ('PASS' if (result_04.stdout | default('0') | trim is version(min_version, '>=')) else 'FAIL') }}"
       details_04: "{{ 'Skipped - dnf not available' if result_04 is not defined or result_04.skipped | default(false) else ('Version ' + (result_04.stdout | default('') | trim) + ' meets minimum ' + min_version if (result_04.stdout | default('0') | trim is version(min_version, '>=')) else 'Version ' + (result_04.stdout | default('') | trim) + ' is below minimum ' + min_version) }}"
     tags: [execute]
 

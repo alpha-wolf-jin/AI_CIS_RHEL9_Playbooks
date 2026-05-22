@@ -77,7 +77,7 @@
       data_01: "{{ audit_result.stdout | default('') | trim }}"
       status_01: >-
         {%- if not openssh_installed | default(false) -%}
-          SKIPPED
+          SKIP
         {%- elif audit_result.rc | default(-1) == 0 -%}
           PASS
         {%- else -%}

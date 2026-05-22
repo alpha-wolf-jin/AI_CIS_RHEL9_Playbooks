@@ -94,7 +94,7 @@
       task_02_cmd: "grep -q '^MaxStartups' /etc/ssh/sshd_config && sed -i 's/^MaxStartups.*/MaxStartups 10:30:60/' /etc/ssh/sshd_config || echo 'MaxStartups 10:30:60' >> /etc/ssh/sshd_config"
       task_02_rc: "{{ result_02.rc | default(0) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'PASS' if result_02 is not failed else 'SKIPPED' if playbook_skipped | bool else 'FAIL' }}"
+      status_02: "{{ 'PASS' if result_02 is not failed else 'SKIP' if playbook_skipped | bool else 'FAIL' }}"
       details_02: "{{ 'MaxStartups set to 10:30:60' if result_02 is not failed else 'Skipped - prerequisite not met' if playbook_skipped | bool else 'Failed to set MaxStartups' }}"
     tags: [execute]
 
@@ -113,7 +113,7 @@
       task_03_cmd: "awk '!seen[$0]++' /etc/ssh/sshd_config > /tmp/sshd_config && mv /tmp/sshd_config /etc/ssh/sshd_config"
       task_03_rc: "{{ result_03.rc | default(0) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'PASS' if result_03 is not failed else 'SKIPPED' if playbook_skipped | bool else 'FAIL' }}"
+      status_03: "{{ 'PASS' if result_03 is not failed else 'SKIP' if playbook_skipped | bool else 'FAIL' }}"
       details_03: "{{ 'Duplicates removed successfully' if result_03 is not failed else 'Skipped - prerequisite not met' if playbook_skipped | bool else 'Failed to remove duplicates' }}"
     tags: [execute]
 
@@ -132,7 +132,7 @@
       task_04_cmd: "systemctl restart sshd || service sshd restart"
       task_04_rc: "{{ result_04.rc | default(0) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
-      status_04: "{{ 'PASS' if result_04.rc | default(1) == 0 else 'SKIPPED' if playbook_skipped | bool else 'FAIL' }}"
+      status_04: "{{ 'PASS' if result_04.rc | default(1) == 0 else 'SKIP' if playbook_skipped | bool else 'FAIL' }}"
       details_04: "{{ 'sshd service restarted successfully' if result_04.rc | default(1) == 0 else 'Skipped - prerequisite not met' if playbook_skipped | bool else 'Failed to restart sshd' }}"
     tags: [execute]
 
@@ -152,7 +152,7 @@
       task_05_cmd: "sshd -T | grep -i maxstartups"
       task_05_rc: "{{ result_05.rc | default(1) }}"
       data_05: "{{ result_05.stdout | default('') | trim }}"
-      status_05: "{{ 'PASS' if ('maxstartups 10:30:60' in (result_05.stdout | default('') | lower)) else 'SKIPPED' if playbook_skipped | bool else 'FAIL' }}"
+      status_05: "{{ 'PASS' if ('maxstartups 10:30:60' in (result_05.stdout | default('') | lower)) else 'SKIP' if playbook_skipped | bool else 'FAIL' }}"
       details_05: "{{ 'Verified: maxstartups 10:30:60' if ('maxstartups 10:30:60' in (result_05.stdout | default('') | lower)) else 'Skipped - prerequisite not met' if playbook_skipped | bool else 'Verification failed' }}"
     tags: [execute]
 

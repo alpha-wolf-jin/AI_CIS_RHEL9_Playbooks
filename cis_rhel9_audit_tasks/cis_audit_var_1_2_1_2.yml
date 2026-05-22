@@ -4,7 +4,7 @@ req_02: |
 req_03: |
   Check that no repository file in /etc/yum.repos.d/ has gpgcheck set to 0, false, no, or an invalid non-boolean value using command: `grep -Pris -- '^\\h*gpgcheck\\h*=\\h*(0|[2-9]|[1-9][0-9]+|false|no)\\b' /etc/yum.repos.d/`. Expected result: no output returned.
 req_04: "Summarize overall compliance status: both global gpgcheck is enabled and no repository overrides disable it."
-req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 
 cmd_01: "rpm -q dnf"
 cmd_02: |

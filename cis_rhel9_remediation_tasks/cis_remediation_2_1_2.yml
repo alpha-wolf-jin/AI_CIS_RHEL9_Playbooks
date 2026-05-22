@@ -40,7 +40,7 @@
       task_01_rc: "{{ result_stop.rc | default(-1) }}"
       data_01: "{{ result_stop.stdout | default('') | trim }}"
       status_01: >-
-        {{ 'SKIPPED' if (result_stop.skipped | default(false)) else
+        {{ 'SKIP' if (result_stop.skipped | default(false)) else
            ('APPLIED' if result_stop.rc == 0 else 'FAILED') }}
       details_01: >-
         {{ 'Task skipped because avahi not installed' if (result_stop.skipped | default(false)) else
@@ -62,7 +62,7 @@
       task_02_rc: "{{ remove_result.rc | default(-1) }}"
       data_02: "{{ remove_result.stdout | default('') | trim }}"
       status_02: >-
-        {{ 'SKIPPED' if (remove_result.skipped | default(false)) else
+        {{ 'SKIP' if (remove_result.skipped | default(false)) else
            ('APPLIED' if remove_result.rc == 0 else 'FAILED') }}
       details_02: >-
         {{ 'Task skipped because avahi not installed' if (remove_result.skipped | default(false)) else
@@ -87,7 +87,7 @@
       task_03_rc: "{{ mask_result.rc | default(-1) }}"
       data_03: "{{ mask_result.stdout | default('') | trim }}"
       status_03: >-
-        {{ 'SKIPPED' if (mask_result.skipped | default(false)) else
+        {{ 'SKIP' if (mask_result.skipped | default(false)) else
            ('APPLIED' if mask_result.rc == 0 else 'FAILED') }}
       details_03: >-
         {{ 'Task skipped because package already removed' if (mask_result.skipped | default(false)) else
@@ -110,7 +110,7 @@
       task_04_rc: "{{ verify_services.rc | default(-1) }}"
       data_04: "{{ verify_services.stdout | default('') | trim }}"
       status_04: >-
-        {{ 'SKIPPED' if (verify_services.skipped | default(false)) else
+        {{ 'SKIP' if (verify_services.skipped | default(false)) else
            ('APPLIED' if verify_services.rc != 0 else 'FAILED') }}
       details_04: >-
         {{ 'Task skipped because avahi not installed' if (verify_services.skipped | default(false)) else
@@ -133,7 +133,7 @@
       task_05_rc: "{{ verify_package.rc | default(-1) }}"
       data_05: "{{ verify_package.stdout | default('') | trim }}"
       status_05: >-
-        {{ 'SKIPPED' if (verify_package.skipped | default(false)) else
+        {{ 'SKIP' if (verify_package.skipped | default(false)) else
            ('APPLIED' if (verify_package.rc != 0) or
                         (mask_result is defined and mask_result.rc | default(-1) == 0) else 'FAILED') }}
       details_05: >-

@@ -30,7 +30,7 @@
       {% if gdm_installed | default(false) %}
         {% if (result_01.rc | default(-1)) == 0 %}PASS{% else %}FAIL{% endif %}
       {% else %}
-        SKIPPED
+        SKIP
       {% endif %}
     details_01: >-
       {% if gdm_installed | default(false) %}
@@ -45,7 +45,7 @@
       {% if gdm_installed | default(false) %}
         {% if '** PASS **' in result_01.stdout | default('') %}PASS{% elif '** FAIL **' in result_01.stdout | default('') %}FAIL{% else %}UNKNOWN{% endif %}
       {% else %}
-        SKIPPED
+        SKIP
       {% endif %}
     details_02: >-
       {% if gdm_installed | default(false) %}

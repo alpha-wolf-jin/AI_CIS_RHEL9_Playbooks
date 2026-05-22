@@ -191,7 +191,7 @@
       task_02_name: "Verify password history remember is configured"
       task_02_cmd: "N/A"
       task_02_rc: -1
-      data_02: "SKIPPED"
+      data_02: "SKIP"
       status_02: "SKIP"
       details_02: "authselect package not installed"
     when: "playbook_skipped | default(false) | bool"

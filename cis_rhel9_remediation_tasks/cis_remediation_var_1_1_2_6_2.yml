@@ -1,6 +1,6 @@
-playbook_name: "cis_1_1_2_6_2_nodev_var_log"
+playbook_name: "cis_1_1_2_6_2_remediation"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-req_01: "Apply the nodev mount option to /var/log partition by editing /etc/fstab: add 'nodev' to the fourth field (mounting options) for the /var/log partition. Expected result: The /var/log entry in /etc/fstab includes 'nodev' in its options."
+req_01: "Apply the nodev mount option to /var/log partition by editing /etc/fstab and adding nodev to the fourth field for the /var/log entry. Expected result: The /etc/fstab file contains nodev in the mount options for /var/log."
 req_02: "Remount the /var/log partition with the updated options using command: `mount -o remount /var/log`. Expected result: The /var/log partition is remounted with the nodev option active."
-req_03: |
-  Verify the nodev option is set on /var/log partition using command: `mount | grep -E '\\s/var/log\\s' | grep -o 'nodev'`. Expected result: The output contains 'nodev'.
+req_03: "Verify the nodev option is set on /var/log partition using command: `findmnt -kn /var/log | grep -v nodev`. Expected result: The output contains no lines (nodev is active)."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

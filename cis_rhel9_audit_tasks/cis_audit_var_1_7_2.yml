@@ -1,16 +1,7 @@
-playbook_name: "audit_cis_1.7.2"
-backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-marker_file: "{{ backup_dir }}/temp_script_created.marker"
-req_01: "Check if the /etc/issue file exists and is readable using command: `cat /etc/issue`. Expected result: The file contents are displayed and match the site's login warning banner policy."
-req_02: |
-  Check that no operating system information escape sequences (\\v, \\r, \\m, \\s) or the OS ID from /etc/os-release are present in /etc/issue using command: `grep -E -i \"(\\\\v|\\\\r|\\\\m|\\\\s|$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/\"//g'))\" /etc/issue`. Expected result: No output is returned (the grep finds no matches).
-req_03: "Summarize overall compliance status: The local login warning banner is configured properly if the /etc/issue file exists with appropriate content per site policy and contains no OS release or system identification information."
-expected_banner: ""
-audit_script_02: "/tmp/check_issue_os.sh"
-audit_script_02_content: |
-  {% raw %}
-  #!/usr/bin/env bash
-  grep -E -i '(\v|\r|\m|\s|'"$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/"//g')"')' /etc/issue
-  {% endraw %}
-req_02_command: >-
-  {% raw %}grep -E -i '(\v|\r|\m|\s|'"$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/"//g')"')' /etc/issue{% endraw %}
+expected_banner: "Authorized users only. All activity may be monitored and reported."
+req_01: "Check if /etc/issue file exists using command: `test -f /etc/issue`. Expected result: file exists."
+req_02: "Check the contents of /etc/issue match site policy using command: `cat /etc/issue`. Expected result: contents match site policy."
+req_03: |
+  Check that /etc/issue does not contain operating system release information (\\v, \\r, \\m, \\s, or the OS ID from /etc/os-release) using command: `grep -E -i \"(\\\\v|\\\\r|\\\\m|\\\\s|$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/\"//g'))\" /etc/issue`. Expected result: no results returned.
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/issue does not exist, FAIL if the file exists but contents are missing or contain disallowed information."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

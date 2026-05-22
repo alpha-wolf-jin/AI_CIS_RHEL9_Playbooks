@@ -48,7 +48,7 @@
     task_01_cmd: "/bin/bash with audit script via stdin"
     task_01_rc: "{{ audit_result.rc | default(-1) }}"
     data_01: "{{ audit_result.stdout | default('Not executed') | trim }}"
-    status_01: "{{ 'SKIPPED' if not (auditd_installed | default(false)) else ('PASS' if audit_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    status_01: "{{ 'SKIP' if not (auditd_installed | default(false)) else ('PASS' if audit_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
     details_01: >-
       {% if not (auditd_installed | default(false)) %}
         Auditd package not installed; verification skipped.
@@ -64,7 +64,7 @@
     task_02_cmd: "Check 'PASS'/'FAIL' markers in script output"
     task_02_rc: "N/A"
     data_02: "{{ audit_result.stdout | default('Not executed') | trim }}"
-    status_02: "{{ 'SKIPPED' if not (auditd_installed | default(false)) else ('PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'UNKNOWN')) | trim }}"
+    status_02: "{{ 'SKIP' if not (auditd_installed | default(false)) else ('PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'UNKNOWN')) | trim }}"
     details_02: >-
       {% if not (auditd_installed | default(false)) %}
         Auditd not installed; verification skipped.

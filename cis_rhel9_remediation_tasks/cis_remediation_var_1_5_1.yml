@@ -1,6 +1,9 @@
-playbook_name: "CIS 1.5.1 - ASLR"
+playbook_name: "cis_1_5_1_remediation"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-sysctl_conf_file: "/etc/sysctl.d/60-kernel_sysctl.conf"
-kernel_param: "kernel.randomize_va_space"
-kernel_value: "2"
-permanent_remediation: true
+req_01: "Ensure sysctl is installed using command: `which sysctl`. Expected result: path to sysctl binary."
+req_02: |
+  Apply kernel.randomize_va_space = 2 in /etc/sysctl.d/60-kernel_sysctl.conf using command: `printf 'kernel.randomize_va_space = 2\n' >> /etc/sysctl.d/60-kernel_sysctl.conf`. Expected result: no output.
+req_03: "Apply the active kernel parameter using command: `sysctl -w kernel.randomize_va_space=2`. Expected result: kernel.randomize_va_space = 2"
+req_04: "Verify the setting is active using command: `sysctl kernel.randomize_va_space`. Expected result: kernel.randomize_va_space = 2"
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_06: "Create a task named 'Generate remediation report' using debug msg with EXACTLY this format: REMEDIATION REPORT — CIS 1.5.1 ..."

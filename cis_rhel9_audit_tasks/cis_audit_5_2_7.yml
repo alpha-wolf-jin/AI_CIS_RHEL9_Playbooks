@@ -118,7 +118,7 @@
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     status_03: >-
       {{ 'NOT_APPLICABLE' if su_missing
-         else ('SKIPPED' if not group_found
+         else ('SKIP' if not group_found
          else ('PASS' if result_03.stdout | default('') | trim is match('^GROUP_EMPTY:.*')
          else 'FAIL')) | trim }}
     details_03: >-

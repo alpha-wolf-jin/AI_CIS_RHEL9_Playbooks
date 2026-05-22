@@ -68,7 +68,7 @@
   - name: "Init report variables"
     set_fact:
       data_01: ""
-      status_01: "SKIPPED"
+      status_01: "SKIP"
       details_01: "Not executed"
       data_02: ""
       status_02: "UNKNOWN"
@@ -189,7 +189,7 @@
     set_fact:
       data_01: "{{ script_result.stdout | default('') | trim if module_exists else '' }}"
       status_01: |
-        {{ 'PASS' if not module_exists else ('APPLIED' if (script_result.stdout | default('') | trim | length > 0 and 'remediation of kernel module: \"' + kernel_module + '\" complete' in (script_result.stdout | default(''))) else 'SKIPPED') }}
+        {{ 'PASS' if not module_exists else ('APPLIED' if (script_result.stdout | default('') | trim | length > 0 and 'remediation of kernel module: \"' + kernel_module + '\" complete' in (script_result.stdout | default(''))) else 'SKIP') }}
       details_01: "{{ 'Module does not exist on any installed kernel — no remediation required' if not module_exists else (script_result.stdout | default('') | regex_search(' - .*$', multiline=True) | join('; ') | default('Script executed – no changes needed') | trim) }}"
     tags: [execute]
 

@@ -92,12 +92,12 @@
   changed_when: false
   when: rsyslog_installed
 
-# FIX: overall_compliance now yields SKIPPED when rsyslog is absent
+# FIX: overall_compliance now yields SKIP when rsyslog is absent
 - name: "Req 10 - Summarize overall compliance"
   set_fact:
     overall_compliance: >-
       {% if not rsyslog_installed %}
-        SKIPPED
+        SKIP
       {% elif (result_02.stdout | default('') | trim | length == 0) and
               (result_03.stdout | default('') | trim | length == 0) and
               (result_04.stdout | default('') | trim | length == 0) and
@@ -138,7 +138,7 @@
     - "  Command: dpkg -l rsyslog 2>/dev/null || rpm -q rsyslog 2>/dev/null"
     - "  Exit code: {{ result_01.rc | default(-1) }}"
     - "  Data: {{ result_01.stdout | default('') | trim }}"
-    - "  Status: {{ 'PASS' if rsyslog_installed else 'SKIPPED' }}"
+    - "  Status: {{ 'PASS' if rsyslog_installed else 'SKIP' }}"
     - "  Details: {{ 'rsyslog package is installed.' if rsyslog_installed else 'rsyslog package is not installed; remaining checks skipped.' }}"
     - ""
     - "REQUIREMENT 02 - {{ req_02 }}:"
@@ -146,7 +146,7 @@
     - "  Command: grep -Psi -- '^\\h*module\\(load=\"?imtcp\"?\\)' /etc/rsyslog.conf"
     - "  Exit code: {{ result_02.rc | default(-1) }}"
     - "  Data: {{ result_02.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_02.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_02.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp module loading found.' if result_02.stdout | default('') | trim == '' else 'Found imtcp module loading.') }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -154,7 +154,7 @@
     - "  Command: grep -Psi -- '^\\h*module\\(load=\"?imtcp\"?\\)' /etc/rsyslog.d/*.conf"
     - "  Exit code: {{ result_03.rc | default(-1) }}"
     - "  Data: {{ result_03.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_03.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_03.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp module loading found.' if result_03.stdout | default('') | trim == '' else 'Found imtcp module loading.') }}"
     - ""
     - "REQUIREMENT 04 - {{ req_04 }}:"
@@ -162,7 +162,7 @@
     - "  Command: grep -Psi -- '^\\h*input\\(type=\"?imtcp\"?\\b' /etc/rsyslog.conf"
     - "  Exit code: {{ result_04.rc | default(-1) }}"
     - "  Data: {{ result_04.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_04.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_04.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp input found.' if result_04.stdout | default('') | trim == '' else 'Found imtcp input.') }}"
     - ""
     - "REQUIREMENT 05 - {{ req_05 }}:"
@@ -170,7 +170,7 @@
     - "  Command: grep -Psi -- '^\\h*input\\(type=\"?imtcp\"?\\b' /etc/rsyslog.d/*.conf"
     - "  Exit code: {{ result_05.rc | default(-1) }}"
     - "  Data: {{ result_05.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_05.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_05.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No imtcp input found.' if result_05.stdout | default('') | trim == '' else 'Found imtcp input.') }}"
     - ""
     - "REQUIREMENT 06 - {{ req_06 }}:"
@@ -178,7 +178,7 @@
     - "  Command: grep -Psi -- '^\\h*\\$ModLoad\\h+imtcp\\b' /etc/rsyslog.conf"
     - "  Exit code: {{ result_06.rc | default(-1) }}"
     - "  Data: {{ result_06.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_06.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_06.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No ModLoad imtcp found.' if result_06.stdout | default('') | trim == '' else 'Found ModLoad imtcp.') }}"
     - ""
     - "REQUIREMENT 07 - {{ req_07 }}:"
@@ -186,7 +186,7 @@
     - "  Command: grep -Psi -- '^\\h*\\$ModLoad\\h+imtcp\\b' /etc/rsyslog.d/*.conf"
     - "  Exit code: {{ result_07.rc | default(-1) }}"
     - "  Data: {{ result_07.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_07.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_07.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No ModLoad imtcp found.' if result_07.stdout | default('') | trim == '' else 'Found ModLoad imtcp.') }}"
     - ""
     - "REQUIREMENT 08 - {{ req_08 }}:"
@@ -194,7 +194,7 @@
     - "  Command: grep -Psi -- '^\\h*\\$InputTCPServerRun\\b' /etc/rsyslog.conf"
     - "  Exit code: {{ result_08.rc | default(-1) }}"
     - "  Data: {{ result_08.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_08.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_08.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No InputTCPServerRun found.' if result_08.stdout | default('') | trim == '' else 'Found InputTCPServerRun.') }}"
     - ""
     - "REQUIREMENT 09 - {{ req_09 }}:"
@@ -202,7 +202,7 @@
     - "  Command: grep -Psi -- '^\\h*\\$InputTCPServerRun\\b' /etc/rsyslog.d/*.conf"
     - "  Exit code: {{ result_09.rc | default(-1) }}"
     - "  Data: {{ result_09.stdout | default('') | trim }}"
-    - "  Status: {{ 'SKIPPED' if not rsyslog_installed else ('PASS' if result_09.stdout | default('') | trim == '' else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if not rsyslog_installed else ('PASS' if result_09.stdout | default('') | trim == '' else 'FAIL') }}"
     - "  Details: {{ 'Skipped because rsyslog is not installed.' if not rsyslog_installed else ('No InputTCPServerRun found.' if result_09.stdout | default('') | trim == '' else 'Found InputTCPServerRun.') }}"
     - ""
     - "REQUIREMENT 10 - {{ req_10 }}:"

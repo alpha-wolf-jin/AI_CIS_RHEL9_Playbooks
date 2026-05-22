@@ -67,7 +67,7 @@
       task_01_cmd: "package_facts module"
       task_01_rc: 0
       data_01: "{{ 'auditd installed: ' ~ auditd_installed | string }}"
-      status_01: "{{ 'PASS' if auditd_installed else 'SKIPPED' }}"
+      status_01: "{{ 'PASS' if auditd_installed else 'SKIP' }}"
       details_01: "{{ 'auditd package found, proceeding with remediation' if auditd_installed else 'auditd package not installed, skipping remediation' }}"
       playbook_skipped: "{{ not auditd_installed }}"
     tags: [execute]

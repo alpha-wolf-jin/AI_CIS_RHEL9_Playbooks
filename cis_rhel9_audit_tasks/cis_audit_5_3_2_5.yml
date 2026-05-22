@@ -41,9 +41,9 @@
   ansible.builtin.set_fact:
     status_01: >-
       {%- if not (pam_installed | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif not (passwd_auth_exists | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif result_01.stdout | default('') | regex_findall('auth.*pam_unix\\.so') | length > 0
             and result_01.stdout | default('') | regex_findall('account.*pam_unix\\.so') | length > 0
             and result_01.stdout | default('') | regex_findall('password.*pam_unix\\.so') | length > 0
@@ -88,9 +88,9 @@
   ansible.builtin.set_fact:
     status_02: >-
       {%- if not (pam_installed | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif not (system_auth_exists | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif result_02.stdout | default('') | regex_findall('auth.*pam_unix\\.so') | length > 0
             and result_02.stdout | default('') | regex_findall('account.*pam_unix\\.so') | length > 0
             and result_02.stdout | default('') | regex_findall('password.*pam_unix\\.so') | length > 0
@@ -126,7 +126,7 @@
   ansible.builtin.set_fact:
     status_03: >-
       {%- if not (pam_installed | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif (status_01 | default('FAIL')) == 'PASS' and (status_02 | default('FAIL')) == 'PASS' -%}
         PASS
       {%- else -%}
@@ -145,7 +145,7 @@
     details_03: >-
       {%- if status_03 == 'PASS' -%}
         Both files contain all required pam_unix.so lines
-      {%- elif status_03 == 'SKIPPED' -%}
+      {%- elif status_03 == 'SKIP' -%}
         PAM package is not installed or configuration files not found
       {%- else -%}
         One or both files are missing required lines or are absent

@@ -70,7 +70,7 @@
     data_02: >-
       {{ 'N/A - no separate /tmp partition' if _tmp_missing else (result_02.stdout | default('') | trim) }}
     status_02: >-
-      {{ 'SKIPPED' if _tmp_missing else
+      {{ 'SKIP' if _tmp_missing else
          ('PASS' if (result_02.stdout | default('') | trim | length == 0) else 'FAIL') }}
     details_02: >-
       {{ 'No /tmp partition – nodev check not applicable' if _tmp_missing else
@@ -83,7 +83,7 @@
     task_03_cmd: "N/A"
     task_03_rc: "0"
     overall_compliance: >-
-      {{ 'SKIPPED' if _tmp_missing else
+      {{ 'SKIP' if _tmp_missing else
          ('PASS' if (result_01.stdout | default('') | trim | length > 0) and (result_02.stdout | default('') | trim | length == 0)
           else 'FAIL') }}
 
@@ -91,7 +91,7 @@
   ansible.builtin.set_fact:
     data_03: "{{ overall_compliance | default('UNKNOWN') | trim }}"
     status_03: "PASS"
-    details_03: "{{ 'Audit not applicable – no separate /tmp partition' if overall_compliance == 'SKIPPED' else ('System is compliant: /tmp partition exists and nodev option is set' if overall_compliance == 'PASS' else 'System is non-compliant') }}"
+    details_03: "{{ 'Audit not applicable – no separate /tmp partition' if overall_compliance == 'SKIP' else ('System is compliant: /tmp partition exists and nodev option is set' if overall_compliance == 'PASS' else 'System is non-compliant') }}"
 
 - name: "Req 04 - Store final audit result in cis_result"
   ansible.builtin.set_fact:

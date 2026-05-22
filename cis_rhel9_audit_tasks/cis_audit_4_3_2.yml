@@ -50,7 +50,7 @@
     task_01_cmd: "which nft"
     task_01_rc: "{{ result_01.rc }}"
     data_01: "{{ result_01.stdout | default('') | trim }}"
-    status_01: "{{ 'PASS' if result_01.rc == 0 else 'SKIPPED' | trim }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'SKIP' | trim }}"
     details_01: "{{ 'nft binary found at ' + result_01.stdout if result_01.rc == 0 else 'nft binary not found, nftables not in use' | trim }}"
 
 - name: "Req 02 - Check if nftables service is enabled"
@@ -68,7 +68,7 @@
     task_02_cmd: "systemctl is-enabled nftables.service"
     task_02_rc: "{{ result_02.rc if result_02 is defined and not result_02.skipped | default(false) else -1 }}"
     data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined and not result_02.skipped | default(false) else '' }}"
-    status_02: "{{ 'SKIPPED' if (result_02 is defined and result_02.skipped | default(false)) or not (nft_available | default(false)) else ('PASS' if result_02.rc == 0 and (result_02.stdout | default('') | trim) == 'enabled' else 'FAIL') | trim }}"
+    status_02: "{{ 'SKIP' if (result_02 is defined and result_02.skipped | default(false)) or not (nft_available | default(false)) else ('PASS' if result_02.rc == 0 and (result_02.stdout | default('') | trim) == 'enabled' else 'FAIL') | trim }}"
 
 - name: "Store requirement 02 details - Set details"
   ansible.builtin.set_fact:
@@ -89,7 +89,7 @@
     task_03_cmd: "systemctl is-enabled nftables.service | grep -q 'enabled' && nft list ruleset | awk '/hook input/,/}/' | grep 'ct state'"
     task_03_rc: "{{ result_03.rc if result_03 is defined and not result_03.skipped | default(false) else -1 }}"
     data_03: "{{ result_03.stdout | default('') | trim if result_03 is defined and not result_03.skipped | default(false) else '' }}"
-    status_03: "{{ 'SKIPPED' if (result_03 is defined and result_03.skipped | default(false)) or not (nft_available | default(false)) else ('PASS' if result_03.rc == 0 else 'FAIL') | trim }}"
+    status_03: "{{ 'SKIP' if (result_03 is defined and result_03.skipped | default(false)) or not (nft_available | default(false)) else ('PASS' if result_03.rc == 0 else 'FAIL') | trim }}"
 
 - name: "Store requirement 03 details - Set details"
   ansible.builtin.set_fact:
@@ -99,7 +99,7 @@
   ansible.builtin.set_fact:
     status_04: >-
       {%- if not (nft_available | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif ('ip protocol tcp ct state established accept' in data_03 | default('')) and
               ('ip protocol udp ct state established accept' in data_03 | default('')) and
               ('ip protocol icmp ct state established accept' in data_03 | default('')) -%}
@@ -115,12 +115,12 @@
     task_04_cmd: "N/A"
     task_04_rc: 0
     data_04: "{{ data_03 | default('') }}"
-    status_04: "{{ 'SKIPPED' if not (nft_available | default(false)) else status_04 | trim }}"
+    status_04: "{{ 'SKIP' if not (nft_available | default(false)) else status_04 | trim }}"
     details_04: "{{ 'Site policy rules satisfied' if status_04 == 'PASS' else ('Missing required established connection rules' if status_04 == 'FAIL' else 'Not applicable, nftables not in use') | trim }}"
 
 - name: "Req 05 - Store final audit result"
   ansible.builtin.set_fact:
-    cis_result: "{{ 'SKIPPED' if not (nft_available | default(false)) else status_04 | trim }}"
+    cis_result: "{{ 'SKIP' if not (nft_available | default(false)) else status_04 | trim }}"
 
 - name: "Store requirement 05 display details"
   ansible.builtin.set_fact:

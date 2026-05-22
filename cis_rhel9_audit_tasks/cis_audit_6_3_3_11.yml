@@ -71,7 +71,7 @@
     data_02: "{{ (result_ondisk | default(dict(stdout=''))).stdout | trim }}"
     status_02: >-
       {{ 
-        'SKIPPED' if not auditd_installed else
+        'SKIP' if not auditd_installed else
         ('PASS' if '-w /var/run/utmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'FAIL')
         | trim
       }}
@@ -92,7 +92,7 @@
     data_03: "{{ (result_ondisk | default(dict(stdout=''))).stdout | trim }}"
     status_03: >-
       {{ 
-        'SKIPPED' if not auditd_installed else
+        'SKIP' if not auditd_installed else
         ('PASS' if '-w /var/log/wtmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'FAIL')
         | trim
       }}
@@ -113,7 +113,7 @@
     data_04: "{{ (result_ondisk | default(dict(stdout=''))).stdout | trim }}"
     status_04: >-
       {{ 
-        'SKIPPED' if not auditd_installed else
+        'SKIP' if not auditd_installed else
         ('PASS' if '-w /var/log/btmp -p wa -k session' in (result_ondisk | default(dict(stdout=''))).stdout else 'FAIL')
         | trim
       }}
@@ -146,7 +146,7 @@
     data_05: "{{ (result_running | default(dict(stdout=''))).stdout | trim }}"
     status_05: >-
       {{ 
-        'SKIPPED' if not auditd_installed else
+        'SKIP' if not auditd_installed else
         ('PASS' if '-w /var/run/utmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'FAIL')
         | trim
       }}
@@ -167,7 +167,7 @@
     data_06: "{{ (result_running | default(dict(stdout=''))).stdout | trim }}"
     status_06: >-
       {{ 
-        'SKIPPED' if not auditd_installed else
+        'SKIP' if not auditd_installed else
         ('PASS' if '-w /var/log/wtmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'FAIL')
         | trim
       }}
@@ -188,7 +188,7 @@
     data_07: "{{ (result_running | default(dict(stdout=''))).stdout | trim }}"
     status_07: >-
       {{ 
-        'SKIPPED' if not auditd_installed else
+        'SKIP' if not auditd_installed else
         ('PASS' if '-w /var/log/btmp -p wa -k session' in (result_running | default(dict(stdout=''))).stdout else 'FAIL')
         | trim
       }}

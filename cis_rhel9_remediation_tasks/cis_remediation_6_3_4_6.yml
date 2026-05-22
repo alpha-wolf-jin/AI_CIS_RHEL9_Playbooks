@@ -95,7 +95,7 @@
       task_01_cmd: "command -v find && command -v chown"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if result_01 is skipped else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if result_01 is skipped else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
       details_01: "{{ 'audit package not installed' if result_01 is skipped else ('Both commands available' if result_01.rc | default(-1) == 0 else 'Commands not found') }}"
     when: "result_01 is defined"
     tags: [execute]
@@ -106,7 +106,7 @@
       task_01_cmd: "command -v find && command -v chown"
       task_01_rc: -1
       data_01: ""
-      status_01: "SKIPPED"
+      status_01: "SKIP"
       details_01: "audit package not installed"
     when: "result_01 is not defined"
     tags: [execute]
@@ -128,7 +128,7 @@
         find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -user root -exec chown root {} +
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if result_02 is skipped else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
       details_02: "{{ 'Prerequisites not met' if result_02 is skipped else ('Ownership changed successfully' if result_02.rc | default(-1) == 0 else 'Failed to change ownership') }}"
     when: "result_02 is defined"
     tags: [execute]
@@ -140,7 +140,7 @@
         find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -user root -exec chown root {} +
       task_02_rc: -1
       data_02: ""
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "Prerequisites not met"
     when: "result_02 is not defined"
     tags: [execute]
@@ -162,7 +162,7 @@
         find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -user root
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if result_03 is skipped else ('PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if result_03 is skipped else ('PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL') }}"
       details_03: "{{ 'Previous step failed or skipped' if result_03 is skipped else ('All files owned by root' if (result_03.stdout | default('') | trim) == '' else 'Files found with non-root ownership: ' + (result_03.stdout | default('') | trim)) }}"
     when: "result_03 is defined"
     tags: [execute]
@@ -174,7 +174,7 @@
         find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -user root
       task_03_rc: -1
       data_03: ""
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "Previous step failed or skipped"
     when: "result_03 is not defined"
     tags: [execute]

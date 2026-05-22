@@ -50,7 +50,7 @@
     task_01_cmd: "rpm -q selinux-policy-targeted"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
     data_01: "{{ result_01.stdout | default('') | trim }}"
-    status_01: "{{ 'PASS' if result_01.rc == 0 else 'SKIPPED' }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'SKIP' }}"
     details_01: "{{ 'Package selinux-policy-targeted is installed.' if result_01.rc == 0 else 'Package not installed; SELinux policy audit skipped.' }}"
 
 - name: "Req 02 - Check SELinux policy type configuration in /etc/selinux/config"
@@ -68,7 +68,7 @@
     task_02_cmd: "grep -E '^[[:space:]]*SELINUXTYPE=(targeted|mls)[[:space:]]*$' /etc/selinux/config"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
-    status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else ('SKIPPED' if (result_02.skipped | default(false)) else 'FAIL') }}"
+    status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else ('SKIP' if (result_02.skipped | default(false)) else 'FAIL') }}"
     details_02: "{{ 'Configuration matches expected policy type (targeted or mls).' if (result_02.rc | default(-1)) == 0 else ('SELinux policy type check skipped (SELinux not installed).' if (result_02.skipped | default(false)) else 'Configuration does not match expected policy type.') }}"
 
 - name: "Req 03 - Check currently loaded SELinux policy"
@@ -86,7 +86,7 @@
     task_03_cmd: "sestatus | awk '/^Loaded policy name:/{print $NF}'"
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     data_03: "{{ result_03.stdout | default('') | trim }}"
-    status_03: "{{ 'SKIPPED' if (result_03.skipped | default(false)) else ('PASS' if (result_03.stdout | default('') | trim) in ['targeted', 'mls'] else 'FAIL') }}"
+    status_03: "{{ 'SKIP' if (result_03.skipped | default(false)) else ('PASS' if (result_03.stdout | default('') | trim) in ['targeted', 'mls'] else 'FAIL') }}"
     details_03: "{{ 'Loaded policy name matches targeted or mls.' if (not (result_03.skipped | default(false))) and ((result_03.stdout | default('') | trim) in ['targeted', 'mls']) else ('Loaded policy check skipped (SELinux not installed).' if (result_03.skipped | default(false)) else 'Loaded policy does not match expected value.') }}"
 
 - name: "Req 04 - Summarize overall compliance"
@@ -94,8 +94,8 @@
     task_04_name: "Overall compliance assessment"
     task_04_cmd: "N/A"
     task_04_rc: 0
-    status_04: "{{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' else ('SKIPPED' if status_01 == 'SKIPPED' else 'FAIL') }}"
-    details_04: "{{ 'SELinux policy is configured to meet or exceed the default targeted policy.' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' else ('Audit skipped because SELinux is not installed.' if status_01 == 'SKIPPED' else 'One or more checks failed; SELinux policy does not meet requirement.') }}"
+    status_04: "{{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' else ('SKIP' if status_01 == 'SKIP' else 'FAIL') }}"
+    details_04: "{{ 'SELinux policy is configured to meet or exceed the default targeted policy.' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' else ('Audit skipped because SELinux is not installed.' if status_01 == 'SKIP' else 'One or more checks failed; SELinux policy does not meet requirement.') }}"
     data_04: "{{ status_01 }}, {{ status_02 }}, {{ status_03 }}"
 
 - name: "Req 05 - Store overall result in cis_result"

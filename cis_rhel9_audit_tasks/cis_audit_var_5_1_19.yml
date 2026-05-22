@@ -2,5 +2,5 @@ req_01: "Check if OpenSSH server is installed using command: `which sshd || dpkg
 req_02: "Check if PermitEmptyPasswords is set to no in the global sshd configuration using command: `sshd -T | grep permitemptypasswords`. Expected result: permitemptypasswords no"
 req_03: "Check if PermitEmptyPasswords is set to no for a specific user (e.g., sshuser) using match block context using command: `sshd -T -C user=sshuser | grep permitemptypasswords`. Expected result: permitemptypasswords no"
 req_04: "Summarize overall compliance status: Ensure that all checks above return the expected result. If any check fails, the system is non-compliant."
-req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 user_match: "sshuser"

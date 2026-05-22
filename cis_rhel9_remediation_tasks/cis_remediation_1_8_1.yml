@@ -2,185 +2,132 @@
 - name: Initialize meta data variables
   include_vars: cis_remediation_var_1_8_1.yml
 
-- name: "Snapshot - Check for existing checkpoint"
-  ansible.builtin.stat:
-    path: "{{ state_guard_flag }}"
-  register: _sg_flag
-  tags: [snapshot]
-- name: "Snapshot - Check if previous gdm state file exists"
-  ansible.builtin.stat:
-    path: "{{ state_guard_dir }}/gdm_installed.state"
-  register: _sg_state_stat
-  when: _sg_flag.stat.exists
-  tags: [snapshot]
-- name: "Snapshot - Read previous gdm state"
-  ansible.builtin.slurp:
-    src: "{{ state_guard_dir }}/gdm_installed.state"
-  register: _sg_state_slurp
-  when: _sg_state_stat.stat.exists | default(false)
-  tags: [snapshot]
-- name: "Snapshot - Reinstall gdm if previously installed"
-  ansible.builtin.dnf:
-    name: "{{ package_name }}"
-    state: present
-  failed_when: false
-  when:
-  - _sg_flag.stat.exists
-  - _sg_state_slurp.content | default('') | b64decode | trim == 'installed'
-  tags: [snapshot]
-- name: "Snapshot - Remove old checkpoint"
+- name: "Snapshot - Create backup directory"
   ansible.builtin.file:
-    path: "{{ state_guard_dir }}"
-    state: absent
-  when: _sg_flag.stat.exists
-  tags: [snapshot]
-- name: "Snapshot - Create checkpoint directory"
-  ansible.builtin.file:
-    path: "{{ state_guard_dir }}"
+    path: "{{ backup_dir }}"
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Capture gdm installed status"
-  ansible.builtin.shell: "rpm -q {{ package_name }}"
-  args:
-    executable: /bin/bash
-  register: _sg_gdm_status
-  failed_when: false
-  changed_when: false
-  tags: [snapshot]
-- name: "Snapshot - Write gdm status to file"
-  ansible.builtin.copy:
-    content: "{{ 'installed' if _sg_gdm_status.rc == 0 else 'not_installed' }}"
-    dest: "{{ state_guard_dir }}/gdm_installed.state"
-  tags: [snapshot]
-- name: "Snapshot - Create checkpoint flag"
-  ansible.builtin.copy:
-    content: "checkpoint"
-    dest: "{{ state_guard_flag }}"
-  tags: [snapshot]
 
 - block:
-# === STATE GUARD – EXECUTE PHASE ===
-  - name: "Req 01 - Check if {{ package_name }} is installed"
-    ansible.builtin.shell: "rpm -q {{ package_name }}"
-    args:
-      executable: /bin/bash
-    register: gdm_check_result
-    failed_when: false
-    changed_when: false
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
     tags: [execute]
 
-  - name: "Set fact - gdm installed status"
-    ansible.builtin.set_fact:
-      gdm_is_installed: "{{ gdm_check_result.rc == 0 }}"
+  - name: "Req 01 - Check if {{ package_name }} is installed"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
     tags: [execute]
 
   - name: "Req 01 - Remove {{ package_name }} package"
     ansible.builtin.dnf:
       name: "{{ package_name }}"
       state: absent
-    register: remove_result
+    register: dnf_remove_result
     failed_when: false
-    when: gdm_is_installed
+    when: "package_name in ansible_facts.packages"
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Remove {{ package_name }} package using dnf"
+      task_01_cmd: "dnf remove {{ package_name }}"
+      task_01_rc: "{{ dnf_remove_result.rc | default(-1) }}"
+      data_01: "{{ dnf_remove_result.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIP' if package_name not in ansible_facts.packages else ('PASS' if dnf_remove_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'SKIP: ' + package_name + ' is not installed' if package_name not in ansible_facts.packages else ('PASS: ' + package_name + ' removed successfully' if dnf_remove_result.rc | default(-1) == 0 else 'FAIL: Could not remove ' + package_name) | trim }}"
     tags: [execute]
 
   - name: "Req 02 - Verify {{ package_name }} is removed"
-    ansible.builtin.shell: "rpm -q {{ package_name }}"
+    ansible.builtin.shell: rpm -q {{ package_name }}
     args:
       executable: /bin/bash
     register: verify_result
     failed_when: false
     changed_when: false
-    when: gdm_is_installed | default(false)
     tags: [execute]
 
-  - name: "Set fact - requirement 01 details"
+  - name: "Store requirement 02 details"
     ansible.builtin.set_fact:
-      task_01_cmd: "dnf remove {{ package_name }}"
-      exit_code_01: "{{ remove_result.rc | default(-1) if gdm_is_installed else -1 }}"
-      data_01: "{{ remove_result.stdout | default('') if gdm_is_installed else '' }}"
-      status_01: "{{ 'APPLIED' if (gdm_is_installed | default(false)) and (remove_result is defined and remove_result.failed == false) else ('SKIPPED' if not (gdm_is_installed | default(false)) else 'FAIL') }}"
-      details_01: "{{ 'Package removed successfully' if (gdm_is_installed | default(false)) and (remove_result is defined and remove_result.failed == false) else ('Skipped because package not installed' if not (gdm_is_installed | default(false)) else 'Removal failed') }}"
-    tags: [execute]
-
-  - name: "Set fact - requirement 02 details"
-    ansible.builtin.set_fact:
+      task_02_name: "Verify {{ package_name }} is removed using rpm -q"
       task_02_cmd: "rpm -q {{ package_name }}"
-      exit_code_02: "{{ verify_result.rc | default(-1) }}"
-      data_02: "{{ verify_result.stdout | default('') }}"
-      status_02: "{{ 'SKIPPED' if not (gdm_is_installed | default(false)) else ('APPLIED' if verify_result.rc != 0 else 'FAIL') }}"
-      details_02: "{{ 'Skipped because package not installed' if not (gdm_is_installed | default(false)) else ('Package not installed (verified)' if verify_result.rc != 0 else 'Package still installed') }}"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if verify_result.rc | default(-1) != 0 else 'FAIL' | trim }}"
+      details_02: "{{ 'PASS: ' + package_name + ' is not installed' if verify_result.rc | default(-1) != 0 else 'FAIL: ' + package_name + ' is still installed' | trim }}"
     tags: [execute]
 
-  - name: "Set fact - overall status"
+  - name: "Req 03 - Store final remediation result in cis_result"
     ansible.builtin.set_fact:
-      overall_status: "{{ 'FAIL' if 'FAIL' in [status_01, status_02] else ('SKIPPED' if status_01 == 'SKIPPED' and status_02 == 'SKIPPED' else 'APPLIED') }}"
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "N/A"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "Stored cis_result from overall remediation status"
     tags: [execute]
 
   - name: "Generate remediation report"
     ansible.builtin.debug:
       msg:
-      - "========================================================"
-      - "        REMEDIATION REPORT — CIS 1.8.1"
-      - "========================================================"
+      - "REMEDIATION REPORT — CIS 1.8.1"
       - "Reference: CIS Benchmark checkpoint 1.8.1"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: Remove {{ package_name }} package"
-      - "  Command: {{ task_01_cmd }}"
-      - "  Exit code: {{ exit_code_01 }}"
-      - "  Data: {{ data_01 | trim }}"
-      - "  Status: {{ status_01 }}"
-      - "  Details: {{ details_01 }}"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: Verify {{ package_name }} removed"
-      - "  Command: {{ task_02_cmd }}"
-      - "  Exit code: {{ exit_code_02 }}"
-      - "  Data: {{ data_02 | trim }}"
-      - "  Status: {{ status_02 }}"
-      - "  Details: {{ details_02 }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ overall_status }}"
-      - "  Details:"
-      - "    Requirement 01: {{ status_01 }}"
-      - "    Requirement 02: {{ status_02 }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
-# === STATE GUARD – RESTORE PHASE (GUARANTEED) ===
-  - name: "Restore - Check if checkpoint exists"
-    ansible.builtin.stat:
-      path: "{{ state_guard_flag }}"
-    register: _sg_restore_flag
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Read original gdm state"
-    ansible.builtin.slurp:
-      src: "{{ state_guard_dir }}/gdm_installed.state"
-    register: _sg_restore_state
-    when: _sg_restore_flag.stat.exists
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Reinstall gdm if originally installed"
-    ansible.builtin.dnf:
-      name: "{{ package_name }}"
-      state: present
-    when:
-    - _sg_restore_flag.stat.exists
-    - _sg_restore_state.content | default('') | b64decode | trim == 'installed'
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Remove checkpoint"
+  - name: "Restore - Remove backup directory"
     ansible.builtin.file:
-      path: "{{ state_guard_dir }}"
+      path: "{{ backup_dir }}"
       state: absent
-    when: _sg_restore_flag.stat.exists
     failed_when: false
     tags: [restore]

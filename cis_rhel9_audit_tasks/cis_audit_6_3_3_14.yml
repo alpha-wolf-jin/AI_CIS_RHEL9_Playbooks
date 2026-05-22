@@ -54,7 +54,7 @@
   ansible.builtin.set_fact:
     data_02: "{{ result_ondisk.stdout | default('') | trim if result_ondisk is defined else '' }}"
     status_02: >-
-      {{ 'SKIPPED' if not (mac_installed | default(false))
+      {{ 'SKIP' if not (mac_installed | default(false))
       else 'PASS' if result_ondisk is defined and result_ondisk.stdout | default('') | regex_search('^-w /etc/selinux -p wa -k MAC-policy$', multiline=True)
       else 'FAIL' }}
     details_02: >-
@@ -63,7 +63,7 @@
       else 'Expected pattern not found for /etc/selinux in on-disk rules' }}
     data_03: "{{ result_ondisk.stdout | default('') | trim if result_ondisk is defined else '' }}"
     status_03: >-
-      {{ 'SKIPPED' if not (mac_installed | default(false))
+      {{ 'SKIP' if not (mac_installed | default(false))
       else 'PASS' if result_ondisk is defined and result_ondisk.stdout | default('') | regex_search('^-w /usr/share/selinux -p wa -k MAC-policy$', multiline=True)
       else 'FAIL' }}
     details_03: >-
@@ -72,7 +72,7 @@
       else 'Expected pattern not found for /usr/share/selinux in on-disk rules' }}
     data_04: "{{ result_running.stdout | default('') | trim if result_running is defined else '' }}"
     status_04: >-
-      {{ 'SKIPPED' if not (mac_installed | default(false))
+      {{ 'SKIP' if not (mac_installed | default(false))
       else 'PASS' if result_running is defined and result_running.stdout | default('') | regex_search('^-w /etc/selinux -p wa -k MAC-policy$', multiline=True)
       else 'FAIL' }}
     details_04: >-
@@ -81,7 +81,7 @@
       else 'Expected pattern not found for /etc/selinux in running rules' }}
     data_05: "{{ result_running.stdout | default('') | trim if result_running is defined else '' }}"
     status_05: >-
-      {{ 'SKIPPED' if not (mac_installed | default(false))
+      {{ 'SKIP' if not (mac_installed | default(false))
       else 'PASS' if result_running is defined and result_running.stdout | default('') | regex_search('^-w /usr/share/selinux -p wa -k MAC-policy$', multiline=True)
       else 'FAIL' }}
     details_05: >-

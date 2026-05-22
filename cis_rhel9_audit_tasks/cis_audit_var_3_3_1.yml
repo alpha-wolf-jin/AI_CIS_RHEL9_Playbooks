@@ -1,6 +1,6 @@
 req_01: "Run the provided audit script to verify Ensure ip forwarding is disabled. Expected result: Script applies the required changes"
 req_02: "VERIFY: Summarise compliance status for Ensure ip forwarding is disabled. Expected result: PASS if compliant, FAIL otherwise"
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 req_04: "Generate audit report using debug msg with exact format specified in requirement"
 audit_script_path: "/tmp/cis_3_3_1_audit.sh"
 marker_path: "/tmp/.cis_3_3_1_audit_marker"

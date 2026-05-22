@@ -51,7 +51,7 @@
     task_01_cmd: "systemctl --quiet is-enabled nftables.service"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
     data_01: "{{ result_01.rc | default(-1) | string }}"
-    status_01: "{{ 'SKIPPED' if not nftables_installed else 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+    status_01: "{{ 'SKIP' if not nftables_installed else 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
     details_01: "{{ 'Not applicable - nftables package not installed' if not nftables_installed else 'Service is enabled' if result_01.rc | default(-1) == 0 else 'Service is not enabled' }}"
   tags: [audit]
 - name: "Req 2 - Check nftables input hook default policy"
@@ -72,7 +72,7 @@
     task_02_cmd: "systemctl --quiet is-enabled nftables.service && nft list ruleset | grep 'hook input' | grep -v 'policy drop'"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim if (nftables_installed and result_01.rc | default(-1) == 0) else 'N/A' }}"
-    status_02: "{{ 'SKIPPED' if not nftables_installed else 'SKIPPED' if result_01.rc | default(-1) != 0 else 'PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL' }}"
+    status_02: "{{ 'SKIP' if not nftables_installed else 'SKIP' if result_01.rc | default(-1) != 0 else 'PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL' }}"
     details_02: "{{ 'Not applicable - nftables package not installed' if not nftables_installed else 'Skipped - nftables service not enabled' if result_01.rc | default(-1) != 0 else 'Input base chain has default DROP policy' if (result_02.stdout | default('') | trim) == '' else 'Non-compliant hooks: ' ~ (result_02.stdout | default('') | trim) }}"
   tags: [audit]
 - name: "Req 3 - Check nftables forward hook default policy"
@@ -93,7 +93,7 @@
     task_03_cmd: "systemctl --quiet is-enabled nftables.service && nft list ruleset | grep 'hook forward' | grep -v 'policy drop'"
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     data_03: "{{ result_03.stdout | default('') | trim if (nftables_installed and result_01.rc | default(-1) == 0) else 'N/A' }}"
-    status_03: "{{ 'SKIPPED' if not nftables_installed else 'SKIPPED' if result_01.rc | default(-1) != 0 else 'PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL' }}"
+    status_03: "{{ 'SKIP' if not nftables_installed else 'SKIP' if result_01.rc | default(-1) != 0 else 'PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL' }}"
     details_03: "{{ 'Not applicable - nftables package not installed' if not nftables_installed else 'Skipped - nftables service not enabled' if result_01.rc | default(-1) != 0 else 'Forward base chain has default DROP policy' if (result_03.stdout | default('') | trim) == '' else 'Non-compliant hooks: ' ~ (result_03.stdout | default('') | trim) }}"
   tags: [audit]
 - name: "Determine overall compliance"
@@ -104,9 +104,9 @@
     data_04: "N/A"
     status_04: >-
       {% if not nftables_installed %}
-        SKIPPED
+        SKIP
       {% elif result_01.rc | default(-1) != 0 %}
-        SKIPPED
+        SKIP
       {% elif (result_02.stdout | default('') | trim) == '' and (result_03.stdout | default('') | trim) == '' %}
         PASS
       {% else %}

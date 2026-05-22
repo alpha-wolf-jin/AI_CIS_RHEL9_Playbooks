@@ -79,7 +79,7 @@
       task_01_cmd: "rpm -q openssh-server"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'SKIPPED' }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 else 'SKIP' }}"
       details_01: "{{ 'openssh-server is installed' if (result_01.rc | default(-1)) == 0 else 'openssh-server is NOT installed – skipping remediation' }}"
       playbook_skipped: "{{ (result_01.rc | default(-1)) != 0 }}"
     tags: [execute]
@@ -169,15 +169,15 @@
 
   - name: "Set skipped status when package not installed"
     ansible.builtin.set_fact:
-      status_01: "SKIPPED"
+      status_01: "SKIP"
       details_01: "openssh-server is not installed"
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "openssh-server is not installed"
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "openssh-server is not installed"
-      status_04: "SKIPPED"
+      status_04: "SKIP"
       details_04: "openssh-server is not installed"
-      status_05: "SKIPPED"
+      status_05: "SKIP"
       details_05: "openssh-server is not installed"
     when: "playbook_skipped | bool"
     tags: [execute]

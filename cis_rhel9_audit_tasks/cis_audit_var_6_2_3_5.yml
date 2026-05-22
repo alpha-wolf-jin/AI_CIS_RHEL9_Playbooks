@@ -3,4 +3,4 @@ req_02: "Check the contents of /etc/rsyslog.conf for appropriate logging rules u
 req_03: "Check the contents of /etc/rsyslog.d/*.conf files for appropriate logging rules using command: `cat /etc/rsyslog.d/*.conf`. Expected result: files exist and contain valid logging directives."
 req_04: "Check that /var/log/maillog exists and logs information as expected using command: `ls -l /var/log/maillog`. Expected result: file exists and has non-zero size."
 req_05: "Summarize overall compliance status: all checks passed."
-req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

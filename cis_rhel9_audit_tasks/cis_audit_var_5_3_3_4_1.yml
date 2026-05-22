@@ -3,4 +3,4 @@ req_01: |
 req_02: |
   Check that none of the returned lines from the previous command include the nullok argument using command: `grep -P -- '^\\h*(auth|account|password|session)\\h+(requisite|required|sufficient)\\h+pam_unix\\.so\\b' /etc/pam.d/password-auth /etc/pam.d/system-auth | grep nullok`. Expected result: No output (empty).
 req_03: "Verify overall compliance: Ensure that the pam_unix.so module does not have the nullok argument in any PAM configuration line. Expected result: All lines from the first check are present and none contain nullok."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

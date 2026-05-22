@@ -3,8 +3,8 @@ backup_dir: "/var/log/ai-playbooks-backup/cis_3.2.3"
 req_01: |
   1. Run the provided audit script to verify Ensure rds kernel module is not available. Run the following script to verify:\n- IF - the rds kernel module is available in ANY installed kernel, verify:\n  • An entry including /bin/true or /bin/false exists in a file within the /etc/modprobe.d/ directory\n  • The module is deny listed in a file within the /etc/modprobe.d/ directory\n  • The module is not loaded in the running kernel\n- IF - the rds kernel module is not available on the system, or pre-compiled into the kernel, no additional configuration is necessary
 req_02: "2. VERIFY: Summarise compliance status for Ensure rds kernel module is not available. Expected result: PASS if compliant, FAIL otherwise"
-req_03: "3. Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
-req_04: !unsafe "4. Create a task named 'Generate audit report' using debug msg with EXACTLY this format:\nAUDIT REPORT — CIS 3.2.3\nReference: CIS Benchmark checkpoint 3.2.3\nThen for each requirement: REQUIREMENT NN - {{ req_NN }}:\n  With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIPPED/UNKNOWN), Details.\nEnd with OVERALL COMPLIANCE: section containing Result: {{ cis_result }}\n"
+req_03: "3. Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
+req_04: !unsafe "4. Create a task named 'Generate audit report' using debug msg with EXACTLY this format:\nAUDIT REPORT — CIS 3.2.3\nReference: CIS Benchmark checkpoint 3.2.3\nThen for each requirement: REQUIREMENT NN - {{ req_NN }}:\n  With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIP/UNKNOWN), Details.\nEnd with OVERALL COMPLIANCE: section containing Result: {{ cis_result }}\n"
 audit_script_content: |
   {% raw %}
   #!/usr/bin/env bash

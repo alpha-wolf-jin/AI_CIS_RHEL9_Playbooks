@@ -35,7 +35,7 @@
     task_02_cmd: "cat /etc/rsyslog.conf"
     task_02_rc: "{{ (result_02.rc | default(-1)) if rsyslog_installed else -1 }}"
     data_02: "{{ (result_02.stdout | default('') | trim) if rsyslog_installed else 'Not applicable (rsyslog not installed)' }}"
-    status_02: "{{ ('PASS' if (rsyslog_installed and result_02.rc | default(-1) == 0 and (result_02.stdout | default('') | trim | length > 0)) else ('SKIPPED' if not rsyslog_installed else 'FAIL')) | trim }}"
+    status_02: "{{ ('PASS' if (rsyslog_installed and result_02.rc | default(-1) == 0 and (result_02.stdout | default('') | trim | length > 0)) else ('SKIP' if not rsyslog_installed else 'FAIL')) | trim }}"
     details_02: "{{ ('File exists and contains content' if (rsyslog_installed and result_02.rc | default(-1) == 0 and (result_02.stdout | default('') | trim | length > 0)) else ('Package not installed' if not rsyslog_installed else 'File empty or missing')) | trim }}"
 
 - name: "Req 03 - Check contents of /etc/rsyslog.d/*.conf"
@@ -55,7 +55,7 @@
     data_03: "{{ (result_03.stdout | default('') | trim) if rsyslog_installed else 'Not applicable (rsyslog not installed)' }}"
     status_03: >-
       {{ ('PASS' if (rsyslog_installed and result_03.rc | default(-1) == 0 and (result_03.stdout | default('') | trim | length > 0))
-          else ('SKIPPED' if not rsyslog_installed else 'FAIL')) | trim }}
+          else ('SKIP' if not rsyslog_installed else 'FAIL')) | trim }}
     details_03: "{{ ('Files exist and contain content' if (rsyslog_installed and result_03.rc | default(-1) == 0 and (result_03.stdout | default('') | trim | length > 0)) else ('Package not installed' if not rsyslog_installed else 'No .conf files found or empty')) | trim }}"
 
 - name: "Req 04 - Check /var/log/maillog exists and is non‑zero"
@@ -74,7 +74,7 @@
     task_04_rc: "{{ (result_04.rc | default(-1)) if rsyslog_installed else -1 }}"
     file_size: "{{ (result_04.stdout | default('0') | trim | int) if rsyslog_installed else 0 }}"
     data_04: "{{ (('Size: ' ~ (result_04.stdout | default('0') | trim) ~ ' bytes')) if rsyslog_installed else 'Not applicable (rsyslog not installed)' }}"
-    status_04: "{{ ('PASS' if (rsyslog_installed and result_04.rc | default(-1) == 0 and (result_04.stdout | default('0') | trim | int) > 0) else ('SKIPPED' if not rsyslog_installed else 'FAIL')) | trim }}"
+    status_04: "{{ ('PASS' if (rsyslog_installed and result_04.rc | default(-1) == 0 and (result_04.stdout | default('0') | trim | int) > 0) else ('SKIP' if not rsyslog_installed else 'FAIL')) | trim }}"
     details_04: "{{ ('File exists and non‑zero size' if (rsyslog_installed and result_04.rc | default(-1) == 0 and (result_04.stdout | default('0') | trim | int) > 0) else ('Package not installed' if not rsyslog_installed else 'File missing or zero size')) | trim }}"
 
 - name: "Req 05 - Summarize overall compliance status (compute cis_result)"
@@ -82,13 +82,13 @@
     task_05_name: "Summarize overall compliance status"
     task_05_cmd: "N/A"
     task_05_rc: 0
-    cis_result: "{{ ('PASS' if (status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS') else ('SKIPPED' if not rsyslog_installed else 'FAIL')) }}"
+    cis_result: "{{ ('PASS' if (status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS') else ('SKIP' if not rsyslog_installed else 'FAIL')) }}"
 
 - name: "Store requirement 05 details (use cis_result)"
   ansible.builtin.set_fact:
     data_05: "{{ 'Overall: ' + cis_result }}"
     status_05: "PASS"
-    details_05: "{{ ('All checks passed' if cis_result == 'PASS' else ('Rsyslog not installed' if cis_result == 'SKIPPED' else 'One or more checks failed')) }}"
+    details_05: "{{ ('All checks passed' if cis_result == 'PASS' else ('Rsyslog not installed' if cis_result == 'SKIP' else 'One or more checks failed')) }}"
 
 - name: "Req 06 - Store final audit result in cis_result"
   ansible.builtin.set_fact:

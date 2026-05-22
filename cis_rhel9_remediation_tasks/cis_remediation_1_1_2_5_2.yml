@@ -96,7 +96,7 @@
         mount | grep -E '\\s/var/tmp\\s'
       task_01_rc: "{{ result_01['rc'] | default(-1) }}"
       data_01: "{{ result_01['stdout'] | default('') | trim }}"
-      status_01: "{{ 'PASS' if partition_exists else 'SKIPPED' }}"
+      status_01: "{{ 'PASS' if partition_exists else 'SKIP' }}"
       details_01: "{{ 'Partition /var/tmp exists and is separate' if partition_exists else 'No separate /var/tmp partition, remediation skipped' }}"
     tags: [execute]
 
@@ -147,7 +147,7 @@
       task_02_rc: "{{ result_02['rc'] | default(0) }}"
       data_02: "Before: {{ fstab_before_line['stdout'] | default('') | trim }} | After: {{ fstab_after_line['stdout'] | default('') | trim }}"
       status_02: >-
-        {%- if not partition_exists %}SKIPPED
+        {%- if not partition_exists %}SKIP
         {%- elif nodev_fstab_check['rc'] | default(1) == 0 %}PASS
         {%- elif result_02['changed'] | default(false) %}APPLIED
         {%- else %}FAIL{%- endif %}
@@ -173,7 +173,7 @@
       task_03_cmd: "mount -o remount /var/tmp"
       task_03_rc: "{{ result_03['rc'] | default(-1) }}"
       data_03: "{{ result_03['stderr'] | default('') | trim }}"
-      status_03: "{{ 'PASS' if partition_exists and (result_03['rc'] | default(-1)) == 0 else ('SKIPPED' if not partition_exists else 'FAIL') }}"
+      status_03: "{{ 'PASS' if partition_exists and (result_03['rc'] | default(-1)) == 0 else ('SKIP' if not partition_exists else 'FAIL') }}"
       details_03: "{{ 'Remounted /var/tmp successfully' if partition_exists and (result_03['rc'] | default(-1)) == 0 else ('Skipped: no separate /var/tmp partition' if not partition_exists else 'Remount failed') }}"
     tags: [execute]
 
@@ -193,7 +193,7 @@
         mount | grep -E '\\s/var/tmp\\s' | grep -o 'nodev'
       task_04_rc: "{{ result_04['rc'] | default(-1) }}"
       data_04: "{{ result_04['stdout'] | default('') | trim }}"
-      status_04: "{{ 'PASS' if partition_exists and (result_04['rc'] | default(-1)) == 0 else ('SKIPPED' if not partition_exists else 'FAIL') }}"
+      status_04: "{{ 'PASS' if partition_exists and (result_04['rc'] | default(-1)) == 0 else ('SKIP' if not partition_exists else 'FAIL') }}"
       details_04: "{{ 'nodev option is active' if partition_exists and (result_04['rc'] | default(-1)) == 0 else ('Skipped: no separate /var/tmp partition' if not partition_exists else 'nodev not found') }}"
     tags: [execute]
 

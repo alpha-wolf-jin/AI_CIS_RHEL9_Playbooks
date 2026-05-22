@@ -88,7 +88,7 @@
         lineinfile: regexp='^$FileCreateMode' line='$FileCreateMode 0640' path={{ config_file }}
       task_02_rc: "{{ 0 if (result_02 is defined and not result_02.failed | default(true)) else -1 }}"
       data_02: "{{ '$FileCreateMode ' + config_value + ' configured' if (result_02 is defined and not result_02.failed | default(true)) else 'Configuration failed' }}"
-      status_02: "{{ 'PASS' if (result_02 is defined and not result_02.failed | default(true)) else ('SKIPPED' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
+      status_02: "{{ 'PASS' if (result_02 is defined and not result_02.failed | default(true)) else ('SKIP' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
       details_02: "{{ 'Config line set successfully' if (result_02 is defined and not result_02.failed | default(true)) else ('Skipped - rsyslog not installed' if (playbook_skipped | default(false) | bool) else 'Failed to set config line') }}"
     tags: [execute]
 
@@ -107,7 +107,7 @@
       task_03_cmd: "systemctl restart rsyslog"
       task_03_rc: "{{ 0 if (result_03 is defined and not result_03.failed | default(true)) else -1 }}"
       data_03: "{{ 'Service restarted' if (result_03 is defined and not result_03.failed | default(true)) else 'Service restart failed' }}"
-      status_03: "{{ 'PASS' if (result_03 is defined and not result_03.failed | default(true)) else ('SKIPPED' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
+      status_03: "{{ 'PASS' if (result_03 is defined and not result_03.failed | default(true)) else ('SKIP' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
       details_03: "{{ 'rsyslog restarted successfully' if (result_03 is defined and not result_03.failed | default(true)) else ('Skipped - rsyslog not installed' if (playbook_skipped | default(false) | bool) else 'Failed to restart rsyslog') }}"
     tags: [execute]
 
@@ -128,7 +128,7 @@
         grep '^\\$FileCreateMode' /etc/rsyslog.conf
       task_04_rc: "{{ result_04.rc | default(-1) if (result_04 is defined) else -1 }}"
       data_04: "{{ result_04.stdout | default('') | trim if (result_04 is defined) else 'Not collected' }}"
-      status_04: "{{ 'PASS' if (result_04 is defined and (result_04.rc | default(-1)) == 0 and (config_value in (result_04.stdout | default('')))) else ('SKIPPED' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
+      status_04: "{{ 'PASS' if (result_04 is defined and (result_04.rc | default(-1)) == 0 and (config_value in (result_04.stdout | default('')))) else ('SKIP' if (playbook_skipped | default(false) | bool) else 'FAIL') }}"
       details_04: "{{ 'Verified: ' + (result_04.stdout | default('') | trim) if (result_04 is defined and (result_04.rc | default(-1)) == 0 and (config_value in (result_04.stdout | default('')))) else ('Skipped - rsyslog not installed' if (playbook_skipped | default(false) | bool) else 'Verification failed') }}"
     tags: [execute]
 

@@ -7,4 +7,4 @@ req_06: "Check if sshd HostbasedAuthentication is disabled for a specific local 
 req_07: "Check if sshd HostbasedAuthentication is disabled for a specific local port using command: `sshd -T -C lport=22 | grep hostbasedauthentication`. Expected result: `hostbasedauthentication no`."
 req_08: "Check if sshd HostbasedAuthentication is disabled for a specific routing domain using command: `sshd -T -C rdomain=example | grep hostbasedauthentication`. Expected result: `hostbasedauthentication no`."
 req_09: "Summarize overall compliance status: All checks passed, HostbasedAuthentication is disabled in all applicable contexts. Expected result: compliant."
-req_10: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_10: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

@@ -19,7 +19,7 @@
     cis_result: >-
       {%- set out = audit_result.stdout | default('') -%}
       {%- if 'not applicable' in out -%}
-      SKIPPED
+      SKIP
       {%- elif '** PASS **' in out -%}
       PASS
       {%- elif '** FAIL **' in out -%}
@@ -48,7 +48,7 @@
     - "  Exit code: 0"
     - "  Data: {{ audit_output }}"
     - "  Status: {{ cis_result }}"
-    - "  Details: >- {%- if cis_result == 'PASS' -%} PASS: System is compliant with CIS 1.8.6 {%- elif cis_result == 'FAIL' -%} FAIL: System is not compliant with CIS 1.8.6 {%- elif cis_result == 'SKIPPED' -%} SKIPPED: GDM not installed, recommendation not applicable {%- else -%} UNKNOWN: Unable to determine compliance from audit output {%- endif -%}"
+    - "  Details: >- {%- if cis_result == 'PASS' -%} PASS: System is compliant with CIS 1.8.6 {%- elif cis_result == 'FAIL' -%} FAIL: System is not compliant with CIS 1.8.6 {%- elif cis_result == 'SKIP' -%} SKIP: GDM not installed, recommendation not applicable {%- else -%} UNKNOWN: Unable to determine compliance from audit output {%- endif -%}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
     - "  Task: Store final audit result in cis_result"
@@ -69,5 +69,5 @@
     - "========================================================"
     - "OVERALL COMPLIANCE:"
     - "  Result: {{ cis_result }}"
-    - "  Details: >- {%- if cis_result == 'PASS' -%} PASS: System is compliant with CIS 1.8.6 {%- elif cis_result == 'FAIL' -%} FAIL: System is not compliant with CIS 1.8.6 {%- elif cis_result == 'SKIPPED' -%} SKIPPED: GDM not installed, recommendation not applicable {%- else -%} UNKNOWN: Unable to determine compliance {%- endif -%}"
+    - "  Details: >- {%- if cis_result == 'PASS' -%} PASS: System is compliant with CIS 1.8.6 {%- elif cis_result == 'FAIL' -%} FAIL: System is not compliant with CIS 1.8.6 {%- elif cis_result == 'SKIP' -%} SKIP: GDM not installed, recommendation not applicable {%- else -%} UNKNOWN: Unable to determine compliance {%- endif -%}"
     - "========================================================"

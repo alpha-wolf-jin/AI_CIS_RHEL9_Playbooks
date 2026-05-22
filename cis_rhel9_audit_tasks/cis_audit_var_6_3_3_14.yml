@@ -8,4 +8,4 @@ req_04: |
 req_05: |
   Check running audit rules for /usr/share/selinux directory using command: `auditctl -l | awk '/^ *-w/ &&(/\\/etc\\/selinux/ ||/\\/usr\\/share\\/selinux/) &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: Output matches `-w /usr/share/selinux -p wa -k MAC-policy`.
 req_06: "Summarize overall compliance status: All checks passed (on-disk and running rules match expected output for both directories). Expected result: Compliance status is PASS."
-req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

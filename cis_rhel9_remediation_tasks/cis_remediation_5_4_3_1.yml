@@ -68,7 +68,7 @@
       task_02_cmd: "lineinfile: path={{ shells_file }} regexp=nologin state=absent"
       task_02_rc: -1
       data_02: "Skipped"
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "Skipped because sed is not available"
     when: "status_01 != 'PASS'"
     tags: [execute]

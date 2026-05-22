@@ -18,112 +18,94 @@
     src: /etc/fstab
     dest: "{{ backup_dir }}/fstab.bak"
     remote_src: true
-  when: fstab_stat.stat.exists
+  when: "fstab_stat.stat.exists | default(false)"
   tags: [snapshot]
 
 - block:
-  - name: "Initialize partition existence flag"
-    set_fact:
-      partition_exists: false
-    tags: [execute]
-
-  - name: "Req 01 - Check if /var/log/audit is mounted"
-    ansible.builtin.shell: mount | grep '/var/log/audit'
+  - name: "Req 01 - Check if /var/log/audit is a separate partition"
+    ansible.builtin.shell: "mount | grep -E '\\s{{ mount_point }}\\s'"
     args:
       executable: /bin/bash
-    register: mount_check
+    register: result_01
     failed_when: false
     changed_when: false
     tags: [execute]
 
-  - name: "Req 01 - Check if /var/log/audit in fstab"
-    ansible.builtin.shell: grep '/var/log/audit' /etc/fstab
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if /var/log/audit is a separate partition"
+      task_01_cmd: |
+        mount | grep -E '\\s{{ mount_point }}\\s'
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (result_01.rc | default(-1)) == 0 and (result_01.stdout | default('') | trim | length > 0) else 'FAIL' }}"
+      details_01: "{{ 'Separate partition exists' if (result_01.rc | default(-1)) == 0 and (result_01.stdout | default('') | trim | length > 0) else 'No separate partition found' }}"
+      partition_exists: "{{ (result_01.rc | default(-1)) == 0 and (result_01.stdout | default('') | trim | length > 0) }}"
+    tags: [execute]
+
+  - name: "Req 02 - Apply nodev mount option to /var/log/audit in /etc/fstab"
+    ansible.builtin.shell: "sed -i 's|\\(\\s{{ mount_point }}\\s\\+\\S\\+\\s\\+\\)\\S\\+|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab"
     args:
       executable: /bin/bash
-    register: fstab_check
+    register: result_02
+    failed_when: false
+    when: "partition_exists | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Apply nodev mount option to /var/log/audit in /etc/fstab"
+      task_02_cmd: |
+        sed -i 's|\\(\\s{{ mount_point }}\\s\\+\\S\\+\\s\\+\\)\\S\\+|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab
+      task_02_rc: "{{ result_02.rc | default(-1) if (result_02 is defined and not (result_02.skipped | default(false))) else -1 }}"
+      data_02: "{{ 'Not applicable - no separate partition' if (result_02 is not defined or (result_02.skipped | default(false))) else (result_02.stdout | default('') | trim) }}"
+      status_02: "{{ 'SKIP' if (result_02 is not defined or (result_02.skipped | default(false))) else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_02: "{{ 'Requirement not applicable because /var/log/audit is not a separate partition' if (result_02 is not defined or (result_02.skipped | default(false))) else ('nodev option applied to fstab' if (result_02.rc | default(-1)) == 0 else 'Failed to apply nodev option to fstab') }}"
+    tags: [execute]
+
+  - name: "Req 03 - Remount /var/log/audit with updated options"
+    ansible.builtin.shell: "mount -o remount {{ mount_point }}"
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: "partition_exists | default(false)"
+    tags: [execute]
+
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Remount /var/log/audit with updated options"
+      task_03_cmd: "mount -o remount {{ mount_point }}"
+      task_03_rc: "{{ result_03.rc | default(-1) if (result_03 is defined and not (result_03.skipped | default(false))) else -1 }}"
+      data_03: "{{ 'Not applicable - no separate partition' if (result_03 is not defined or (result_03.skipped | default(false))) else (result_03.stderr | default('') | trim) }}"
+      status_03: "{{ 'SKIP' if (result_03 is not defined or (result_03.skipped | default(false))) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
+      details_03: "{{ 'Requirement not applicable because /var/log/audit is not a separate partition' if (result_03 is not defined or (result_03.skipped | default(false))) else ('Remount succeeded' if (result_03.rc | default(-1)) == 0 else 'Remount failed') }}"
+    tags: [execute]
+
+  - name: "Req 04 - Verify nodev option is active on /var/log/audit"
+    ansible.builtin.shell: "mount | grep -E '\\s{{ mount_point }}\\s' | grep -o '{{ mount_option }}'"
+    args:
+      executable: /bin/bash
+    register: result_04
     failed_when: false
     changed_when: false
+    when: "partition_exists | default(false)"
     tags: [execute]
 
-  - name: "Req 01 - Store partition check results"
+  - name: "Store requirement 04 details"
     set_fact:
-      partition_exists: "{{ mount_check.rc == 0 and fstab_check.rc == 0 }}"
-      task_01_name: "Check if separate partition exists for /var/log/audit"
-      task_01_cmd: "mount | grep '/var/log/audit' ; grep '/var/log/audit' /etc/fstab"
-      task_01_rc: "{{ 0 if (mount_check.rc == 0 and fstab_check.rc == 0) else 1 }}"
-      data_01: "mount: {{ mount_check.stdout | default('') | trim }}; fstab: {{ fstab_check.stdout | default('') | trim }}"
-      status_01: "{{ 'PASS' if (mount_check.rc == 0 and fstab_check.rc == 0) else 'SKIPPED' }}"
-      details_01: "{{ 'Partition found in mount and fstab' if (mount_check.rc == 0 and fstab_check.rc == 0) else 'Partition not found, skipping remediation' }}"
+      task_04_name: "Verify nodev option is active on /var/log/audit"
+      task_04_cmd: |
+        mount | grep -E '\\s{{ mount_point }}\\s' | grep -o '{{ mount_option }}'
+      task_04_rc: "{{ result_04.rc | default(-1) if (result_04 is defined and not (result_04.skipped | default(false))) else -1 }}"
+      data_04: "{{ 'Not applicable - no separate partition' if (result_04 is not defined or (result_04.skipped | default(false))) else (result_04.stdout | default('') | trim) }}"
+      status_04: "{{ 'SKIP' if (result_04 is not defined or (result_04.skipped | default(false))) else ('PASS' if (result_04.stdout | default('') | trim) == mount_option else 'FAIL') }}"
+      details_04: "{{ 'Requirement not applicable because /var/log/audit is not a separate partition' if (result_04 is not defined or (result_04.skipped | default(false))) else ('nodev option is active' if (result_04.stdout | default('') | trim) == mount_option else 'nodev option is not active') }}"
     tags: [execute]
 
-  - name: "Req 02 - Add nodev option to /var/log/audit in fstab"
-    ansible.builtin.lineinfile:
-      path: /etc/fstab
-      regexp: |
-        ^\s*(\S+\s+/var/log/audit\s+\S+\s+)(?!\S*\bnodev\b)(\S+)(\s+\S+\s+\S+\s*)$
-      line: |
-        \1\2,nodev\3
-      backrefs: true
-    register: fstab_edit
-    failed_when: false
-    when: partition_exists | default(false)
-    tags: [execute]
-
-  - name: "Req 02 - Capture fstab line after edit"
-    ansible.builtin.shell: grep '/var/log/audit' /etc/fstab
-    args:
-      executable: /bin/bash
-    register: fstab_line_after
-    changed_when: false
-    when: partition_exists | default(false)
-    tags: [execute]
-
-  - name: "Req 02 - Store fstab edit results"
+  - name: "Set final remediation result"
     set_fact:
-      task_02_name: "Edit /etc/fstab to add nodev"
-      task_02_cmd: "lineinfile: add nodev to fstab entry"
-      task_02_rc: "{{ 0 if fstab_edit is defined else -1 }}"
-      data_02: "{{ fstab_line_after.stdout | default('') | trim }}"
-      status_02: "{{ 'APPLIED' if (partition_exists and fstab_edit.changed) else ('PASS' if partition_exists else 'SKIPPED') }}"
-      details_02: "{{ 'nodev added' if (partition_exists and fstab_edit.changed) else ('nodev already present' if partition_exists else 'No partition, skipped') }}"
-    tags: [execute]
-
-  - name: "Req 03 - Remount /var/log/audit"
-    ansible.builtin.shell: mount -o remount /var/log/audit
-    args:
-      executable: /bin/bash
-    register: remount_result
-    failed_when: false
-    when: partition_exists | default(false)
-    tags: [execute]
-
-  - name: "Req 03 - Store remount results"
-    set_fact:
-      task_03_name: "Remount /var/log/audit"
-      task_03_cmd: "mount -o remount /var/log/audit"
-      task_03_rc: "{{ remount_result.rc | default(-1) }}"
-      data_03: "{{ remount_result.stdout | default('') | trim }}"
-      status_03: "{{ 'APPLIED' if (remount_result.rc | default(-1) == 0) else ('FAIL' if partition_exists else 'SKIPPED') }}"
-      details_03: "{{ 'Remounted successfully' if (remount_result.rc | default(-1) == 0) else ('Remount failed' if partition_exists else 'Skipped') }}"
-    tags: [execute]
-
-  - name: "Req 04 - Verify nodev option set on /var/log/audit"
-    ansible.builtin.shell: mount | grep '/var/log/audit' | grep nodev
-    args:
-      executable: /bin/bash
-    register: verify_result
-    failed_when: false
-    when: partition_exists | default(false)
-    tags: [execute]
-
-  - name: "Req 04 - Store verify results"
-    set_fact:
-      task_04_name: "Verify nodev option set"
-      task_04_cmd: "mount | grep '/var/log/audit' | grep nodev"
-      task_04_rc: "{{ verify_result.rc | default(-1) }}"
-      data_04: "{{ verify_result.stdout | default('') | trim }}"
-      status_04: "{{ 'PASS' if (verify_result.rc | default(-1) == 0) else ('FAIL' if partition_exists else 'SKIPPED') }}"
-      details_04: "{{ 'nodev verified' if (verify_result.rc | default(-1) == 0) else ('nodev not found on mount' if partition_exists else 'Skipped') }}"
+      cis_result: "{{ 'SKIP' if not partition_exists else ('PASS' if status_04 == 'PASS' else 'FAIL') }}"
     tags: [execute]
 
   - name: "Generate remediation report"
@@ -166,7 +148,7 @@
       - ""
       - "========================================================"
       - "OVERALL RESULT:"
-      - "  Result: {{ status_04 | default('UNKNOWN') | trim }}"
+      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
       - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
@@ -175,30 +157,27 @@
   - name: "Restore - Check if backup exists"
     ansible.builtin.stat:
       path: "{{ backup_dir }}/fstab.bak"
-    register: backup_stat
-    failed_when: false
+    register: restore_stat
     tags: [restore]
 
-  - name: "Restore - Overwrite /etc/fstab with backup"
+  - name: "Restore - Restore /etc/fstab from backup"
     ansible.builtin.copy:
       src: "{{ backup_dir }}/fstab.bak"
       dest: /etc/fstab
       remote_src: true
-    when: backup_stat.stat.exists | default(false)
-    failed_when: false
+    when: "restore_stat.stat.exists | default(false)"
     tags: [restore]
 
-  - name: "Restore - Remount /var/log/audit with original options"
-    ansible.builtin.shell: mount -o remount /var/log/audit
+  - name: "Restore - Remount /var/log/audit from restored fstab"
+    ansible.builtin.shell: "mount -o remount {{ mount_point }}"
     args:
       executable: /bin/bash
-    when: backup_stat.stat.exists | default(false)
     failed_when: false
+    when: "restore_stat.stat.exists | default(false)"
     tags: [restore]
 
   - name: "Restore - Remove backup directory"
     ansible.builtin.file:
       path: "{{ backup_dir }}"
       state: absent
-    failed_when: false
     tags: [restore]

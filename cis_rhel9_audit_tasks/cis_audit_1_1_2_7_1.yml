@@ -47,7 +47,7 @@
 
 - name: "Store final audit result in cis_result"
   ansible.builtin.set_fact:
-    cis_result: "{{ 'SKIPPED' if status_03 == 'NOT_APPLICABLE' else status_03 }}"
+    cis_result: "{{ 'SKIP' if status_03 == 'NOT_APPLICABLE' else status_03 }}"
 
 - name: "Generate audit report"
   ansible.builtin.debug:

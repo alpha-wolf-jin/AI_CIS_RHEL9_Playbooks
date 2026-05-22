@@ -2,300 +2,288 @@
 - name: Initialize meta data variables
   include_vars: cis_remediation_var_1_8_3.yml
 
-- name: "State Guard - Check for existing checkpoint flag"
-  ansible.builtin.stat:
-    path: "{{ state_guard_flag }}"
-  register: _sg_flag
-  tags: [snapshot]
-- name: "State Guard - Restore profile from prior checkpoint"
-  ansible.builtin.copy:
-    src: "{{ state_guard_dir }}/gdm_profile.present"
-    dest: "{{ profile_file }}"
-    remote_src: true
-  when: _sg_flag.stat.exists
-  failed_when: false
-  tags: [snapshot]
-- name: "State Guard - Check profile absent marker (prior run)"
-  ansible.builtin.stat:
-    path: "{{ state_guard_dir }}/gdm_profile.absent"
-  register: _sg_profile_absent_prev
-  when: _sg_flag.stat.exists
-  tags: [snapshot]
-- name: "State Guard - Delete profile if absent marker exists"
+- name: "Snapshot - Create backup directory"
   ansible.builtin.file:
-    path: "{{ profile_file }}"
-    state: absent
-  when:
-  - _sg_flag.stat.exists
-  - _sg_profile_absent_prev.stat.exists | default(false)
-  failed_when: false
-  tags: [snapshot]
-- name: "State Guard - Restore db directory from prior tar backup"
-  ansible.builtin.shell: |
-    if [ -f "{{ state_guard_dir }}/gdm_db_dir.tar.gz" ]; then
-      rm -rf "{{ db_dir }}"
-      mkdir -p "{{ db_dir }}"
-      tar xzf "{{ state_guard_dir }}/gdm_db_dir.tar.gz" -C /
-    fi
-  args:
-    executable: /bin/bash
-  when: _sg_flag.stat.exists
-  failed_when: false
-  tags: [snapshot]
-- name: "State Guard - Delete db directory if absent marker exists (prior run)"
-  ansible.builtin.file:
-    path: "{{ db_dir }}"
-    state: absent
-  when:
-  - _sg_flag.stat.exists
-  - _sg_db_dir_absent_prev.stat.exists | default(false)
-  failed_when: false
-  tags: [snapshot]
-  vars:
-    _sg_db_dir_absent_prev: "{{ lookup('ansible.builtin.stat', state_guard_dir + '/gdm_db_dir.absent') }}"
-
-- name: "State Guard - Recompile dconf database after prior restoration"
-  ansible.builtin.shell: dconf update
-  args:
-    executable: /bin/bash
-  when: _sg_flag.stat.exists
-  failed_when: false
-  tags: [snapshot]
-- name: "State Guard - Remove old checkpoint directory"
-  ansible.builtin.file:
-    path: "{{ state_guard_dir }}"
-    state: absent
-  when: _sg_flag.stat.exists
-  tags: [snapshot]
-- name: "State Guard - Create checkpoint directory"
-  ansible.builtin.file:
-    path: "{{ state_guard_dir }}"
+    path: "{{ backup_dir }}"
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "State Guard - Check if profile file exists"
+- name: "Snapshot - Check if /etc/dconf/profile/gdm exists"
   ansible.builtin.stat:
-    path: "{{ profile_file }}"
-  register: _sg_profile_stat
+    path: "/etc/dconf/profile/gdm"
+  register: _sg_gdm_profile_stat
   tags: [snapshot]
-- name: "State Guard - Backup profile file (present)"
+- name: "Snapshot - Backup /etc/dconf/profile/gdm if exists"
   ansible.builtin.copy:
-    src: "{{ profile_file }}"
-    dest: "{{ state_guard_dir }}/gdm_profile.present"
+    src: "/etc/dconf/profile/gdm"
+    dest: "{{ backup_dir }}/gdm_profile.present"
     remote_src: true
-  when: _sg_profile_stat.stat.exists
+  when: _sg_gdm_profile_stat.stat.exists
   tags: [snapshot]
-- name: "State Guard - Mark profile as absent (if not present)"
+- name: "Snapshot - Mark /etc/dconf/profile/gdm as absent"
   ansible.builtin.copy:
     content: "absent"
-    dest: "{{ state_guard_dir }}/gdm_profile.absent"
-  when: not _sg_profile_stat.stat.exists
+    dest: "{{ backup_dir }}/gdm_profile.absent"
+  when: not _sg_gdm_profile_stat.stat.exists
   tags: [snapshot]
-- name: "State Guard - Check if gdm db directory exists"
+- name: "Snapshot - Check if /etc/dconf/db/gdm.d/00-login-screen exists"
   ansible.builtin.stat:
-    path: "{{ db_dir }}"
-  register: _sg_db_dir_stat
+    path: "/etc/dconf/db/gdm.d/00-login-screen"
+  register: _sg_gdm_keyfile_stat
   tags: [snapshot]
-- name: "State Guard - Backup gdm db directory (if exists)"
-  ansible.builtin.shell: "tar czf {{ state_guard_dir }}/gdm_db_dir.tar.gz -C / etc/dconf/db/gdm.d"
-  args:
-    executable: /bin/bash
-  when: _sg_db_dir_stat.stat.exists
+- name: "Snapshot - Backup /etc/dconf/db/gdm.d/00-login-screen if exists"
+  ansible.builtin.copy:
+    src: "/etc/dconf/db/gdm.d/00-login-screen"
+    dest: "{{ backup_dir }}/gdm_keyfile.present"
+    remote_src: true
+  when: _sg_gdm_keyfile_stat.stat.exists
   tags: [snapshot]
-- name: "State Guard - Mark gdm db directory as absent (if not present)"
+- name: "Snapshot - Mark /etc/dconf/db/gdm.d/00-login-screen as absent"
   ansible.builtin.copy:
     content: "absent"
-    dest: "{{ state_guard_dir }}/gdm_db_dir.absent"
-  when: not _sg_db_dir_stat.stat.exists
-  tags: [snapshot]
-- name: "State Guard - Create checkpoint flag"
-  ansible.builtin.copy:
-    content: "checkpoint"
-    dest: "{{ state_guard_flag }}"
+    dest: "{{ backup_dir }}/gdm_keyfile.absent"
+  when: not _sg_gdm_keyfile_stat.stat.exists
   tags: [snapshot]
 
 - block:
-# ======================== EXECUTE ========================
-  - name: "Req 1 - Check if GDM package is installed"
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Check if GDM package is installed"
     ansible.builtin.package_facts:
       manager: auto
-    failed_when: false
     tags: [execute]
 
-  - name: "Req 1 - Set package installed fact"
+  - name: "Req 01 - Set GDM installed fact"
     ansible.builtin.set_fact:
-      gdm_installed: "{{ 'gdm' in ansible_facts.packages }}"
-      playbook_skipped: "{{ 'gdm' not in ansible_facts.packages }}"
+      gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
     tags: [execute]
 
-  - name: "Req 1 - Deploy remediation script"
+  - name: "Req 01 - Copy remediation script to remote"
     ansible.builtin.copy:
-      content: "{{ script_content }}"
-      dest: "/tmp/disable_user_list.sh"
+      dest: "{{ remediate_script }}"
       mode: '0700'
-    when: not playbook_skipped
-    failed_when: false
+      content: "{{ remediate_script_content }}"
+    changed_when: false
+    when: gdm_installed | default(false) | bool
     tags: [execute]
 
-  - name: "Req 1 - Execute remediation script"
-    ansible.builtin.shell: "/bin/bash /tmp/disable_user_list.sh"
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash "{{ remediate_script }}"
     args:
       executable: /bin/bash
-    register: result_1
+    register: result_01
     failed_when: false
-    when: not playbook_skipped
+    changed_when: false
+    when: gdm_installed | default(false) | bool
     tags: [execute]
 
-  - name: "Store requirement 1 details"
+  - name: "Req 01 - Remove temporary remediation script"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    changed_when: false
+    when: gdm_installed | default(false) | bool
+    tags: [execute]
+
+  - name: "Req 01 - Store requirement 01 details"
     ansible.builtin.set_fact:
-      task_1_name: "Run remediation script to enable disable-user-list"
-      task_1_cmd: "/bin/bash /tmp/disable_user_list.sh"
-      task_1_rc: "{{ result_1.rc | default(-1) }}"
-      data_1: "{{ result_1.stdout | default('') | trim }}"
-      status_1: "{{ ('APPLIED' if result_1.rc | default(-1) == 0 else 'FAILED') | trim }}"
-      details_1: "{{ ('Script executed successfully' if result_1.rc | default(-1) == 0 else 'Script failed') | trim }}"
-    when: not playbook_skipped
+      task_01_name: "Execute remediation script to enable disable-user-list"
+      task_01_cmd: "/bin/bash {{ remediate_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIP' if not (gdm_installed | default(false) | bool) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'GDM not installed - remediation skipped' if not (gdm_installed | default(false) | bool) else ('Remediation script executed successfully' if result_01.rc | default(-1) == 0 else 'Remediation script failed with rc=' + (result_01.rc | default(-1) | string)) | trim }}"
     tags: [execute]
 
-  - name: "Req 2 - Verify disable-user-list is set to true"
-    ansible.builtin.shell: "grep -Pi '^\\h*disable-user-list\\h*=\\h*true\\b' /etc/dconf/db/gdm.d/*"
+  - name: "Req 02 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
     args:
       executable: /bin/bash
-    register: result_2
+    register: result_02
     failed_when: false
-    when: not playbook_skipped
+    changed_when: false
     tags: [execute]
 
-  - name: "Store requirement 2 details"
+  - name: "Req 02 - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Store requirement 02 details"
     ansible.builtin.set_fact:
-      task_2_name: "Verify disable-user-list option is enabled"
-      task_2_cmd: |
-        grep -Pi '^\\h*disable-user-list\\h*=\\h*true\\b' /etc/dconf/db/gdm.d/*
-      task_2_rc: "{{ result_2.rc | default(-1) }}"
-      data_2: "{{ result_2.stdout | default('') | trim }}"
-      status_2: "{{ ('APPLIED' if result_2.rc | default(-1) == 0 else 'FAILED') | trim }}"
-      details_2: "{{ ('disable-user-list=true found' if result_2.rc | default(-1) == 0 else 'Not found') | trim }}"
-    when: not playbook_skipped
+      task_02_name: "Execute audit script to verify disable-user-list"
+      task_02_cmd: "/bin/bash {{ audit_script }}"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if '*** PASS' in (result_02.stdout | default('')) else ('FAIL' if '*** FAIL' in (result_02.stdout | default('')) else 'ERROR') | trim }}"
+      details_02: "{{ 'disable-user-list enabled or GNOME not installed' if '*** PASS' in (result_02.stdout | default('')) else ('disable-user-list not enabled' if '*** FAIL' in (result_02.stdout | default('')) else 'Unable to determine compliance from script output') | trim }}"
     tags: [execute]
 
-  - name: "Req 3 - Generate remediation report"
+  - name: "Req 03 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "set_fact"
+      task_03_rc: "N/A"
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set successfully"
+    tags: [execute]
+
+  - name: "Req 04 - Generate remediation report"
     ansible.builtin.debug:
       msg:
-      - "========================================================"
-      - "        REMEDIATION REPORT — CIS 1.8.3"
-      - "========================================================"
+      - "REMEDIATION REPORT — CIS 1.8.3"
       - "Reference: CIS Benchmark checkpoint 1.8.3"
       - ""
-      - "REQUIREMENT 1 - Run the provided remediation script to enable disable-user-list option:"
-      - "  Task: {{ task_1_name | default('Not executed') }}"
-      - "  Command: {{ task_1_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_1_rc | default(-1) }}"
-      - "  Data: {{ data_1 | default('') | trim }}"
-      - "  Status: {{ status_1 | default('SKIPPED') | trim }}"
-      - "  Details: {{ details_1 | default('Not evaluated') | trim }}"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 2 - VERIFY: disable-user-list option is enabled:"
-      - "  Task: {{ task_2_name | default('Not executed') }}"
-      - "  Command: {{ task_2_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_2_rc | default(-1) }}"
-      - "  Data: {{ data_2 | default('') | trim }}"
-      - "  Status: {{ status_2 | default('SKIPPED') | trim }}"
-      - "  Details: {{ details_2 | default('Not evaluated') | trim }}"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ (status_2 | default('SKIPPED') if playbook_skipped | default(false) else status_2 | default('FAILED')) | trim }}"
-      - "  Details: {{ (details_2 | default('Not evaluated') if not playbook_skipped | default(true) else 'GDM not installed') | trim }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
-# ======================== RESTORE ========================
-  - name: "State Guard Restore - Check if checkpoint exists"
+  - name: "Restore - Check if gdm profile backup exists"
     ansible.builtin.stat:
-      path: "{{ state_guard_flag }}"
-    register: _sg_restore_flag
+      path: "{{ backup_dir }}/gdm_profile.present"
+    register: _restore_gdm_profile
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Check profile backup"
-    ansible.builtin.stat:
-      path: "{{ state_guard_dir }}/gdm_profile.present"
-    register: _sg_restore_profile_backup
-    failed_when: false
-    tags: [restore]
-
-  - name: "State Guard Restore - Restore profile file from backup"
+  - name: "Restore - Restore /etc/dconf/profile/gdm from backup"
     ansible.builtin.copy:
-      src: "{{ state_guard_dir }}/gdm_profile.present"
-      dest: "{{ profile_file }}"
+      src: "{{ backup_dir }}/gdm_profile.present"
+      dest: "/etc/dconf/profile/gdm"
       remote_src: true
-    when: _sg_restore_profile_backup.stat.exists | default(false)
+    when: _restore_gdm_profile.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Check profile absent marker"
+  - name: "Restore - Check if gdm profile absent marker exists"
     ansible.builtin.stat:
-      path: "{{ state_guard_dir }}/gdm_profile.absent"
-    register: _sg_restore_profile_absent
+      path: "{{ backup_dir }}/gdm_profile.absent"
+    register: _restore_gdm_profile_absent
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Remove profile if absent marker exists"
+  - name: "Restore - Delete /etc/dconf/profile/gdm if it was absent before"
     ansible.builtin.file:
-      path: "{{ profile_file }}"
+      path: "/etc/dconf/profile/gdm"
       state: absent
-    when: _sg_restore_profile_absent.stat.exists | default(false)
+    when: _restore_gdm_profile_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Check db dir tar backup"
+  - name: "Restore - Check if gdm keyfile backup exists"
     ansible.builtin.stat:
-      path: "{{ state_guard_dir }}/gdm_db_dir.tar.gz"
-    register: _sg_restore_db_tar
+      path: "{{ backup_dir }}/gdm_keyfile.present"
+    register: _restore_gdm_keyfile
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Restore db directory from tar"
-    ansible.builtin.shell: |
-      if [ -f "{{ state_guard_dir }}/gdm_db_dir.tar.gz" ]; then
-        rm -rf "{{ db_dir }}"
-        mkdir -p "{{ db_dir }}"
-        tar xzf "{{ state_guard_dir }}/gdm_db_dir.tar.gz" -C /
-      fi
-    args:
-      executable: /bin/bash
-    when: _sg_restore_db_tar.stat.exists | default(false)
+  - name: "Restore - Restore /etc/dconf/db/gdm.d/00-login-screen from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/gdm_keyfile.present"
+      dest: "/etc/dconf/db/gdm.d/00-login-screen"
+      remote_src: true
+    when: _restore_gdm_keyfile.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Check db dir absent marker"
+  - name: "Restore - Check if gdm keyfile absent marker exists"
     ansible.builtin.stat:
-      path: "{{ state_guard_dir }}/gdm_db_dir.absent"
-    register: _sg_restore_db_absent
+      path: "{{ backup_dir }}/gdm_keyfile.absent"
+    register: _restore_gdm_keyfile_absent
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Remove db directory if absent marker exists"
+  - name: "Restore - Delete /etc/dconf/db/gdm.d/00-login-screen if it was absent before"
     ansible.builtin.file:
-      path: "{{ db_dir }}"
+      path: "/etc/dconf/db/gdm.d/00-login-screen"
       state: absent
-    when: _sg_restore_db_absent.stat.exists | default(false)
+    when: _restore_gdm_keyfile_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Recompile dconf database"
+  - name: "Restore - Update dconf database after restore"
     ansible.builtin.shell: dconf update
     args:
       executable: /bin/bash
-    when: _sg_restore_flag.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "State Guard Restore - Remove checkpoint directory"
+  - name: "Restore - Remove temporary audit script if it exists"
     ansible.builtin.file:
-      path: "{{ state_guard_dir }}"
+      path: "{{ audit_script }}"
       state: absent
-    when: _sg_restore_flag.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove temporary remediation script if it exists"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
     failed_when: false
     tags: [restore]

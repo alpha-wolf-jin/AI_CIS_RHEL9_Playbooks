@@ -1,32 +1,29 @@
-req_01: "Run the provided audit script to verify Ensure GDM autorun-never is not overridden. Expected result: Script applies the required changes"
-req_02: "VERIFY: Summarise compliance status for Ensure GDM autorun-never is not overridden. Expected result: PASS if compliant, FAIL otherwise"
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+playbook_name: "cis_1_8_9_audit"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_02: "VERIFY: Summarise compliance status for Ensure GDM autorun-never is not overridden. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+audit_script: "/tmp/cis_1_8_9_audit.sh"
 audit_script_content: |
   {% raw %}
   #!/usr/bin/env bash
   {
-     # Check if GNOME Desktop Manager is installed.  If package isn't installed, recommendation is Not Applicable
-     # determine system's package manager
      l_pkgoutput=""
      if command -v dpkg-query > /dev/null 2>&1; then
         l_pq="dpkg-query -W"
      elif command -v rpm > /dev/null 2>&1; then
         l_pq="rpm -q"
      fi
-     # Check if GDM is installed
-     l_pcl="gdm gdm3" # Space separated list of packages to check
+     l_pcl="gdm gdm3"
      for l_pn in $l_pcl; do
         $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="$l_pkgoutput\n - Package: \"$l_pn\" exists on the system\n - checking configuration"
      done
-     # Check configuration (If applicable)
      if [ -n "$l_pkgoutput" ]; then
         l_output="" l_output2=""
         echo -e "$l_pkgoutput\n"
-        # Look for idle-delay to determine profile in use, needed for remaining tests
-        l_kfd="/etc/dconf/db/$(grep -Psril '^\h*autorun-never\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d" #set directory of key file to be locked
-        if [ -d "$l_kfd" ]; then # If key file directory doesn't exist, options can't be locked
-           if grep -Priq '^\h*\/org/gnome\/desktop\/media-handling\/autorun- never\b' "$l_kfd"; then
-              l_output="$l_output\n - \"autorun-never\" is locked in \"$(grep - Pril '^\h*\/org/gnome\/desktop\/media-handling\/autorun-never\b' "$l_kfd")\""
+        l_kfd="/etc/dconf/db/$(grep -Psril '^\h*autorun-never\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d"
+        if [ -d "$l_kfd" ]; then
+           if grep -Priq '^\h*\/org/gnome\/desktop\/media-handling\/autorun-never\b' "$l_kfd"; then
+              l_output="$l_output\n - \"autorun-never\" is locked in \"$(grep -Pril '^\h*\/org/gnome\/desktop\/media-handling\/autorun-never\b' "$l_kfd")\""
            else
               l_output2="$l_output2\n - \"autorun-never\" is not locked"
            fi
@@ -36,7 +33,6 @@ audit_script_content: |
      else
         l_output="$l_output\n - GNOME Desktop Manager package is not installed on the system\n  - Recommendation is not applicable"
      fi
-     # Report results. If no failures output in l_output2, we pass
      if [ -z "$l_output2" ]; then
         echo -e "\n- Audit Result:\n  ** PASS **\n$l_output\n"
      else

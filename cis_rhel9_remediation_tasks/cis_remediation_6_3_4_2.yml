@@ -81,7 +81,7 @@
         find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' {{ audit_conf }} | xargs))\" -type f -perm /0137 -exec chmod u-x,g-wx,o-rwx {} +
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (result_01.stat.exists | default(false)) else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if not (result_01.stat.exists | default(false)) else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
       details_02: "{{ 'Skipped - auditd.conf not found' if not (result_01.stat.exists | default(false)) else ('Permissions corrected' if result_02.rc | default(-1) == 0 else 'Failed to correct permissions') }}"
     tags: [execute]
 
@@ -103,7 +103,7 @@
         find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' {{ audit_conf }} | xargs))\" -type f -perm /0137
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if not (result_01.stat.exists | default(false)) else ('PASS' if (result_03.stdout | default('') | trim | length == 0) else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if not (result_01.stat.exists | default(false)) else ('PASS' if (result_03.stdout | default('') | trim | length == 0) else 'FAIL') }}"
       details_03: "{{ 'Skipped - auditd.conf not found' if not (result_01.stat.exists | default(false)) else ('No overly permissive files found' if (result_03.stdout | default('') | trim | length == 0) else 'Overly permissive files remain') }}"
     tags: [execute]
 

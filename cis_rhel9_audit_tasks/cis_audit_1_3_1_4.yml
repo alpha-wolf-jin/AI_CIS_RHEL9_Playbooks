@@ -69,13 +69,13 @@
     task_02_name: "Check current SELinux mode"
     task_02_cmd: "getenforce"
     task_02_rc: "{{ result_02.rc | default(-1) if not (result_02.skipped | default(false)) else -1 }}"
-    data_02: "{{ result_02.stdout | default('') | trim if not (result_02.skipped | default(false)) else 'SKIPPED' }}"
+    data_02: "{{ result_02.stdout | default('') | trim if not (result_02.skipped | default(false)) else 'SKIP' }}"
     status_02: >-
       {{ 
         'PASS' if (not (result_02.skipped | default(false)) and 
                     result_02.rc == 0 and 
                     (result_02.stdout | default('') | trim | regex_search('^(Enforcing|Permissive)$')))
-        else ('SKIPPED' if result_02.skipped | default(false)
+        else ('SKIP' if result_02.skipped | default(false)
         else 'FAIL')
       | trim }}
     details_02: >-
@@ -103,13 +103,13 @@
     task_03_cmd: |
       grep -Ei '^\\s*SELINUX=(enforcing|permissive)' /etc/selinux/config
     task_03_rc: "{{ result_03.rc | default(-1) if not (result_03.skipped | default(false)) else -1 }}"
-    data_03: "{{ result_03.stdout | default('') | trim if not (result_03.skipped | default(false)) else 'SKIPPED' }}"
+    data_03: "{{ result_03.stdout | default('') | trim if not (result_03.skipped | default(false)) else 'SKIP' }}"
     status_03: >-
       {{ 
         'PASS' if (not (result_03.skipped | default(false)) and 
                     result_03.rc == 0 and 
                     (result_03.stdout | default('') | regex_search('SELINUX=(enforcing|permissive)', ignorecase=True)))
-        else ('SKIPPED' if result_03.skipped | default(false)
+        else ('SKIP' if result_03.skipped | default(false)
         else 'FAIL')
       | trim }}
     details_03: >-
@@ -134,13 +134,13 @@
     status_04: >-
       {{ 
         'PASS' if status_02 == 'PASS' and status_03 == 'PASS'
-        else ('NOT_APPLICABLE' if status_02 == 'SKIPPED' and status_03 == 'SKIPPED'
+        else ('NOT_APPLICABLE' if status_02 == 'SKIP' and status_03 == 'SKIP'
         else 'FAIL')
       | trim }}
     details_04: >-
       {{ 
         'Both current and configured SELinux modes are enforcing or permissive' if (status_02 == 'PASS' and status_03 == 'PASS')
-        else ('SELinux is not installed or applicable' if (status_02 == 'SKIPPED' and status_03 == 'SKIPPED')
+        else ('SELinux is not installed or applicable' if (status_02 == 'SKIP' and status_03 == 'SKIP')
         else 'SELinux mode is disabled or one of the checks failed')
       | trim }}
 

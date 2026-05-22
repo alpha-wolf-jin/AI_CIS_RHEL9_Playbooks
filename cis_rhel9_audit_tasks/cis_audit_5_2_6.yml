@@ -120,7 +120,7 @@
     cis_result: >-
       {%- if status_05 == 'Compliant' -%}PASS
       {%- elif status_05 == 'Non-compliant' -%}FAIL
-      {%- elif status_05 == 'Not applicable' -%}SKIPPED
+      {%- elif status_05 == 'Not applicable' -%}SKIP
       {%- elif status_05 == 'UNKNOWN' -%}UNKNOWN
       {%- else -%}UNKNOWN
       {%- endif -%}

@@ -59,7 +59,7 @@
     task_02_cmd: "findmnt -kn {{ mount_point }} | grep -v {{ mount_option }}"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
-    status_02: "{{ ('SKIPPED' if not partition_exists else ('PASS' if (result_02.rc | default(-1) != 0) else 'FAIL')) | trim }}"
+    status_02: "{{ ('SKIP' if not partition_exists else ('PASS' if (result_02.rc | default(-1) != 0) else 'FAIL')) | trim }}"
     details_02: "{{ ('Skipped: no separate /tmp partition' if not partition_exists else ('nosuid option is set' if (result_02.rc | default(-1) != 0) else 'nosuid option is NOT set')) | trim }}"
   tags: [audit, compliance]
 - name: "Req 3 - Summarize overall compliance"
@@ -67,7 +67,7 @@
     task_03_name: "Req 3 - Summarize overall compliance"
     task_03_cmd: "N/A (compliance logic derived from checks 1 and 2)"
     task_03_rc: 0
-    data_03: "{{ ( 'FAIL' if partition_exists and (result_02.rc | default(-1) == 0) else 'PASS' if partition_exists and (result_02.rc | default(-1) != 0) else 'SKIPPED' if not partition_exists else 'UNKNOWN' ) | trim }}"
+    data_03: "{{ ( 'FAIL' if partition_exists and (result_02.rc | default(-1) == 0) else 'PASS' if partition_exists and (result_02.rc | default(-1) != 0) else 'SKIP' if not partition_exists else 'UNKNOWN' ) | trim }}"
     status_03: "PASS"
     details_03: "{{ ('System is NON-COMPLIANT — nosuid is NOT set on /tmp' if partition_exists and (result_02.rc | default(-1) == 0) else 'System is compliant — nosuid is set on /tmp' if partition_exists and (result_02.rc | default(-1) != 0) else 'No separate /tmp partition; control skipped' if not partition_exists else 'Could not determine compliance' ) | trim }}"
   tags: [audit, compliance]

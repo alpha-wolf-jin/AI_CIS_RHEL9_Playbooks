@@ -59,7 +59,7 @@
     data_02: "{{ result_02.stdout | default('') | trim if result_02 is not skipped else '' }}"
     status_02: >-
       {{ 
-        'SKIPPED' if (result_02 is skipped)
+        'SKIP' if (result_02 is skipped)
         else ('PASS' if (result_02.rc | default(-1) == 0 and result_02.stdout | default('') | trim != '')
         else 'FAIL')
       | trim }}

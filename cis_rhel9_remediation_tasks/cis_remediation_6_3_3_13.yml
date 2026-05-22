@@ -100,8 +100,8 @@
       task_01_cmd: "lineinfile to {{ audit_rules_file }}"
       task_01_rc: "{{ 0 if (_rules_result is not failed) else 1 }}"
       data_01: "{{ _uid_min_result.stdout | default('UID_MIN not found') | trim }}"
-      status_01: "{{ 'APPLIED' if (auditd_installed | default(false)) and (_uid_min_result.stdout | default('') | trim | length > 0) and (_rules_result is not failed) else ('SKIPPED' if not (auditd_installed | default(false)) else 'FAILED') }}"
-      details_01: "{{ 'Audit rules added successfully' if (auditd_installed | default(false)) and (_uid_min_result.stdout | default('') | trim | length > 0) and (_rules_result is not failed) else ('SKIPPED: auditd not installed' if not (auditd_installed | default(false)) else 'FAILED: Could not add rules') }}"
+      status_01: "{{ 'APPLIED' if (auditd_installed | default(false)) and (_uid_min_result.stdout | default('') | trim | length > 0) and (_rules_result is not failed) else ('SKIP' if not (auditd_installed | default(false)) else 'FAILED') }}"
+      details_01: "{{ 'Audit rules added successfully' if (auditd_installed | default(false)) and (_uid_min_result.stdout | default('') | trim | length > 0) and (_rules_result is not failed) else ('SKIP: auditd not installed' if not (auditd_installed | default(false)) else 'FAILED: Could not add rules') }}"
     tags: [execute]
 
   - name: "Store requirement 02 details"
@@ -110,14 +110,14 @@
       task_02_cmd: "auditctl -l | grep -E 'key=delete'"
       task_02_rc: "{{ _verify_result.rc | default(-1) }}"
       data_02: "{{ _verify_result.stdout | default('') | trim }}"
-      status_02: "{{ 'APPLIED' if (_verify_result.rc | default(-1) == 0) and ('VERIFY_FAILED' not in _verify_result.stdout | default('')) else ('SKIPPED' if not (auditd_installed | default(false)) else 'FAILED') }}"
-      details_02: "{{ 'File deletion audit rule is active' if (_verify_result.rc | default(-1) == 0) and ('VERIFY_FAILED' not in _verify_result.stdout | default('')) else ('SKIPPED: auditd not installed' if not (auditd_installed | default(false)) else 'FAILED: Rule not found in active audit rules') }}"
+      status_02: "{{ 'APPLIED' if (_verify_result.rc | default(-1) == 0) and ('VERIFY_FAILED' not in _verify_result.stdout | default('')) else ('SKIP' if not (auditd_installed | default(false)) else 'FAILED') }}"
+      details_02: "{{ 'File deletion audit rule is active' if (_verify_result.rc | default(-1) == 0) and ('VERIFY_FAILED' not in _verify_result.stdout | default('')) else ('SKIP: auditd not installed' if not (auditd_installed | default(false)) else 'FAILED: Rule not found in active audit rules') }}"
     tags: [execute]
 
 # FIX: Split into two set_fact tasks to avoid circular reference of cis_result
   - name: "Store final cis_result"
     ansible.builtin.set_fact:
-      cis_result: "{{ 'PASS' if status_02 == 'APPLIED' else ('SKIP' if status_02 == 'SKIPPED' else 'FAIL') }}"
+      cis_result: "{{ 'PASS' if status_02 == 'APPLIED' else ('SKIP' if status_02 == 'SKIP' else 'FAIL') }}"
     tags: [execute]
 
   - name: "Store requirement 03 details"

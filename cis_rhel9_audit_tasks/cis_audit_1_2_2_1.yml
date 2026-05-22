@@ -43,7 +43,7 @@
     task_01_cmd: "which dnf"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
     data_01: "{{ result_01.stdout | default('') | trim }}"
-    status_01: "{{ 'SKIPPED' if result_01.rc | default(-1) != 0 else 'PASS' | trim }}"
+    status_01: "{{ 'SKIP' if result_01.rc | default(-1) != 0 else 'PASS' | trim }}"
     details_01: "{{ 'dnf not found' if result_01.rc | default(-1) != 0 else 'dnf installed at ' + result_01.stdout | trim }}"
     dnf_available: "{{ result_01.rc | default(-1) == 0 }}"
 
@@ -62,7 +62,7 @@
     task_02_cmd: "dnf check-update"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
-    status_02: "{{ 'SKIPPED' if result_02 is skipped else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    status_02: "{{ 'SKIP' if result_02 is skipped else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') | trim }}"
     details_02: "{{ 'dnf not available' if result_02 is skipped else ('No updates available' if result_02.rc | default(-1) == 0 else 'Updates available or error') | trim }}"
 
 - name: "Req 03 - Check if system reboot is required"
@@ -80,7 +80,7 @@
     task_03_cmd: "dnf needs-restarting -r"
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     data_03: "{{ result_03.stdout | default('') | trim }}"
-    status_03: "{{ 'SKIPPED' if result_03 is skipped else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') | trim }}"
+    status_03: "{{ 'SKIP' if result_03 is skipped else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') | trim }}"
     details_03: "{{ 'dnf not available' if result_03 is skipped else ('No reboot required' if result_03.rc | default(-1) == 0 else 'Reboot required or error') | trim }}"
 
 - name: "Req 04 - Summarize overall compliance status"
@@ -89,7 +89,7 @@
       {{
         'PASS' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS'
         else ('FAIL' if status_01 == 'FAIL' or status_02 == 'FAIL' or status_03 == 'FAIL'
-        else ('SKIPPED' if status_01 == 'SKIPPED' or status_02 == 'SKIPPED' or status_03 == 'SKIPPED'
+        else ('SKIP' if status_01 == 'SKIP' or status_02 == 'SKIP' or status_03 == 'SKIP'
         else 'UNKNOWN'))
       }}
 
@@ -100,7 +100,7 @@
       {{
         'All checks passed' if status_04 == 'PASS'
         else ('Some checks failed' if status_04 == 'FAIL'
-        else ('Check skipped due to dnf not available' if status_04 == 'SKIPPED'
+        else ('Check skipped due to dnf not available' if status_04 == 'SKIP'
         else 'Unknown'))
       }}
 

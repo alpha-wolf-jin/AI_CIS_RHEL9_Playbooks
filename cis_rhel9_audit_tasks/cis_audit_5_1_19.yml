@@ -56,10 +56,10 @@
 
 - name: "Mark requirement 02 and 03 as skipped if sshd not installed"
   set_fact:
-    status_02: "SKIPPED"
+    status_02: "SKIP"
     details_02: "OpenSSH server not installed"
     data_02: ""
-    status_03: "SKIPPED"
+    status_03: "SKIP"
     details_03: "OpenSSH server not installed"
     data_03: ""
   when: not (sshd_installed | default(false) | bool)
@@ -136,7 +136,7 @@
         FAIL
       {%- elif s02 == 'PASS' and s03 == 'PASS' -%}
         PASS
-      {%- elif s02 == 'SKIPPED' or s03 == 'SKIPPED' -%}
+      {%- elif s02 == 'SKIP' or s03 == 'SKIP' -%}
         FAIL
       {%- else -%}
         UNKNOWN

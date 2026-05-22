@@ -167,33 +167,33 @@
       task_01_name: "Req 01 - Stop systemd-journal-remote.socket"
       task_01_cmd: "systemctl stop {{ socket_unit }}"
       task_01_rc: "{{ result_01.rc | default(-1) if result_01 is defined else -1 }}"
-      data_01: "{{ result_01.stdout | default('') | trim if result_01 is defined else 'SKIPPED - package not installed' }}"
+      data_01: "{{ result_01.stdout | default('') | trim if result_01 is defined else 'SKIP - package not installed' }}"
       task_02_name: "Req 02 - Stop systemd-journal-remote.service"
       task_02_cmd: "systemctl stop {{ service_unit }}"
       task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
-      data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else 'SKIPPED - package not installed' }}"
+      data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else 'SKIP - package not installed' }}"
       task_03_name: "Req 03 - Mask systemd-journal-remote.socket"
       task_03_cmd: "systemctl mask {{ socket_unit }}"
       task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined else -1 }}"
-      data_03: "{{ result_03.stdout | default('') | trim if result_03 is defined else 'SKIPPED - package not installed' }}"
+      data_03: "{{ result_03.stdout | default('') | trim if result_03 is defined else 'SKIP - package not installed' }}"
       task_04_name: "Req 04 - Mask systemd-journal-remote.service"
       task_04_cmd: "systemctl mask {{ service_unit }}"
       task_04_rc: "{{ result_04.rc | default(-1) if result_04 is defined else -1 }}"
-      data_04: "{{ result_04.stdout | default('') | trim if result_04 is defined else 'SKIPPED - package not installed' }}"
+      data_04: "{{ result_04.stdout | default('') | trim if result_04 is defined else 'SKIP - package not installed' }}"
       task_05_name: "Req 05 - Verify systemd-journal-remote.socket"
       task_05_cmd: "systemctl is-enabled {{ socket_unit }} && systemctl is-active {{ socket_unit }}"
       task_05_rc: "{{ result_05.rc | default(-1) if result_05 is defined else -1 }}"
-      data_05: "{{ result_05.stdout | default('') | trim if result_05 is defined else 'SKIPPED - package not installed' }}"
+      data_05: "{{ result_05.stdout | default('') | trim if result_05 is defined else 'SKIP - package not installed' }}"
       task_06_name: "Req 06 - Verify systemd-journal-remote.service"
       task_06_cmd: "systemctl is-enabled {{ service_unit }} && systemctl is-active {{ service_unit }}"
       task_06_rc: "{{ result_06.rc | default(-1) if result_06 is defined else -1 }}"
-      data_06: "{{ result_06.stdout | default('') | trim if result_06 is defined else 'SKIPPED - package not installed' }}"
+      data_06: "{{ result_06.stdout | default('') | trim if result_06 is defined else 'SKIP - package not installed' }}"
     tags: [execute]
 
   - name: "Evaluate requirement statuses"
     ansible.builtin.set_fact:
       status_01: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false)) or (result_01.skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false)) or (result_01.skipped | default(false))
         else ('APPLIED' if (result_01.stdout | default('') | trim) in ['stopped', 'already_inactive']
         else 'FAILED') }}
       details_01: >-
@@ -202,7 +202,7 @@
         else ('Already inactive - no action needed' if (result_01.stdout | default('') | trim) == 'already_inactive'
         else 'Failed to stop service')) }}
       status_02: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false)) or (result_02.skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false)) or (result_02.skipped | default(false))
         else ('APPLIED' if (result_02.stdout | default('') | trim) in ['stopped', 'already_inactive']
         else 'FAILED') }}
       details_02: >-
@@ -211,7 +211,7 @@
         else ('Already inactive - no action needed' if (result_02.stdout | default('') | trim) == 'already_inactive'
         else 'Failed to stop service')) }}
       status_03: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false)) or (result_03.skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false)) or (result_03.skipped | default(false))
         else ('APPLIED' if 'masked' in (result_03.stdout | default(''))
         else 'FAILED') }}
       details_03: >-
@@ -220,7 +220,7 @@
         else ('Already masked - no action needed' if 'already_masked' in (result_03.stdout | default(''))
         else 'Failed to mask socket')) }}
       status_04: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false)) or (result_04.skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false)) or (result_04.skipped | default(false))
         else ('APPLIED' if 'masked' in (result_04.stdout | default(''))
         else 'FAILED') }}
       details_04: >-
@@ -229,7 +229,7 @@
         else ('Already masked - no action needed' if 'already_masked' in (result_04.stdout | default(''))
         else 'Failed to mask service')) }}
       status_05: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false)) or (result_05.skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false)) or (result_05.skipped | default(false))
         else ('APPLIED' if ('masked' in (result_05.stdout | default('')) and 'inactive' in (result_05.stdout | default('')))
         else 'FAILED') }}
       details_05: >-
@@ -237,7 +237,7 @@
         else ('Verification passed - masked and inactive' if ('masked' in (result_05.stdout | default('')) and 'inactive' in (result_05.stdout | default('')))
         else 'Verification failed') }}
       status_06: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false)) or (result_06.skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false)) or (result_06.skipped | default(false))
         else ('APPLIED' if ('masked' in (result_06.stdout | default('')) and 'inactive' in (result_06.stdout | default('')))
         else 'FAILED') }}
       details_06: >-
@@ -249,14 +249,14 @@
   - name: "Evaluate overall status"
     ansible.builtin.set_fact:
       overall_status: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false))
         else ('APPLIED' if status_01 == 'APPLIED' and status_02 == 'APPLIED' and status_03 == 'APPLIED' and status_04 == 'APPLIED' and status_05 == 'APPLIED' and status_06 == 'APPLIED'
         else 'FAILED') }}
     tags: [execute]
 
   - name: "Set cis_result for reporting"
     ansible.builtin.set_fact:
-      cis_result: "{{ {'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIPPED': 'SKIP'}.get(overall_status | trim, 'ERROR') }}"
+      cis_result: "{{ {'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIP': 'SKIP'}.get(overall_status | trim, 'ERROR') }}"
     tags: [execute]
 
   - name: "Store requirement 07 details"

@@ -52,7 +52,7 @@
 - name: "Req 02 - Evaluate /etc/motd permissions compliance"
   shell: |
     if [ ! -e /etc/motd ]; then
-      echo "SKIPPED"
+      echo "SKIP"
       exit 0
     fi
     mode=$(stat -Lc '%a' /etc/motd)
@@ -76,7 +76,7 @@
     task_02_cmd: "stat -Lc 'Access: (%#a/%A)  Uid: ( %u/ %U) Gid: { %g/ %G)' /etc/motd"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
-    status_02: "{{ result_02_compliance.stdout | default('SKIPPED') | trim }}"
+    status_02: "{{ result_02_compliance.stdout | default('SKIP') | trim }}"
     details_02: >-
       {%- if not motd_stat.stat.exists -%}
       File does not exist - check skipped
@@ -104,7 +104,7 @@
     data_03: "{{ result_03.stdout | default('') | trim }}"
     status_03: >-
       {%- if not motd_stat.stat.exists -%}
-      SKIPPED
+      SKIP
       {%- elif (result_03.stdout | default('') | trim) == '0' -%}
       PASS
       {%- else -%}
@@ -137,7 +137,7 @@
     data_04: "{{ result_04.stdout | default('') | trim }}"
     status_04: >-
       {%- if not motd_stat.stat.exists -%}
-      SKIPPED
+      SKIP
       {%- elif (result_04.stdout | default('') | trim) == '0' -%}
       PASS
       {%- else -%}

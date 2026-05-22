@@ -119,8 +119,8 @@
       task_01_rc: "{{ _audit_rule_result.rc | default(0) if _audit_rule_result is defined else -1 }}"
       data_01: "{{ _sudo_log_file.stdout | default('UNSET') | trim if _sudo_log_file is defined else 'Not collected' }}"
       status_01: >-
-        {{ 'SKIPPED' if not (_prereqs_met | default(false) | bool)
-           else 'SKIPPED' if (_sudo_log_file.stdout | default('UNSET') | trim == 'UNSET')
+        {{ 'SKIP' if not (_prereqs_met | default(false) | bool)
+           else 'SKIP' if (_sudo_log_file.stdout | default('UNSET') | trim == 'UNSET')
            else 'PASS' if (_audit_rule_result is defined and not _audit_rule_result.failed)
            else 'FAIL' }}
       details_01: >-
@@ -137,8 +137,8 @@
       task_02_rc: "{{ _verify_result.rc | default(-1) if _verify_result is defined else -1 }}"
       data_02: "{{ _verify_result.stdout | default('') | trim if _verify_result is defined else 'Not collected' }}"
       status_02: >-
-        {{ 'SKIPPED' if not (_prereqs_met | default(false) | bool)
-           else 'SKIPPED' if ('VERIFY_SKIPPED_NO_SUDO_LOG' in (_verify_result.stdout | default('')))
+        {{ 'SKIP' if not (_prereqs_met | default(false) | bool)
+           else 'SKIP' if ('VERIFY_SKIPPED_NO_SUDO_LOG' in (_verify_result.stdout | default('')))
            else 'PASS' if (_verify_result is defined and _verify_result.rc | default(-1) == 0 and 'VERIFY_FAILED' not in (_verify_result.stdout | default('')))
            else 'FAIL' }}
       details_02: >-

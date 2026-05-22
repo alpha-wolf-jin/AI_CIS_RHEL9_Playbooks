@@ -1,4 +1,4 @@
 req_01: "Check if the /etc/passwd file exists using command: `test -f /etc/passwd`. Expected result: true"
 req_02: "Check for any accounts with UID 0 using command: `awk -F: '($3 == 0) { print $1 }' /etc/passwd`. Expected result: root"
 req_03: "Summarize overall compliance status: Ensure root is the only UID 0 account."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

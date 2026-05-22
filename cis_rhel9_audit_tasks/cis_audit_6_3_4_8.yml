@@ -58,7 +58,7 @@
     task_01_cmd: "N/A"
     task_01_rc: -1
     data_01: "Package auditd not installed"
-    status_01: "SKIPPED"
+    status_01: "SKIP"
     details_01: "Prerequisite auditd not installed; script not executed"
   when: not (auditd_installed | bool)
   failed_when: false

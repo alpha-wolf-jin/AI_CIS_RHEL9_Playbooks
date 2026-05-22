@@ -168,7 +168,7 @@
         lineinfile: path={{ config_target }} regexp='^\\s*enforce_for_root\\s*$' line='enforce_for_root' create=true
       task_03_rc: "{{ 0 if (result_03.changed | default(false)) or (result_03 is not failed and not result_03.changed) else 1 }}"
       data_03: "{{ 'enforce_for_root line ensured in ' + config_target if (result_03 is not failed) else (result_03.msg | default('Failed')) }}"
-      status_03: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_03 is not failed) else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_03 is not failed) else 'FAIL') }}"
       details_03: "{{ 'Skipped - libpwquality not installed' if (playbook_skipped | default(false) | bool) else ('enforce_for_root configured successfully' if (result_03 is not failed) else 'Failed to configure enforce_for_root') }}"
     tags: [execute]
 
@@ -200,7 +200,7 @@
         grep -q \"^enforce_for_root\" {{ config_target }} || grep -q \"^enforce_for_root\" {{ config_file }}
       task_04_rc: "{{ result_04.rc | default(-1) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
-      status_04: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
       details_04: "{{ 'Skipped - libpwquality not installed' if (playbook_skipped | default(false) | bool) else ('enforce_for_root is set' if (result_04.rc | default(-1)) == 0 else 'enforce_for_root is NOT set') }}"
     tags: [execute]
 

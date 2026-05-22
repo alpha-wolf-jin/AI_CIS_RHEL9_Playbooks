@@ -148,9 +148,9 @@
     task_03_name: "Check MaxAuthTries for user sshuser (Match block)"
     task_03_cmd: "sshd -T -C user=sshuser | grep maxauthtries"
     task_03_rc: -1
-    data_03: "SKIPPED - No Match blocks configured"
-    status_03: "SKIPPED"
-    details_03: "SKIPPED – No Match blocks configured – check not applicable"
+    data_03: "SKIP - No Match blocks configured"
+    status_03: "SKIP"
+    details_03: "SKIP – No Match blocks configured – check not applicable"
   when:
   - "not playbook_skipped | bool"
   - "((match_block_check.stdout | default('0')) | int) == 0"
@@ -174,8 +174,8 @@
     task_04_cmd: "N/A"
     task_04_rc: 0
     data_04: "Overall compliance evaluation"
-    status_04: "{{ 'NOT_APPLICABLE' if playbook_skipped | bool else ('PASS' if (status_02 | default('UNKNOWN')) == 'PASS' and ((status_03 | default('UNKNOWN')) == 'PASS' or (status_03 | default('UNKNOWN')) == 'SKIPPED') else 'FAIL') | trim }}"
-    details_04: "{{ 'NOT_APPLICABLE – OpenSSH server not installed – audit not applicable' if playbook_skipped | bool else ('All applicable checks passed – MaxAuthTries is 4 or less' if (status_02 | default('UNKNOWN')) == 'PASS' and ((status_03 | default('UNKNOWN')) == 'PASS' or (status_03 | default('UNKNOWN')) == 'SKIPPED') else 'One or more checks failed or could not be evaluated') | trim }}"
+    status_04: "{{ 'NOT_APPLICABLE' if playbook_skipped | bool else ('PASS' if (status_02 | default('UNKNOWN')) == 'PASS' and ((status_03 | default('UNKNOWN')) == 'PASS' or (status_03 | default('UNKNOWN')) == 'SKIP') else 'FAIL') | trim }}"
+    details_04: "{{ 'NOT_APPLICABLE – OpenSSH server not installed – audit not applicable' if playbook_skipped | bool else ('All applicable checks passed – MaxAuthTries is 4 or less' if (status_02 | default('UNKNOWN')) == 'PASS' and ((status_03 | default('UNKNOWN')) == 'PASS' or (status_03 | default('UNKNOWN')) == 'SKIP') else 'One or more checks failed or could not be evaluated') | trim }}"
 
     # -----------------------------------------------------------------
     # Requirement 05 - Store final audit result in cis_result

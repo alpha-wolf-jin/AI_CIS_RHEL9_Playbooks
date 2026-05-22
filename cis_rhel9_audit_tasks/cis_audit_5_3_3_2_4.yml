@@ -41,27 +41,27 @@
     details_01: "{{ 'Package found: ' + (result_01.stdout | default('') | trim) if result_01.rc | default(-1) == 0 else 'Package libpwquality not installed' | trim }}"
     libpwquality_installed: "{{ result_01.rc | default(-1) == 0 }}"
   tags: [audit]
-- name: "Set remaining requirements to SKIPPED when libpwquality not installed"
+- name: "Set remaining requirements to SKIP when libpwquality not installed"
   set_fact:
-    status_02: "SKIPPED"
+    status_02: "SKIP"
     details_02: "Prerequisite not met: libpwquality not installed"
     task_02_name: "Not executed - prerequisite missing"
     task_02_cmd: "N/A"
     task_02_rc: -1
     data_02: "N/A"
-    status_03: "SKIPPED"
+    status_03: "SKIP"
     details_03: "Prerequisite not met: libpwquality not installed"
     task_03_name: "Not executed - prerequisite missing"
     task_03_cmd: "N/A"
     task_03_rc: -1
     data_03: "N/A"
-    status_04: "SKIPPED"
+    status_04: "SKIP"
     details_04: "Prerequisite not met: libpwquality not installed"
     task_04_name: "Not executed - prerequisite missing"
     task_04_cmd: "N/A"
     task_04_rc: -1
     data_04: "N/A"
-    status_05: "SKIPPED"
+    status_05: "SKIP"
     details_05: "Audit not applicable: libpwquality not installed"
     task_05_name: "Overall compliance status"
     task_05_cmd: "N/A"

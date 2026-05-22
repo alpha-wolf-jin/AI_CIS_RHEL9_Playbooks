@@ -149,7 +149,7 @@
       task_01_name: "Run remediation script to check and enable pam_pwquality"
       task_01_cmd: "authselect profile check and enable-feature/apply-changes for pam_pwquality"
       task_01_rc: -1
-      data_01: "SKIPPED"
+      data_01: "SKIP"
       status_01: "SKIP"
       details_01: "authselect package is not installed"
     when: "not (authselect_installed | default(false))"
@@ -192,7 +192,7 @@
       task_02_name: "Verify pam_pwquality module is enabled in running PAM configuration"
       task_02_cmd: "grep pam_pwquality.so in /etc/pam.d/system-auth and /etc/pam.d/password-auth"
       task_02_rc: -1
-      data_02: "SKIPPED"
+      data_02: "SKIP"
       status_02: "SKIP"
       details_02: "authselect package is not installed"
     when: "not (authselect_installed | default(false))"

@@ -4,4 +4,4 @@ req_02: |
 req_03: |
   Check that pam_pwhistory.so is enabled in system-auth using command: `grep -P -- '\\bpam_pwhistory\\.so\\b' /etc/pam.d/system-auth`. Expected result: Output similar to `/etc/pam.d/system-auth:password   required   pam_pwhistory.so use_authtok`.
 req_04: "Summarize overall compliance status: Both password-auth and system-auth files contain the pam_pwhistory.so module with the required configuration."
-req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

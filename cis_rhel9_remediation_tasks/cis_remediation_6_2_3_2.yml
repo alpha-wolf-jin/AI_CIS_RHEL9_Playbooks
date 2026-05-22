@@ -84,7 +84,7 @@
       task_01_cmd: "systemctl is-active rsyslog.service"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if (result_01.stdout | default('') | trim) == 'active' else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if playbook_skipped else ('PASS' if (result_01.stdout | default('') | trim) == 'active' else 'FAIL') }}"
       details_01: "{{ 'rsyslog package not installed' if playbook_skipped else ('rsyslog is active' if (result_01.stdout | default('') | trim) == 'active' else 'rsyslog is not active') }}"
     tags: [execute]
 
@@ -103,7 +103,7 @@
       task_02_cmd: "systemctl unmask rsyslog.service"
       task_02_rc: "{{ 0 if result_02 is not skipped else -1 }}"
       data_02: "{{ 'unmasked' if result_02 is not skipped else 'skipped' }}"
-      status_02: "{{ 'SKIPPED' if playbook_skipped else 'PASS' }}"
+      status_02: "{{ 'SKIP' if playbook_skipped else 'PASS' }}"
       details_02: "{{ 'rsyslog package not installed' if playbook_skipped else 'rsyslog.service unmasked' }}"
     tags: [execute]
 
@@ -122,7 +122,7 @@
       task_03_cmd: "systemctl enable rsyslog.service"
       task_03_rc: "{{ 0 if result_03 is not skipped else -1 }}"
       data_03: "{{ 'enabled' if result_03 is not skipped else 'skipped' }}"
-      status_03: "{{ 'SKIPPED' if playbook_skipped else 'PASS' }}"
+      status_03: "{{ 'SKIP' if playbook_skipped else 'PASS' }}"
       details_03: "{{ 'rsyslog package not installed' if playbook_skipped else 'rsyslog.service enabled' }}"
     tags: [execute]
 
@@ -141,7 +141,7 @@
       task_04_cmd: "systemctl start rsyslog.service"
       task_04_rc: "{{ 0 if result_04 is not skipped else -1 }}"
       data_04: "{{ 'started' if result_04 is not skipped else 'skipped' }}"
-      status_04: "{{ 'SKIPPED' if playbook_skipped else 'PASS' }}"
+      status_04: "{{ 'SKIP' if playbook_skipped else 'PASS' }}"
       details_04: "{{ 'rsyslog package not installed' if playbook_skipped else 'rsyslog.service started' }}"
     tags: [execute]
 
@@ -164,7 +164,7 @@
       task_05_cmd: "systemctl is-enabled rsyslog.service && systemctl is-active rsyslog.service"
       task_05_rc: "{{ result_05.rc | default(-1) }}"
       data_05: "{{ result_05.stdout | default('') | trim }}"
-      status_05: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if ('enabled:enabled' in (result_05.stdout | default('')) and 'active:active' in (result_05.stdout | default(''))) else 'FAIL') }}"
+      status_05: "{{ 'SKIP' if playbook_skipped else ('PASS' if ('enabled:enabled' in (result_05.stdout | default('')) and 'active:active' in (result_05.stdout | default(''))) else 'FAIL') }}"
       details_05: "{{ 'rsyslog package not installed' if playbook_skipped else ('rsyslog is enabled and active' if ('enabled:enabled' in (result_05.stdout | default('')) and 'active:active' in (result_05.stdout | default(''))) else 'rsyslog is not fully enabled/active') }}"
     tags: [execute]
 

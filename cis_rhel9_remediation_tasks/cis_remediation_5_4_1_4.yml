@@ -183,7 +183,7 @@
 
   - name: "Set cis_result fact"
     ansible.builtin.set_fact:
-      cis_result: "{{ (playbook_skipped | default(false) | bool) | ternary('SKIPPED', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL'))) }}"
+      cis_result: "{{ (playbook_skipped | default(false) | bool) | ternary('SKIP', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL'))) }}"
     tags: [execute]
 
   - name: "Req 03 - Generate remediation report"
@@ -197,7 +197,7 @@
       - "  Command: lineinfile modules"
       - "  Exit code: {{ result_login_defs is defined | ternary(0, -1) }}"
       - "  Data: {{ (result_login_defs is defined and result_login_defs.changed) | ternary('Config updated', 'No change needed') }}"
-      - "  Status: {{ (playbook_skipped | default(false) | bool) | ternary('SKIPPED', 'PASS') }}"
+      - "  Status: {{ (playbook_skipped | default(false) | bool) | ternary('SKIP', 'PASS') }}"
       - "  Details: {{ (playbook_skipped | default(false) | bool) | ternary('shadow-utils package not installed', ((result_login_defs.changed or result_pam_pw.changed) | ternary('Configuration applied', 'Configuration already present'))) }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
@@ -211,7 +211,7 @@
       - "    Exit code: {{ result_verify_pam_pw.rc | default(-1) }}"
       - "    Data: {{ result_verify_pam_pw.stdout | default('') | trim }}"
       - "    Status: {{ (result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL') }}"
-      - "  Combined Status: {{ (playbook_skipped | default(false) | bool) | ternary('SKIPPED', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL'))) }}"
+      - "  Combined Status: {{ (playbook_skipped | default(false) | bool) | ternary('SKIP', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('PASS', 'FAIL'))) }}"
       - "  Details: {{ (playbook_skipped | default(false) | bool) | ternary('Skipped - package not installed', ((result_verify_login_defs.rc | default(-1) == 0 and result_verify_pam_pw.rc | default(-1) == 0) | ternary('Compliant - SHA512 configured', 'Non-compliant - SHA512 not properly configured'))) }}"
       - ""
       - "REQUIREMENT 03 - {{ req_03 }}:"

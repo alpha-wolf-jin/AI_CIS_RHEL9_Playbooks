@@ -85,7 +85,7 @@
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     data_03: "{{ result_03.stdout | default('') | trim }}"
     status_03: >-
-      {%- if not (sshd_installed | default(false) | bool) or not (sshd_running | default(false) | bool) -%}SKIPPED
+      {%- if not (sshd_installed | default(false) | bool) or not (sshd_running | default(false) | bool) -%}SKIP
       {%- elif result_03.rc | default(-1) == 0 and ('VERBOSE' in result_03.stdout | default('') or 'INFO' in result_03.stdout | default('')) -%}PASS
       {%- else -%}FAIL
       {%- endif -%}
@@ -113,7 +113,7 @@
     task_04_rc: "{{ result_04.rc | default(-1) }}"
     data_04: "{{ result_04.stdout | default('') | trim }}"
     status_04: >-
-      {%- if not (sshd_installed | default(false) | bool) or not (sshd_running | default(false) | bool) -%}SKIPPED
+      {%- if not (sshd_installed | default(false) | bool) or not (sshd_running | default(false) | bool) -%}SKIP
       {%- elif result_04.rc | default(-1) == 0 and ('VERBOSE' in result_04.stdout | default('') or 'INFO' in result_04.stdout | default('')) -%}PASS
       {%- else -%}FAIL
       {%- endif -%}

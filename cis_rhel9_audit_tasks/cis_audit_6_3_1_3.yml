@@ -92,7 +92,7 @@
     task_03_cmd: |
       grubby --info=ALL | grep -Po '\\baudit_backlog_limit=\\d+\\b'
     task_03_rc: "{{ result_03.rc | default(-1) if result_03 is not skipped else -1 }}"
-    data_03: "{{ result_03.stdout | default('') | trim if result_03 is not skipped else 'SKIPPED' }}"
+    data_03: "{{ result_03.stdout | default('') | trim if result_03 is not skipped else 'SKIP' }}"
     status_03: >-
       {% if result_03 is skipped %}
         SKIP
@@ -139,7 +139,7 @@
     task_04_cmd: |
       grep -Psoi -- '^\\h*GRUB_CMDLINE_LINUX=\"([^#\\n\\r]+\\h+)?\\baudit_backlog_limit=\\d+\\b' /etc/default/grub
     task_04_rc: "{{ result_04.rc | default(-1) if result_04 is not skipped else -1 }}"
-    data_04: "{{ result_04.stdout | default('') | trim if result_04 is not skipped else 'SKIPPED' }}"
+    data_04: "{{ result_04.stdout | default('') | trim if result_04 is not skipped else 'SKIP' }}"
     status_04: >-
       {% if result_04 is skipped %}
         SKIP

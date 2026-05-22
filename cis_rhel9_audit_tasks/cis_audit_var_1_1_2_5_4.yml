@@ -1,4 +1,6 @@
-req_01: "Check if a separate partition exists for /var/tmp using command: `findmnt -kn /var/tmp`. Expected result: output should contain a mount point entry for /var/tmp."
-req_02: "Check if the noexec option is set on the /var/tmp partition using command: `findmnt -kn /var/tmp | grep -v noexec`. Expected result: no output should be returned."
+mount_point: "/var/tmp"
+mount_option: "noexec"
+req_01: "Check if a separate partition exists for /var/tmp using command: `findmnt -kn /var/tmp`. Expected result: a mount point line is returned (e.g., /dev/sdb1 /var/tmp ...)."
+req_02: "Check if the noexec option is set on the /var/tmp partition using command: `findmnt -kn /var/tmp | grep -v noexec`. Expected result: no output (empty)."
 req_03: "Summarize overall compliance: PASS if both checks pass, SKIP if no separate partition exists for /var/tmp, FAIL if partition exists but noexec is not set."
 req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

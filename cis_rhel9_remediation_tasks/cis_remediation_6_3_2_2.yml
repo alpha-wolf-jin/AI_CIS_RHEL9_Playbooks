@@ -71,7 +71,7 @@
       task_01_cmd: "package_facts module"
       task_01_rc: 0
       data_01: "{{ ansible_facts.packages[package_name] | default([]) | length > 0 }}"
-      status_01: "{{ 'PASS' if (ansible_facts.packages[package_name] | default([]) | length > 0) else 'SKIPPED' }}"
+      status_01: "{{ 'PASS' if (ansible_facts.packages[package_name] | default([]) | length > 0) else 'SKIP' }}"
       details_01: "{{ 'Package audit is installed' if (ansible_facts.packages[package_name] | default([]) | length > 0) else 'Package audit is NOT installed - skipping remediation' }}"
       playbook_skipped: "{{ not (ansible_facts.packages[package_name] | default([]) | length > 0) }}"
     tags: [execute]
@@ -112,8 +112,8 @@
       task_02_cmd: |
         lineinfile: regexp='^max_log_file_action\\s*=.*' line='max_log_file_action = keep_logs' path={{ config_file }}
       task_02_rc: "{{ 0 if not (playbook_skipped | bool) else -1 }}"
-      data_02: "{{ 'max_log_file_action = keep_logs' if not (playbook_skipped | bool) else 'SKIPPED' }}"
-      status_02: "{{ 'APPLIED' if not (playbook_skipped | bool) else 'SKIPPED' }}"
+      data_02: "{{ 'max_log_file_action = keep_logs' if not (playbook_skipped | bool) else 'SKIP' }}"
+      status_02: "{{ 'APPLIED' if not (playbook_skipped | bool) else 'SKIP' }}"
       details_02: "{{ 'Configuration parameter set successfully' if not (playbook_skipped | bool) else 'Skipped - auditd package not installed' }}"
     tags: [execute]
 
@@ -131,8 +131,8 @@
       task_03_name: "Restart auditd service"
       task_03_cmd: "systemctl restart auditd"
       task_03_rc: "{{ 0 if (not (playbook_skipped | bool) and result_03 is defined and not (result_03.failed | default(false))) else -1 }}"
-      data_03: "{{ result_03.state | default('restarted') if not (playbook_skipped | bool) else 'SKIPPED' }}"
-      status_03: "{{ 'APPLIED' if (not (playbook_skipped | bool) and result_03 is defined and not (result_03.failed | default(false))) else ('SKIPPED' if (playbook_skipped | bool) else 'FAILED') }}"
+      data_03: "{{ result_03.state | default('restarted') if not (playbook_skipped | bool) else 'SKIP' }}"
+      status_03: "{{ 'APPLIED' if (not (playbook_skipped | bool) and result_03 is defined and not (result_03.failed | default(false))) else ('SKIP' if (playbook_skipped | bool) else 'FAILED') }}"
       details_03: "{{ 'Service restarted successfully' if (not (playbook_skipped | bool) and result_03 is defined and not (result_03.failed | default(false))) else ('Skipped - auditd package not installed' if (playbook_skipped | bool) else 'Service restart failed') }}"
     tags: [execute]
 
@@ -152,8 +152,8 @@
       task_04_name: "Verify max_log_file_action setting"
       task_04_cmd: "grep '^max_log_file_action' {{ config_file }}"
       task_04_rc: "{{ result_04.rc | default(-1) if not (playbook_skipped | bool) else -1 }}"
-      data_04: "{{ result_04.stdout | default('') | trim if not (playbook_skipped | bool) else 'SKIPPED' }}"
-      status_04: "{{ 'PASS' if (not (playbook_skipped | bool) and (result_04.stdout | default('') | trim == 'max_log_file_action = keep_logs')) else ('SKIPPED' if (playbook_skipped | bool) else 'FAILED') }}"
+      data_04: "{{ result_04.stdout | default('') | trim if not (playbook_skipped | bool) else 'SKIP' }}"
+      status_04: "{{ 'PASS' if (not (playbook_skipped | bool) and (result_04.stdout | default('') | trim == 'max_log_file_action = keep_logs')) else ('SKIP' if (playbook_skipped | bool) else 'FAILED') }}"
       details_04: "{{ 'Verification successful - max_log_file_action = keep_logs' if (not (playbook_skipped | bool) and (result_04.stdout | default('') | trim == 'max_log_file_action = keep_logs')) else ('Skipped - auditd package not installed' if (playbook_skipped | bool) else 'Verification failed - expected max_log_file_action = keep_logs') }}"
     tags: [execute]
 

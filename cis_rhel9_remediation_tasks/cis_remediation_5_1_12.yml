@@ -115,7 +115,7 @@
       task_01_cmd: "which sshd && sshd -t"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not (sshd_installed | default(false)) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if not (sshd_installed | default(false)) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
       details_01: "{{ 'sshd not installed' if not (sshd_installed | default(false)) else ('Completed successfully' if result_01.rc | default(-1) == 0 else 'Failed to execute') }}"
     tags: [execute]
 
@@ -147,7 +147,7 @@
       task_02_cmd: "lineinfile: regexp=^HostbasedAuthentication line='HostbasedAuthentication no'"
       task_02_rc: "{{ 0 if result_02 is not failed else -1 }}"
       data_02: "{{ before_config.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (sshd_installed | default(false)) else ('PASS' if result_02 is not failed else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if not (sshd_installed | default(false)) else ('PASS' if result_02 is not failed else 'FAIL') }}"
       details_02: "{{ 'sshd not installed' if not (sshd_installed | default(false)) else ('Applied successfully' if result_02 is not failed else 'Failed to apply') }}"
     tags: [execute]
 
@@ -179,7 +179,7 @@
       task_03_cmd: "sed -i '/^Include/i HostbasedAuthentication no' /etc/ssh/sshd_config && sed -i '/^Match/i HostbasedAuthentication no' /etc/ssh/sshd_config && awk '!seen[$0]++' /etc/ssh/sshd_config > /tmp/sshd_config && mv /tmp/sshd_config /etc/ssh/sshd_config"
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ after_config.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if not (sshd_installed | default(false)) else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if not (sshd_installed | default(false)) else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') }}"
       details_03: "{{ 'sshd not installed' if not (sshd_installed | default(false)) else ('Ordering and dedup applied' if result_03.rc | default(-1) == 0 else 'Failed to apply ordering/dedup') }}"
     tags: [execute]
 
@@ -198,7 +198,7 @@
       task_04_cmd: "systemctl restart sshd"
       task_04_rc: "{{ 0 if result_04 is not failed else -1 }}"
       data_04: "{{ result_04.state | default('') }}"
-      status_04: "{{ 'SKIPPED' if not (sshd_installed | default(false)) else ('PASS' if result_04 is not failed else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if not (sshd_installed | default(false)) else ('PASS' if result_04 is not failed else 'FAIL') }}"
       details_04: "{{ 'sshd not installed' if not (sshd_installed | default(false)) else ('Restarted successfully' if result_04 is not failed else 'Failed to restart') }}"
     tags: [execute]
 
@@ -219,7 +219,7 @@
       task_05_cmd: "sshd -T | grep -i hostbasedauthentication"
       task_05_rc: "{{ result_05.rc | default(-1) }}"
       data_05: "{{ result_05.stdout | default('') | trim }}"
-      status_05: "{{ 'SKIPPED' if not (sshd_installed | default(false)) else ('PASS' if (result_05.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL') }}"
+      status_05: "{{ 'SKIP' if not (sshd_installed | default(false)) else ('PASS' if (result_05.stdout | default('') | trim) == 'hostbasedauthentication no' else 'FAIL') }}"
       details_05: "{{ 'sshd not installed' if not (sshd_installed | default(false)) else ('Verified: hostbasedauthentication no' if (result_05.stdout | default('') | trim) == 'hostbasedauthentication no' else 'Verification failed') }}"
     tags: [execute]
 

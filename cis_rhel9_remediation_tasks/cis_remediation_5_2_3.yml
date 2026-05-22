@@ -73,7 +73,7 @@
       task_01_cmd: "which visudo"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if 'sudo' not in ansible_facts.packages else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if 'sudo' not in ansible_facts.packages else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
       details_01: "{{ 'sudo package not installed' if 'sudo' not in ansible_facts.packages else ('visudo found at ' + result_01.stdout | default('') | trim if result_01.rc | default(-1) == 0 else 'visudo not found') }}"
     tags: [execute]
 
@@ -97,7 +97,7 @@
         lineinfile: path={{ sudoers_file }} regexp='^Defaults\\s+logfile' line='{{ sudo_log_line }}'
       task_02_rc: "{{ 0 if result_02 is not failed else 1 }}"
       data_02: "{{ 'line added/verified' if result_02 is not failed else 'failed' }}"
-      status_02: "{{ 'SKIPPED' if 'sudo' not in ansible_facts.packages else ('PASS' if result_02 is not failed else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if 'sudo' not in ansible_facts.packages else ('PASS' if result_02 is not failed else 'FAIL') }}"
       details_02: "{{ 'sudo package not installed' if 'sudo' not in ansible_facts.packages else ('Configuration applied successfully' if result_02 is not failed else 'Failed to apply configuration') }}"
     tags: [execute]
 
@@ -117,7 +117,7 @@
       task_03_cmd: "grep -E '^Defaults.*logfile' {{ sudoers_file }} /etc/sudoers.d/* 2>/dev/null"
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if 'sudo' not in ansible_facts.packages else ('PASS' if 'logfile' in result_03.stdout | default('') else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if 'sudo' not in ansible_facts.packages else ('PASS' if 'logfile' in result_03.stdout | default('') else 'FAIL') }}"
       details_03: "{{ 'sudo package not installed' if 'sudo' not in ansible_facts.packages else ('Configuration verified' if 'logfile' in result_03.stdout | default('') else 'Configuration not found') }}"
     tags: [execute]
 

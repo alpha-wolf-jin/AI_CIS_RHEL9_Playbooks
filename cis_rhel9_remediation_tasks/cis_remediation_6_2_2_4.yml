@@ -137,7 +137,7 @@
       - "  Command: lineinfile/blockinfile + systemctl reload-or-restart"
       - "  Exit code: {{ _service_reload.rc | default(0) }}"
       - "  Data: Config file {{ config_file }} updated"
-      - "  Status: {{ 'PASS' if not (playbook_skipped | default(false) | bool) else 'SKIPPED' }}"
+      - "  Status: {{ 'PASS' if not (playbook_skipped | default(false) | bool) else 'SKIP' }}"
       - "  Details: {{ 'Configuration applied successfully' if not (playbook_skipped | default(false) | bool) else 'systemd-journald not installed' }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"

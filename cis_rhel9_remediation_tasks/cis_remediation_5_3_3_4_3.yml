@@ -263,7 +263,7 @@
       - "  Command: sed -ri to update pam_unix.so hashing algorithm + authselect apply-changes"
       - "  Exit code: {{ result_01_remediate.rc | default(-1) if (remediation_needed | default(false)) else 0 }}"
       - "  Data: {{ result_01_remediate.stdout | default('No remediation needed') | trim }}"
-      - "  Status: {{ 'APPLIED' if (remediation_needed | default(false)) and (result_01_remediate.rc | default(-1) == 0) else 'SKIPPED' if not (remediation_needed | default(false)) else 'FAILED' }}"
+      - "  Status: {{ 'APPLIED' if (remediation_needed | default(false)) and (result_01_remediate.rc | default(-1) == 0) else 'SKIP' if not (remediation_needed | default(false)) else 'FAILED' }}"
       - "  Details: {{ 'Remediation script executed successfully' if (remediation_needed | default(false)) and (result_01_remediate.rc | default(-1) == 0) else 'No remediation needed - strong algorithm already present' if not (remediation_needed | default(false)) else 'Remediation script failed' }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"

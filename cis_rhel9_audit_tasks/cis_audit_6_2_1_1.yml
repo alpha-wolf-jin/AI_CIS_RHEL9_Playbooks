@@ -51,7 +51,7 @@
 
 - name: "Store requirement 02 details - not applicable"
   ansible.builtin.set_fact:
-    status_02: "SKIPPED"
+    status_02: "SKIP"
     details_02: "Not applicable - systemd-journald service not installed"
     data_02: ""
     task_02_rc: -1
@@ -76,7 +76,7 @@
 
 - name: "Store requirement 03 details - not applicable"
   ansible.builtin.set_fact:
-    status_03: "SKIPPED"
+    status_03: "SKIP"
     details_03: "Not applicable - systemd-journald service not installed"
     data_03: ""
     task_03_rc: -1

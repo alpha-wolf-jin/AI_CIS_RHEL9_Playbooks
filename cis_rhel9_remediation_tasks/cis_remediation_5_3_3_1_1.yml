@@ -153,7 +153,7 @@
       task_01_name: "Set deny option in faillock.conf and clean PAM modules"
       task_01_cmd: "lineinfile + PAM cleanup script"
       task_01_rc: "{{ 0 if (faillock_result is not failed and (pam_cleanup_result is skipped or pam_cleanup_result is not failed)) else 1 }}"
-      data_01: "{{ faillock_result | to_json + ' | ' + (pam_cleanup_result | to_json if pam_cleanup_result is defined else 'SKIPPED') }}"
+      data_01: "{{ faillock_result | to_json + ' | ' + (pam_cleanup_result | to_json if pam_cleanup_result is defined else 'SKIP') }}"
       status_01: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (faillock_result is not failed and (pam_cleanup_result is skipped or pam_cleanup_result is not failed)) else 'FAIL') }}"
       details_01: "{{ 'Remediation skipped - authselect not installed' if (playbook_skipped | default(false) | bool) else ('Remediation applied successfully' if (faillock_result is not failed and (pam_cleanup_result is skipped or pam_cleanup_result is not failed)) else 'Failed to apply remediation') }}"
     tags: [execute]
@@ -163,7 +163,7 @@
       task_02_name: "Verify deny option and PAM configuration"
       task_02_cmd: "grep faillock.conf and PAM files"
       task_02_rc: "{{ verify_faillock.rc | default(-1) if verify_faillock is defined else -1 }}"
-      data_02: "faillock={{ verify_faillock.stdout | default('NOT_FOUND') | trim }}, PAM={{ verify_pam.stdout | default('SKIPPED') | trim }}"
+      data_02: "faillock={{ verify_faillock.stdout | default('NOT_FOUND') | trim }}, PAM={{ verify_pam.stdout | default('SKIP') | trim }}"
       status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (verify_faillock.stdout | default('NOT_FOUND') | trim != 'NOT_FOUND' and (verify_pam.stdout | default('CLEAN') | trim == 'CLEAN' or verify_pam is skipped)) else 'FAIL') }}"
       details_02: "{{ 'Verification skipped - authselect not installed' if (playbook_skipped | default(false) | bool) else ('System is compliant' if (verify_faillock.stdout | default('NOT_FOUND') | trim != 'NOT_FOUND' and (verify_pam.stdout | default('CLEAN') | trim == 'CLEAN' or verify_pam is skipped)) else 'System is NOT compliant') }}"
     tags: [execute]

@@ -185,7 +185,7 @@
         sed -ri 's/(^\\s*password\\s+(requisite|required|sufficient)\\s+pam_pwhistory\\.so\\s+.*)$/\\1 use_authtok/g' + authselect apply-changes
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not (authselect_installed | default(false)) else ('APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED') }}"
+      status_01: "{{ 'SKIP' if not (authselect_installed | default(false)) else ('APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED') }}"
       details_01: "{{ 'authselect not installed - skipped' if not (authselect_installed | default(false)) else ('Remediation completed successfully' if result_01.rc | default(-1) == 0 else 'Remediation script failed') }}"
     tags: [execute]
 
@@ -214,7 +214,7 @@
         grep -P -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwhistory\\.so\\h+([^#\\n\\r]+\\h+)?use_authtok\\b' <profile_path>/{password,system}-auth
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (authselect_installed | default(false)) else ('PASS' if (result_02.stdout | default('') | trim | length > 0) else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if not (authselect_installed | default(false)) else ('PASS' if (result_02.stdout | default('') | trim | length > 0) else 'FAIL') }}"
       details_02: "{{ 'authselect not installed - skipped' if not (authselect_installed | default(false)) else ('use_authtok is configured' if (result_02.stdout | default('') | trim | length > 0) else 'use_authtok is NOT configured') }}"
     tags: [execute]
 

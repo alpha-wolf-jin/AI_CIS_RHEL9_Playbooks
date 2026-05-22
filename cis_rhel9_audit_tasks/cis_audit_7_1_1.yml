@@ -71,7 +71,7 @@
     task_02_rc: "{{ 0 if result_02.skipped | default(false) else result_02.rc | default(-1) }}"
     data_02: "{{ 'N/A' if result_02.skipped | default(false) else (result_02.stdout | default('') | trim) }}"
     status_02: >-
-      {{ 'SKIPPED' if result_02.skipped | default(false)
+      {{ 'SKIP' if result_02.skipped | default(false)
          else ('PASS' if (result_02.stdout | default('') | trim) | int <= 644 and (result_02.rc | default(-1)) == 0
          else 'FAIL') }}
     details_02: >-
@@ -96,7 +96,7 @@
     task_03_rc: "{{ 0 if result_03.skipped | default(false) else result_03.rc | default(-1) }}"
     data_03: "{{ 'N/A' if result_03.skipped | default(false) else (result_03.stdout | default('') | trim) }}"
     status_03: >-
-      {{ 'SKIPPED' if result_03.skipped | default(false)
+      {{ 'SKIP' if result_03.skipped | default(false)
          else ('PASS' if (result_03.stdout | default('') | trim) == '0' else 'FAIL') }}
     details_03: >-
       {{ 'Skipped because /etc/passwd does not exist' if result_03.skipped | default(false)
@@ -120,7 +120,7 @@
     task_04_rc: "{{ 0 if result_04.skipped | default(false) else result_04.rc | default(-1) }}"
     data_04: "{{ 'N/A' if result_04.skipped | default(false) else (result_04.stdout | default('') | trim) }}"
     status_04: >-
-      {{ 'SKIPPED' if result_04.skipped | default(false)
+      {{ 'SKIP' if result_04.skipped | default(false)
          else ('PASS' if (result_04.stdout | default('') | trim) == '0' else 'FAIL') }}
     details_04: >-
       {{ 'Skipped because /etc/passwd does not exist' if result_04.skipped | default(false)

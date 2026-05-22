@@ -38,21 +38,21 @@
     task_04_cmd: "N/A"
     task_04_rc: -1
 
-- name: "Set SKIPPED status when pam is not installed"
+- name: "Set SKIP status when pam is not installed"
   ansible.builtin.set_fact:
-    status_01: "SKIPPED"
+    status_01: "SKIP"
     details_01: "PAM package not installed; audit not applicable"
-    data_01: "SKIPPED"
-    status_02: "SKIPPED"
+    data_01: "SKIP"
+    status_02: "SKIP"
     details_02: "PAM package not installed; audit not applicable"
-    data_02: "SKIPPED"
-    status_03: "SKIPPED"
+    data_02: "SKIP"
+    status_03: "SKIP"
     details_03: "Overall compliance cannot be determined; PAM missing"
-    data_03: "SKIPPED"
-    status_04: "SKIPPED"
+    data_03: "SKIP"
+    status_04: "SKIP"
     details_04: "Audit skipped due to missing PAM"
-    data_04: "SKIPPED"
-    cis_result: "SKIPPED"
+    data_04: "SKIP"
+    cis_result: "SKIP"
   when: not pam_installed
 
 # Requirement 1: Check if pam_unix.so is present
@@ -104,7 +104,7 @@
   ansible.builtin.set_fact:
     _tmp_status_03: >-
       {{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS')
-         else 'SKIPPED' if (status_01 == 'SKIPPED')
+         else 'SKIP' if (status_01 == 'SKIP')
          else 'FAIL' }}
   when: pam_installed | bool
 
@@ -114,10 +114,10 @@
     data_03: "{{ _tmp_status_03 }}"
     details_03: >-
       {{ 'System is compliant with CIS 5.3.3.4.2' if (_tmp_status_03 == 'PASS')
-         else 'PAM package not installed, audit skipped' if (_tmp_status_03 == 'SKIPPED')
+         else 'PAM package not installed, audit skipped' if (_tmp_status_03 == 'SKIP')
          else 'System is non-compliant with CIS 5.3.3.4.2' }}
     task_03_name: "Summarize overall compliance"
-    task_03_cmd: "Logic: IF pam_unix.so present AND no remember argument -> PASS, else FAIL/SKIPPED"
+    task_03_cmd: "Logic: IF pam_unix.so present AND no remember argument -> PASS, else FAIL/SKIP"
     task_03_rc: 0
   when: pam_installed | bool
 

@@ -81,7 +81,7 @@
     data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else '' }}"
     status_02: >-
       {%- if not auditd_installed | bool -%}
-        SKIPPED
+        SKIP
       {%- elif (result_02.stdout | default('') | trim) == (expected_on_disk_rules | trim) -%}
         PASS
       {%- else -%}
@@ -114,7 +114,7 @@
     data_03: "{{ result_03.stdout | default('') | trim if result_03 is defined else '' }}"
     status_03: >-
       {%- if not auditd_installed | bool -%}
-        SKIPPED
+        SKIP
       {%- elif (result_03.stdout | default('') | trim) == (expected_running_rules | trim) -%}
         PASS
       {%- else -%}

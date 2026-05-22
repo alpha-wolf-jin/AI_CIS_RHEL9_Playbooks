@@ -78,7 +78,7 @@
       task_01_cmd: "lineinfile + augenrules --load"
       task_01_rc: "{{ _augenrules_result.rc | default(-1) }}"
       data_01: "{{ _augenrules_result.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('APPLIED' if (_augenrules_result.rc | default(-1) == 0) else 'FAILED') }}"
+      status_01: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('APPLIED' if (_augenrules_result.rc | default(-1) == 0) else 'FAILED') }}"
       details_01: "{{ 'auditd not installed - skipped' if (playbook_skipped | default(false) | bool) else ('Rules applied and loaded successfully' if (_augenrules_result.rc | default(-1) == 0) else 'Failed to load audit rules') }}"
     tags: [execute]
 
@@ -88,7 +88,7 @@
       task_02_cmd: "auditctl -l | grep -E '(utmp|wtmp|btmp)'"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('APPLIED' if ('VERIFY_FAILED' not in (result_02.stdout | default(''))) else 'FAILED') }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('APPLIED' if ('VERIFY_FAILED' not in (result_02.stdout | default(''))) else 'FAILED') }}"
       details_02: "{{ 'auditd not installed - skipped' if (playbook_skipped | default(false) | bool) else ('Session rules active' if ('VERIFY_FAILED' not in (result_02.stdout | default(''))) else 'Session rules not found in active configuration') }}"
     tags: [execute]
 
@@ -97,7 +97,7 @@
       cis_result: >-
         {%- if status_02 == "APPLIED" -%}PASS
         {%- elif status_02 == "FAILED" -%}FAIL
-        {%- elif status_02 == "SKIPPED" -%}SKIP
+        {%- elif status_02 == "SKIP" -%}SKIP
         {%- else -%}ERROR
         {%- endif %}
     tags: [execute]

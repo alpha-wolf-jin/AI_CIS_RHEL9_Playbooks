@@ -1,7 +1,7 @@
 req_00: "Verify system prerequisites for duplicate GID check"
 req_01: "Run the provided audit script to verify Ensure no duplicate GIDs exist."
 req_02: "VERIFY: Summarise compliance status for Ensure no duplicate GIDs exist. Expected result: PASS if compliant, FAIL otherwise"
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 audit_script: "/tmp/audit_duplicate_gids.sh"
 audit_script_content: |
   {% raw %}

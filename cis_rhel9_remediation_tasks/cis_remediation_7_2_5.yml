@@ -84,7 +84,7 @@
       task_03_cmd: "awk -F: -v gid=<DUPLICATE_GID> '$3 == gid {print $1}' /etc/group"
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if result_03.skipped | default(false) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if result_03.skipped | default(false) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
       details_03: "{{ 'No duplicate GIDs to list' if result_03.skipped | default(false) else ('Groups listed' if (result_03.stdout | default('') | trim) != '' else 'No groups to list') }}"
     when: result_03 is defined
     tags: [execute]
@@ -108,7 +108,7 @@
       task_04_cmd: "awk -F: '{print $3}' /etc/group | sort -n | awk '{if(NR==1) next; if($1!=prev+1) {print prev+1; exit} prev=$1}'"
       task_04_rc: "{{ result_04.rc | default(-1) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
-      status_04: "{{ 'SKIPPED' if result_04.skipped | default(false) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if result_04.skipped | default(false) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
       details_04: "{{ 'No duplicate GIDs to resolve' if result_04.skipped | default(false) else ('Unused GID found: ' + (result_04.stdout | default('') | trim) if (result_04.stdout | default('') | trim) != '' else 'No unused GID identified') }}"
     when: result_04 is defined
     tags: [execute]
@@ -139,7 +139,7 @@
       task_05_cmd: "groupmod -g <NEW_UNIQUE_GID> <GROUP_NAME>"
       task_05_rc: "{{ result_05.rc | default(-1) }}"
       data_05: "{{ result_05.stdout | default('') | trim }}"
-      status_05: "{{ 'SKIPPED' if result_05.skipped | default(false) else ('PASS' if (result_05.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_05: "{{ 'SKIP' if result_05.skipped | default(false) else ('PASS' if (result_05.rc | default(-1)) == 0 else 'FAIL') }}"
       details_05: "{{ 'No conflicting groups to remediate' if result_05.skipped | default(false) else ('GID updated' if (result_05.rc | default(-1)) == 0 else 'Failed to update GID') }}"
     when: result_05 is defined
     tags: [execute]
@@ -170,7 +170,7 @@
         find / -gid <OLD_DUPLICATE_GID> -exec chgrp <NEW_UNIQUE_GID> {} \\; 2>/dev/null
       task_06_rc: "{{ result_06.rc | default(-1) }}"
       data_06: "{{ result_06.stdout | default('') | trim }}"
-      status_06: "{{ 'SKIPPED' if result_06.skipped | default(false) else ('PASS' if (result_06.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_06: "{{ 'SKIP' if result_06.skipped | default(false) else ('PASS' if (result_06.rc | default(-1)) == 0 else 'FAIL') }}"
       details_06: "{{ 'No GID changes made, ownership update skipped' if result_06.skipped | default(false) else ('File ownership updated' if (result_06.rc | default(-1)) == 0 else 'Failed to update ownership') }}"
     when: result_06 is defined
     tags: [execute]

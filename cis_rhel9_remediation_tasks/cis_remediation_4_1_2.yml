@@ -213,8 +213,8 @@
 
   - name: "Set skipped status if no firewall packages"
     set_fact:
-      status_01: "SKIPPED"
-      status_02: "SKIPPED"
+      status_01: "SKIP"
+      status_02: "SKIP"
       task_01_name: "Remediation skipped - no firewall packages"
       task_02_name: "Verification skipped - no firewall packages"
       details_01: "No firewalld or nftables installed, skipping remediation"

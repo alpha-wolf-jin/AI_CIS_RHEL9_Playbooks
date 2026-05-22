@@ -54,7 +54,7 @@
     task_01_rc: "{{ result_01.rc | default(-1) }}"
     data_01: "{{ result_01.stdout | default('') | trim }}"
     status_01: >-
-      {{ ('SKIPPED' if not pwquality_installed | default(false) else
+      {{ ('SKIP' if not pwquality_installed | default(false) else
           ('PASS' if (result_01.stdout | default('') | trim) != '' else 'FAIL')) | trim }}
     details_01: >-
       {{ ('Not applicable: libpwquality/pwquality package not installed' if not pwquality_installed | default(false) else
@@ -66,7 +66,7 @@
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
     status_02: >-
-      {{ ('SKIPPED' if not pwquality_installed | default(false) else
+      {{ ('SKIP' if not pwquality_installed | default(false) else
           ('PASS' if (result_02.rc | default(-1)) == 0 and (result_02.stdout | default('') | trim) != '' else 'FAIL')) | trim }}
     details_02: >-
       {{ ('Not applicable: libpwquality/pwquality package not installed' if not pwquality_installed | default(false) else
@@ -79,7 +79,7 @@
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     data_03: "{{ result_03.stdout | default('') | trim }}"
     status_03: >-
-      {{ ('SKIPPED' if not pwquality_installed | default(false) else
+      {{ ('SKIP' if not pwquality_installed | default(false) else
           ('PASS' if (result_03.rc | default(-1)) == 0 and (result_03.stdout | default('') | trim) != '' else 'FAIL')) | trim }}
     details_03: >-
       {{ ('Not applicable: libpwquality/pwquality package not installed' if not pwquality_installed | default(false) else
@@ -91,7 +91,7 @@
     task_04_rc: "{{ result_04.rc | default(-1) }}"
     data_04: "{{ result_04.stdout | default('') | trim }}"
     status_04: >-
-      {{ ('SKIPPED' if not pwquality_installed | default(false) else
+      {{ ('SKIP' if not pwquality_installed | default(false) else
           ('PASS' if (result_04.rc | default(-1)) == 1 else 'FAIL')) | trim }}
     details_04: >-
       {{ ('Not applicable: libpwquality/pwquality package not installed' if not pwquality_installed | default(false) else
@@ -100,7 +100,7 @@
 - name: "Req 05 - Compute overall compliance"
   set_fact:
     status_05: >-
-      {{ ('SKIPPED' if not pwquality_installed | default(false) else
+      {{ ('SKIP' if not pwquality_installed | default(false) else
           ('PASS' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' else 'FAIL')) | trim }}
     details_05: >-
       {{ ('Not applicable: libpwquality/pwquality package not installed – check skipped' if not pwquality_installed | default(false) else

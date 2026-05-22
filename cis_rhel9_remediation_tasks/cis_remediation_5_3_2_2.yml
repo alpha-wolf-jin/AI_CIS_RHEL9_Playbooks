@@ -59,7 +59,7 @@
     task_01_cmd: "authselect enable-feature with-faillock / authselect apply-changes"
     task_01_rc: "{{ 0 if (result_01_enable.rc | default(0)) == 0 or (result_01_apply.rc | default(0)) == 0 else (result_01_enable.rc | default(result_01_apply.rc | default(-1))) }}"
     data_01: "{{ (result_01_enable.stdout | default('') + ' ' + result_01_apply.stdout | default('')) | trim }}"
-    status_01: "{{ 'SKIPPED' if not (authselect_installed | default(false)) else ('PASS' if (result_01_enable.rc | default(-1)) == 0 or (result_01_apply.rc | default(-1)) == 0 else 'FAIL') }}"
+    status_01: "{{ 'SKIP' if not (authselect_installed | default(false)) else ('PASS' if (result_01_enable.rc | default(-1)) == 0 or (result_01_apply.rc | default(-1)) == 0 else 'FAIL') }}"
     details_01: "{{ 'authselect not installed' if not (authselect_installed | default(false)) else ('Feature enabled or changes applied' if (result_01_enable.rc | default(-1)) == 0 or (result_01_apply.rc | default(-1)) == 0 else 'Remediation failed') }}"
   tags: [execute]
 - name: "Req 02 - Verify pam_faillock module is enabled in PAM configuration"

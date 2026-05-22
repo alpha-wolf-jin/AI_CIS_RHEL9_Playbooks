@@ -86,7 +86,7 @@
       task_01_cmd: "which sshd && sshd -t 2>/dev/null"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
       details_01: "{{ 'Package not installed' if (playbook_skipped | default(false) | bool) else ('sshd binary found and config syntax valid' if result_01.rc | default(-1) == 0 else 'sshd binary not found or config syntax invalid') }}"
     tags: [execute]
 
@@ -122,7 +122,7 @@
       task_02_cmd: "sed -i 's/^#*PermitEmptyPasswords.*/PermitEmptyPasswords no/' /etc/ssh/sshd_config && if ! grep -q '^PermitEmptyPasswords no' /etc/ssh/sshd_config; then echo 'PermitEmptyPasswords no' | tee -a /etc/ssh/sshd_config > /dev/null; fi"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ (_after_config.content | default('') | b64decode | trim) if not (playbook_skipped | default(false) | bool) else 'N/A' }}"
-      status_02: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('APPLIED' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('APPLIED' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
       details_02: >-
         {{ 'Package not installed' if (playbook_skipped | default(false) | bool) else
            ('Before: ' ~ (_before_config.content | default('') | b64decode | trim) ~ ' | After: ' ~ (_after_config.content | default('') | b64decode | trim))
@@ -144,7 +144,7 @@
       task_03_cmd: "systemctl restart sshd"
       task_03_rc: "{{ 0 if result_03 is succeeded else 1 }}"
       data_03: "{{ 'Restarted' if result_03 is succeeded else 'Failed to restart' }}"
-      status_03: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if result_03 is succeeded else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if result_03 is succeeded else 'FAIL') }}"
       details_03: "{{ 'Package not installed' if (playbook_skipped | default(false) | bool) else ('SSH service restarted successfully' if result_03 is succeeded else 'SSH service restart failed') }}"
     tags: [execute]
 
@@ -165,7 +165,7 @@
       task_04_cmd: "sshd -T | grep -i permitemptypasswords"
       task_04_rc: "{{ result_04.rc | default(-1) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
-      status_04: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if 'permitemptypasswords no' in (result_04.stdout | default('') | lower) else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if 'permitemptypasswords no' in (result_04.stdout | default('') | lower) else 'FAIL') }}"
       details_04: "{{ 'Package not installed' if (playbook_skipped | default(false) | bool) else ('Verification passed: permitemptypasswords no' if 'permitemptypasswords no' in (result_04.stdout | default('') | lower) else 'Verification failed') }}"
     tags: [execute]
 

@@ -3,4 +3,4 @@ req_01: |
 req_02: |
   Check that the remember argument is not set on pam_unix.so using command: `grep -Pi '^\\h*password\\h+([^#\\n\\r]+\\h+)?pam_unix\\.so\\b' /etc/pam.d/{password,system}-auth | grep -Pv '\\bremember=\\d\\b'`. Expected result: Output lines similar to '/etc/pam.d/password-auth:password   sufficient   pam_unix.so sha512 shadow use_authtok' and '/etc/pam.d/system-auth:password   sufficient   pam_unix.so sha512 shadow use_authtok' (no lines containing 'remember=N').
 req_03: "Summarize overall compliance: If both checks pass (pam_unix.so is present without remember argument), the system is compliant with checkpoint 5.3.3.4.2. Otherwise, it is non-compliant."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

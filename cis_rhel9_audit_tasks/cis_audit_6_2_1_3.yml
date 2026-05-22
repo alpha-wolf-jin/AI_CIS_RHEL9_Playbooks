@@ -67,7 +67,7 @@
     task_02_cmd: "systemd-analyze cat-config systemd/journald.conf 2>/dev/null | grep -E '^[[:space:]]*(SystemMaxUse|SystemKeepFree|RuntimeMaxUse|RuntimeKeepFree|MaxFileSec)='"
     task_02_rc: "{{ result_02.rc | default(-1) if result_02 is not skipped else -1 }}"
     data_02: "{{ result_02.stdout | default('') | trim if result_02 is not skipped else '' }}"
-    status_02: "{{ 'SKIPPED' if result_02 is skipped else 'PASS' if result_02.rc | default(-1) == 0 and 'SystemMaxUse=' in result_02.stdout | default('') and 'SystemKeepFree=' in result_02.stdout | default('') and 'RuntimeMaxUse=' in result_02.stdout | default('') and 'RuntimeKeepFree=' in result_02.stdout | default('') and 'MaxFileSec=' in result_02.stdout | default('') else 'FAIL' | trim }}"
+    status_02: "{{ 'SKIP' if result_02 is skipped else 'PASS' if result_02.rc | default(-1) == 0 and 'SystemMaxUse=' in result_02.stdout | default('') and 'SystemKeepFree=' in result_02.stdout | default('') and 'RuntimeMaxUse=' in result_02.stdout | default('') and 'RuntimeKeepFree=' in result_02.stdout | default('') and 'MaxFileSec=' in result_02.stdout | default('') else 'FAIL' | trim }}"
     details_02: "{{ 'Prerequisite not met' if result_02 is skipped else 'All five rotation parameters configured (uncommented)' if result_02.rc | default(-1) == 0 and 'SystemMaxUse=' in result_02.stdout | default('') and 'SystemKeepFree=' in result_02.stdout | default('') and 'RuntimeMaxUse=' in result_02.stdout | default('') and 'RuntimeKeepFree=' in result_02.stdout | default('') and 'MaxFileSec=' in result_02.stdout | default('') else 'Not all rotation parameters configured or all are commented out' | trim }}"
 
 - name: "Req 03 - Verify journald rotation parameters comply with site policy using systemd-analyze"
@@ -86,7 +86,7 @@
     task_03_rc: "{{ result_03.rc | default(-1) if result_03 is not skipped else -1 }}"
     data_03: "{{ result_03.stdout | default('') | trim if result_03 is not skipped else '' }}"
     status_03: >-
-      {{ 'SKIPPED' if result_03 is skipped
+      {{ 'SKIP' if result_03 is skipped
          else 'PASS' if result_03.rc | default(-1) == 0
            and 'SystemMaxUse=' in result_03.stdout | default('')
            and 'SystemKeepFree=' in result_03.stdout | default('')

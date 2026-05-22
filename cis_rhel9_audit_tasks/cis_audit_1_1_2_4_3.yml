@@ -2,85 +2,126 @@
 - name: Initialize meta data variables
   include_vars: cis_audit_var_1_1_2_4_3.yml
 
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+
 - name: "Req 01 - Check if /var is a separate partition"
-  ansible.builtin.command: findmnt -kn /var
+  ansible.builtin.shell: "findmnt -kn {{ mount_point }}"
+  args:
+    executable: /bin/bash
   register: r1
   failed_when: false
   changed_when: false
 
 - name: "Store requirement 01 details"
-  ansible.builtin.set_fact:
+  set_fact:
     task_01_name: "Check if /var is a separate partition"
-    task_01_cmd: "findmnt -kn /var"
+    task_01_cmd: "findmnt -kn {{ mount_point }}"
     task_01_rc: "{{ r1.rc | default(-1) }}"
     data_01: "{{ r1.stdout | default('') | trim }}"
-    status_01: "{{ 'PASS' if r1.stdout | default('') | trim != '' else 'NOT_APPLICABLE' }}"
-    details_01: "{{ 'Separate partition for /var exists.' if r1.stdout | default('') | trim != '' else 'No separate partition for /var found or findmnt not available.' }}"
+    status_01: >-
+      {{ 
+        'PASS' if (r1.rc | default(-1) == 0) and (r1.stdout | default('') | trim | length > 0) else 'FAIL'
+      }}
+    details_01: >-
+      {{ 
+        'Separate /var partition exists.' if (r1.rc | default(-1) == 0) and (r1.stdout | default('') | trim | length > 0) 
+        else 'No separate /var partition found.'
+      }}
+    var_partition_exists: "{{ (r1.rc | default(-1) == 0) and (r1.stdout | default('') | trim | length > 0) }}"
 
-# ── Requirement 2 ──────────────────────────────────────────────
 - name: "Req 02 - Check if nosuid option is set on /var partition"
-  ansible.builtin.shell: "findmnt -kn /var | grep -v nosuid"
+  ansible.builtin.shell: "findmnt -kn {{ mount_point }} | grep {{ mount_option }}"
   args:
     executable: /bin/bash
   register: r2
   failed_when: false
   changed_when: false
-  when: "r1.stdout | default('') | trim != ''"
+  when: var_partition_exists | default(false) | bool
 
 - name: "Store requirement 02 details"
-  ansible.builtin.set_fact:
+  set_fact:
     task_02_name: "Check if nosuid option is set on /var partition"
-    task_02_cmd: "findmnt -kn /var | grep -v nosuid"
+    task_02_cmd: "findmnt -kn {{ mount_point }} | grep {{ mount_option }}"
     task_02_rc: "{{ r2.rc | default(-1) }}"
     data_02: "{{ r2.stdout | default('') | trim }}"
     status_02: >-
       {{ 
         'NOT_APPLICABLE' if r2.skipped | default(false)
-        else ('PASS' if r2.stdout | default('') | trim == '' else 'FAIL')
+        else ('PASS' if r2.rc | default(-1) == 0 else 'FAIL')
       }}
     details_02: >-
       {{ 
         'Not applicable - no separate /var partition.' if r2.skipped | default(false)
-        else ('nosuid option is set on /var partition.' if r2.stdout | default('') | trim == '' 
+        else ('nosuid option is set on /var partition.' if r2.rc | default(-1) == 0 
               else 'nosuid option is NOT set on /var partition.')
       }}
+  when: var_partition_exists is defined
 
-# ── Requirement 3 – overall compliance ────────────────────────
 - name: "Req 03 - Summarize overall compliance"
-  ansible.builtin.set_fact:
+  set_fact:
     task_03_name: "Summarize overall compliance"
     task_03_cmd: "N/A"
-    task_03_rc: -1
-    data_03: "N/A"
+    task_03_rc: 0
+    data_03: "{{ status_02 | default('ERROR') | trim }}"
     status_03: >-
       {{ 
-        'NOT_APPLICABLE' if status_01 == 'NOT_APPLICABLE'
-        else ('PASS' if status_02 == 'PASS' else 'FAIL')
+        'SKIP' if (status_02 | default('ERROR') | trim) == 'NOT_APPLICABLE'
+        else ('PASS' if (status_02 | default('ERROR') | trim) == 'PASS' else 'FAIL')
       }}
     details_03: >-
       {{ 
-        'No separate /var partition - benchmark not applicable.' if status_01 == 'NOT_APPLICABLE'
-        else ('Compliant: /var is a separate partition with nosuid set.' if status_02 == 'PASS' 
-              else 'Non-compliant: /var exists but nosuid option is missing.')
+        'Not applicable - no separate /var partition.' if (status_02 | default('ERROR') | trim) == 'NOT_APPLICABLE'
+        else ('Overall compliance: PASS' if (status_02 | default('ERROR') | trim) == 'PASS' 
+              else 'Overall compliance: FAIL - nosuid option is not set on /var partition.')
       }}
 
-# ── Store final audit result in cis_result ────────────────────
-- name: "Store final audit result in cis_result"
-  ansible.builtin.set_fact:
-    cis_result: "{{ status_03 }}"
+- name: "Req 04 - Store final audit result in cis_result"
+  set_fact:
+    task_04_name: "Store final audit result in cis_result"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "{{ status_03 | default('ERROR') | trim }}"
+    status_04: "{{ status_03 | default('ERROR') | trim }}"
+    details_04: "{{ details_03 | default('Not evaluated') | trim }}"
+    cis_result: "{{ status_03 | default('ERROR') | trim }}"
 
-# ── Audit report ──────────────────────────────────────────────
 - name: "Generate audit report"
-  ansible.builtin.debug:
+  debug:
     msg:
     - "AUDIT REPORT — CIS 1.1.2.4.3"
     - "Reference: CIS Benchmark checkpoint 1.1.2.4.3"
+    - ""
     - "REQUIREMENT 01 - {{ req_01 }}:"
     - "  Task: {{ task_01_name | default('Not recorded') }}"
     - "  Command: {{ task_01_cmd | default('N/A') }}"
     - "  Exit code: {{ task_01_rc | default(-1) }}"
     - "  Data: {{ data_01 | default('') | trim }}"
-    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
     - "  Details: {{ details_01 | default('') | trim }}"
     - ""
     - "REQUIREMENT 02 - {{ req_02 }}:"
@@ -88,7 +129,7 @@
     - "  Command: {{ task_02_cmd | default('N/A') }}"
     - "  Exit code: {{ task_02_rc | default(-1) }}"
     - "  Data: {{ data_02 | default('') | trim }}"
-    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
     - "  Details: {{ details_02 | default('') | trim }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -96,11 +137,19 @@
     - "  Command: {{ task_03_cmd | default('N/A') }}"
     - "  Exit code: {{ task_03_rc | default(-1) }}"
     - "  Data: {{ data_03 | default('') | trim }}"
-    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
     - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
     - ""
     - "========================================================"
     - "OVERALL COMPLIANCE:"
-    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
-    - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
     - "========================================================"

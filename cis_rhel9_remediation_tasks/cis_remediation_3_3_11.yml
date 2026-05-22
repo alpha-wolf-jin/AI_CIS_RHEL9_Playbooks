@@ -170,11 +170,11 @@
       ipv6_enabled: "{{ _ipv6_check.stdout | trim == 'enabled' }}"
     tags: [execute]
 
-# --- Set SKIPPED for requirements if IPv6 disabled ---
-  - name: "Set SKIPPED for requirements if IPv6 disabled"
+# --- Set SKIP for requirements if IPv6 disabled ---
+  - name: "Set SKIP for requirements if IPv6 disabled"
     ansible.builtin.set_fact:
-      status_01: "SKIPPED"
-      status_02: "SKIPPED"
+      status_01: "SKIP"
+      status_02: "SKIP"
       details_01: "IPv6 disabled, remediation skipped"
       details_02: "IPv6 disabled, verification skipped"
       data_01: ""
@@ -278,10 +278,10 @@
   - name: "Compute overall remediation status"
     ansible.builtin.set_fact:
       overall_status: >-
-        {% if not ipv6_enabled %}SKIPPED
+        {% if not ipv6_enabled %}SKIP
         {% elif status_01 | trim == 'PASS' and status_02 | trim == 'PASS' %}PASS
-        {% elif status_01 | trim == 'PASS' and status_02 | trim == 'SKIPPED' %}PASS
-        {% elif status_01 | trim == 'SKIPPED' and status_02 | trim == 'SKIPPED' %}SKIPPED
+        {% elif status_01 | trim == 'PASS' and status_02 | trim == 'SKIP' %}PASS
+        {% elif status_01 | trim == 'SKIP' and status_02 | trim == 'SKIP' %}SKIP
         {% else %}FAILED
         {% endif %}
     tags: [execute]
@@ -289,7 +289,7 @@
   - name: "Compute overall remediation details"
     ansible.builtin.set_fact:
       overall_details: >-
-        {% if overall_status | trim == 'SKIPPED' %}IPv6 disabled, no action taken
+        {% if overall_status | trim == 'SKIP' %}IPv6 disabled, no action taken
         {% elif overall_status | trim == 'PASS' %}Remediation applied and verified successful
         {% else %}Remediation or verification failed
         {% endif %}

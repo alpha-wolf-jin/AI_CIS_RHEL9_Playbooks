@@ -55,7 +55,7 @@
     task_02_name: "Check audit=1 in kernel cmdline"
     task_02_cmd: |
       grubby --info=ALL | grep -Po '\baudit=1\b'
-    task_02_rc: "{{ result_02.rc | default(-1) if grubby_available | default(false) else 'SKIPPED' }}"
+    task_02_rc: "{{ result_02.rc | default(-1) if grubby_available | default(false) else 'SKIP' }}"
     data_02: "{{ result_02.stdout | default('') | trim if grubby_available | default(false) else 'skipped' }}"
     status_02: >-
       {%- if not (grubby_available | default(false)) -%}

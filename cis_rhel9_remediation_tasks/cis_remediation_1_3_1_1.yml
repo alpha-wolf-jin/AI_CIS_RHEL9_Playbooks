@@ -10,26 +10,59 @@
   tags: [snapshot]
 
 - block:
-  - name: "Req 1 - Gather package facts"
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+    tags: [execute]
+
+  - name: "Req 01 - Gather package facts"
     ansible.builtin.package_facts:
       manager: auto
+    failed_when: false
     tags: [execute]
 
-  - name: "Req 1 - Set libselinux installed fact"
-    ansible.builtin.set_fact:
-      libselinux_installed: "{{ 'libselinux' in ansible_facts.packages }}"
+  - name: "Req 01 - Set libselinux installed fact"
+    set_fact:
+      libselinux_installed: "{{ 'libselinux' in ansible_facts.packages | default({}) }}"
     tags: [execute]
 
-  - name: "Req 1 - Install libselinux"
+  - name: "Req 01 - Install libselinux via dnf"
     ansible.builtin.dnf:
       name: libselinux
       state: present
     register: install_result
-    when: not libselinux_installed
     failed_when: false
+    when: "not libselinux_installed | default(false)"
     tags: [execute]
 
-  - name: "Req 2 - Verify libselinux installation"
+  - name: "Req 01 - Store requirement 01 details"
+    set_fact:
+      task_01_name: "Install libselinux via dnf"
+      task_01_cmd: "dnf install libselinux"
+      task_01_rc: "{{ install_result.rc | default(0) if install_result is defined else -1 }}"
+      data_01: "{{ install_result.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if (libselinux_installed | default(false)) or (install_result is defined and not install_result.skipped | default(false) and install_result.rc | default(-1) == 0) else 'FAIL' }}"
+      details_01: "{{ 'Already installed' if libselinux_installed else ('Installation succeeded' if (install_result is defined and not install_result.skipped | default(false) and install_result.rc | default(-1) == 0) else 'Installation failed') }}"
+    tags: [execute]
+
+  - name: "Req 02 - Verify libselinux via rpm"
     ansible.builtin.shell: rpm -q libselinux
     args:
       executable: /bin/bash
@@ -38,60 +71,62 @@
     changed_when: false
     tags: [execute]
 
-  - name: "Store requirement 01 details"
-    ansible.builtin.set_fact:
-      task_01_name: "Install libselinux via dnf"
-      task_01_cmd: "dnf install libselinux"
-      task_01_rc: "{{ install_result.rc | default(0) }}"
-      data_01: >-
-        {{ (install_result.stdout | default('') | trim) if (install_result is defined and not install_result.skipped | default(false)) else 'Already installed' }}
-      status_01: >-
-        {{ 'APPLIED' if (libselinux_installed or (install_result is defined and not install_result.skipped | default(false) and install_result.rc | default(-1) == 0)) else 'FAILED' }}
-      details_01: >-
-        {{ 'Already installed' if libselinux_installed else ('Installation succeeded' if (install_result is defined and not install_result.skipped | default(false) and install_result.rc | default(-1) == 0) else 'Installation failed') }}
-    tags: [execute]
-
-  - name: "Store requirement 02 details"
-    ansible.builtin.set_fact:
+  - name: "Req 02 - Store requirement 02 details"
+    set_fact:
       task_02_name: "Verify libselinux via rpm"
       task_02_cmd: "rpm -q libselinux"
       task_02_rc: "{{ verify_result.rc | default(-1) }}"
       data_02: "{{ verify_result.stdout | default('') | trim }}"
-      status_02: "{{ 'APPLIED' if (verify_result.rc | default(-1) == 0) else 'FAILED' }}"
+      status_02: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
       details_02: "{{ 'Package version confirmed' if (verify_result.rc | default(-1) == 0) else 'Package not installed' }}"
     tags: [execute]
 
-  - name: "Set overall remediation status"
-    ansible.builtin.set_fact:
-      overall_status: "{{ 'APPLIED' if (status_01 == 'APPLIED' and status_02 == 'APPLIED') else 'FAILED' }}"
-      overall_details: "{{ 'All requirements met' if (status_01 == 'APPLIED' and status_02 == 'APPLIED') else 'One or more requirements not met' }}"
+  - name: "Req 03 - Store final remediation result"
+    set_fact:
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "set_fact: cis_result = {{ status_02 | default('ERROR') | trim }}"
+      task_03_rc: "N/A"
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ status_02 | default('ERROR') | trim }}"
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
     tags: [execute]
 
   - name: "Generate remediation report"
-    ansible.builtin.debug:
+    debug:
       msg:
       - "REMEDIATION REPORT — CIS 1.3.1.1"
       - "Reference: CIS Benchmark checkpoint 1.3.1.1"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('N/A') }}"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
       - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('N/A') }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
       - "  Details: {{ details_02 | default('') | trim }}"
       - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ overall_status | default('UNKNOWN') }}"
-      - "  Details: {{ overall_details | default('') | trim }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - "========================================================"
     tags: [execute]
 
   always:

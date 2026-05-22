@@ -13,4 +13,4 @@ req_04: >-
 req_05: >-
   Summarize overall compliance: All checks (file existence, permissions 644 or more restrictive, UID 0, GID 0)
   must pass for compliance. Expected result: All conditions met.
-req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

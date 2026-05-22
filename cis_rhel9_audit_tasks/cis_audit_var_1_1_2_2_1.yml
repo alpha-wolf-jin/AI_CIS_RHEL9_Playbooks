@@ -1,4 +1,4 @@
 mount_point: "/dev/shm"
 req_01: "Check if /dev/shm is a separate partition using command: `findmnt -kn /dev/shm`. Expected result: output shows /dev/shm is mounted (e.g., /dev/shm   tmpfs  tmpfs  rw,nosuid,nodev,noexec,relatime,seclabel)."
 req_02: "Overall compliance status: if the command returns a mount entry for /dev/shm, the requirement is met; otherwise, it is non-compliant."
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

@@ -104,7 +104,7 @@
       task_01_cmd: "systemctl is-active firewalld"
       task_01_rc: -1
       data_01: "N/A"
-      status_01: "SKIPPED"
+      status_01: "SKIP"
       details_01: "Firewalld package not installed"
       firewalld_active: false
     when: skip_remediation | default(false)
@@ -136,7 +136,7 @@
       task_02_cmd: "firewall-cmd --remove-service={{ unnecessary_service }}"
       task_02_rc: -1
       data_02: "N/A"
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "Firewalld not available or not active"
     when: skip_remediation | default(false) or not firewalld_active | default(false)
     tags: [execute]
@@ -167,7 +167,7 @@
       task_03_cmd: "firewall-cmd --remove-port={{ unnecessary_port }}"
       task_03_rc: -1
       data_03: "N/A"
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "Firewalld not available or not active"
     when: skip_remediation | default(false) or not firewalld_active | default(false)
     tags: [execute]
@@ -198,7 +198,7 @@
       task_04_cmd: "firewall-cmd --runtime-to-permanent"
       task_04_rc: -1
       data_04: "N/A"
-      status_04: "SKIPPED"
+      status_04: "SKIP"
       details_04: "Firewalld not available or not active"
     when: skip_remediation | default(false) or not firewalld_active | default(false)
     tags: [execute]
@@ -229,7 +229,7 @@
       task_05_cmd: "firewall-cmd --list-all"
       task_05_rc: -1
       data_05: "N/A"
-      status_05: "SKIPPED"
+      status_05: "SKIP"
       details_05: "Firewalld not available or not active"
     when: skip_remediation | default(false) or not firewalld_active | default(false)
     tags: [execute]

@@ -2,4 +2,4 @@ req_01: "Check if GDM is installed using command: `which gdm || dpkg -l gdm3 2>/
 req_02: |
   Check if XDMCP is enabled in GDM configuration using command: `grep -Eis '^\\s*Enable\\s*=\\s*true' /etc/gdm/custom.conf`. Expected result: No output (nothing returned).
 req_03: "Overall compliance status: XDMCP is not enabled and GDM is not present or configured to allow XDMCP."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

@@ -77,7 +77,7 @@
     - "  Command: grep -Pi '^\\h*LEGACY\\b' /etc/crypto-policies/config"
     - "  Exit code: {{ legacy_check.rc if not legacy_check is skipped else 'N/A' }}"
     - "  Data: {{ legacy_check.stdout | default('') | trim }}"
-    - "  Status: {{ 'NOT_APPLICABLE' if not crypto_policies_installed | bool else ('PASS' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 1 else ('FAIL' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 0 else 'SKIPPED')) }}"
+    - "  Status: {{ 'NOT_APPLICABLE' if not crypto_policies_installed | bool else ('PASS' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 1 else ('FAIL' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 0 else 'SKIP')) }}"
     - "  Details: {{ 'Package not installed' if not crypto_policies_installed | bool else ('No LEGACY policy found' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 1 else ('LEGACY policy found' if file_exists | bool and legacy_check is not skipped and legacy_check.rc == 0 else ('Configuration not checked' if not crypto_policies_installed | bool else 'Config file missing'))) }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 | trim }}:"

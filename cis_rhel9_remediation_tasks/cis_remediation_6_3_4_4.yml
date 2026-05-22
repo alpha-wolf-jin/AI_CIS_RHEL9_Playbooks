@@ -78,7 +78,7 @@
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
       status_01: >-
-        {{ 'SKIPPED' if not (auditd_installed | default(false))
+        {{ 'SKIP' if not (auditd_installed | default(false))
            else ('PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL') }}
       details_01: >-
         {{ 'auditd not installed - skipped' if not (auditd_installed | default(false))
@@ -118,7 +118,7 @@
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
       status_02: >-
-        {{ 'SKIPPED' if not (auditd_installed | default(false))
+        {{ 'SKIP' if not (auditd_installed | default(false))
            else ('PASS' if (result_02.rc | default(-1)) == 0 or (_req02_check.stdout | default('') | trim | length == 0) else 'FAIL') }}
       details_02: >-
         {{ 'auditd not installed - skipped' if not (auditd_installed | default(false))
@@ -152,7 +152,7 @@
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
       status_03: >-
-        {{ 'SKIPPED' if not (auditd_installed | default(false))
+        {{ 'SKIP' if not (auditd_installed | default(false))
            else ('PASS' if (result_03.rc | default(-1)) == 0 or (_req03_stat.stat.gr_name | default('') == 'adm') else 'FAIL') }}
       details_03: >-
         {{ 'auditd not installed - skipped' if not (auditd_installed | default(false))
@@ -191,7 +191,7 @@
       task_04_rc: "{{ result_04.rc | default(-1) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
       status_04: >-
-        {{ 'SKIPPED' if not (auditd_installed | default(false))
+        {{ 'SKIP' if not (auditd_installed | default(false))
            else ('PASS' if (result_04.rc | default(-1)) == 0 or (_req04_check.rc | default(1)) == 0 else 'FAIL') }}
       details_04: >-
         {{ 'auditd not installed - skipped' if not (auditd_installed | default(false))
@@ -215,7 +215,7 @@
       task_05_rc: "{{ 0 if result_05 is not failed else result_05.rc | default(-1) }}"
       data_05: "{{ result_05.stdout | default('') | trim }}"
       status_05: >-
-        {{ 'SKIPPED' if not (auditd_installed | default(false))
+        {{ 'SKIP' if not (auditd_installed | default(false))
            else ('PASS' if result_05 is not failed else 'FAIL') }}
       details_05: >-
         {{ 'auditd not installed - skipped' if not (auditd_installed | default(false))
@@ -242,7 +242,7 @@
       task_06_rc: "{{ result_06.rc | default(-1) }}"
       data_06: "{{ result_06.stdout | default('') | trim }}"
       status_06: >-
-        {{ 'SKIPPED' if not (auditd_installed | default(false))
+        {{ 'SKIP' if not (auditd_installed | default(false))
            else ('PASS' if (result_06.stdout | default('') | trim) == '0' else 'FAIL') }}
       details_06: >-
         {{ 'auditd not installed - skipped' if not (auditd_installed | default(false))
@@ -254,7 +254,7 @@
     ansible.builtin.set_fact:
       _overall: >-
         {%- set action_statuses = [status_01, status_02, status_03, status_04, status_05, status_06] -%}
-        {{- 'SKIPPED' if status_01 == 'SKIPPED' else 'PASS' if 'FAIL' not in action_statuses else 'FAIL' -}}
+        {{- 'SKIP' if status_01 == 'SKIP' else 'PASS' if 'FAIL' not in action_statuses else 'FAIL' -}}
     tags: [execute]
 
   - name: "Req 07 - Store overall remediation result"

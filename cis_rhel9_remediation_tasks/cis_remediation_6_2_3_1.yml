@@ -83,7 +83,7 @@
       task_02_cmd: "dnf install -y rsyslog"
       task_02_rc: "{{ result_02.rc | default(-1) if result_02 is not skipped else -1 }}"
       data_02: "{{ 'Package installed' if (result_02.changed | default(false)) else ('Already installed' if (result_02.rc | default(-1)) == 0 else 'Installation failed') }}"
-      status_02: "{{ 'SKIPPED' if result_02 is skipped else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
       details_02: "{{ 'dnf not available - skipped' if result_02 is skipped else ('Installation successful' if (result_02.rc | default(-1)) == 0 else 'Installation failed') }}"
     tags: [execute]
 

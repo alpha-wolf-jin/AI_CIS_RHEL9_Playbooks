@@ -140,8 +140,8 @@
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
       status_01: >-
-        {{ 'SKIPPED' if not (authselect_installed | default(false))
-           else ('SKIPPED' if (authselect_conflict | default(false))
+        {{ 'SKIP' if not (authselect_installed | default(false))
+           else ('SKIP' if (authselect_conflict | default(false))
            else ('APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED')) }}
       details_01: >-
         {{ 'authselect not installed' if not (authselect_installed | default(false))
@@ -176,7 +176,7 @@
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
       status_02: >-
-        {{ 'SKIPPED' if not (authselect_installed | default(false))
+        {{ 'SKIP' if not (authselect_installed | default(false))
            else ('PASS' if (result_02.stdout | default('') | trim | length > 0) else 'FAIL') }}
       details_02: >-
         {{ 'authselect not installed' if not (authselect_installed | default(false))
@@ -187,7 +187,7 @@
   - name: "Store final remediation result in cis_result"
     ansible.builtin.set_fact:
       cis_result: >-
-        {{ 'SKIPPED' if playbook_skipped | default(false) or authselect_conflict | default(false)
+        {{ 'SKIP' if playbook_skipped | default(false) or authselect_conflict | default(false)
            else ('PASS' if (status_01 == 'APPLIED' or status_01 == 'PASS') and (status_02 == 'PASS')
            else 'FAIL') }}
     tags: [execute]

@@ -134,7 +134,7 @@
       task_03_cmd: "awk -F: -v uid='<DUPLICATE_UID>' '$3 == uid {print $1}' /etc/passwd (for each duplicate UID)"
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if (result_03.skipped | default(false)) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if (result_03.skipped | default(false)) else ('PASS' if (result_03.rc | default(-1)) == 0 else 'FAIL') }}"
       details_03: "{{ 'No duplicate UIDs to list' if (result_03.skipped | default(false)) else ('Users listed for each duplicate UID' if (result_03.rc | default(-1)) == 0 else 'Failed to list users') }}"
     when: result_03 is defined
     tags: [execute]
@@ -163,7 +163,7 @@
       task_04_cmd: "find / -user <DUPLICATE_UID> -ls 2>/dev/null (for each duplicate UID)"
       task_04_rc: "{{ result_04.rc | default(-1) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
-      status_04: "{{ 'SKIPPED' if (result_04.skipped | default(false)) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if (result_04.skipped | default(false)) else ('PASS' if (result_04.rc | default(-1)) == 0 else 'FAIL') }}"
       details_04: "{{ 'No duplicate UIDs to process' if (result_04.skipped | default(false)) else ('Files listed for each duplicate UID' if (result_04.rc | default(-1)) == 0 else 'Failed to list files') }}"
     when: result_04 is defined
     tags: [execute]
@@ -199,7 +199,7 @@
       task_05_cmd: "usermod -u <NEW_UNIQUE_UID> <username> (for each user with duplicate UID)"
       task_05_rc: "{{ result_05.rc | default(-1) }}"
       data_05: "{{ result_05.stdout | default('') | trim }}"
-      status_05: "{{ 'SKIPPED' if (result_05.skipped | default(false)) else ('PASS' if (result_05.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_05: "{{ 'SKIP' if (result_05.skipped | default(false)) else ('PASS' if (result_05.rc | default(-1)) == 0 else 'FAIL') }}"
       details_05: "{{ 'No duplicate UIDs to process' if (result_05.skipped | default(false)) else ('New UIDs assigned' if (result_05.rc | default(-1)) == 0 else 'Failed to assign new UIDs') }}"
       remediation_applied: "{{ true if (result_05.rc | default(-1)) == 0 else false }}"
     when: result_05 is defined
@@ -234,7 +234,7 @@
       task_06_cmd: "find / -user <OLD_DUPLICATE_UID> -exec chown <NEW_UNIQUE_UID> {} + 2>/dev/null"
       task_06_rc: "{{ result_06.rc | default(-1) }}"
       data_06: "{{ result_06.stdout | default('') | trim }}"
-      status_06: "{{ 'SKIPPED' if (result_06.skipped | default(false)) else ('PASS' if (result_06.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_06: "{{ 'SKIP' if (result_06.skipped | default(false)) else ('PASS' if (result_06.rc | default(-1)) == 0 else 'FAIL') }}"
       details_06: "{{ 'No duplicate UIDs to process' if (result_06.skipped | default(false)) else ('File ownership reassigned' if (result_06.rc | default(-1)) == 0 else 'Failed to reassign file ownership') }}"
     when: result_06 is defined
     tags: [execute]

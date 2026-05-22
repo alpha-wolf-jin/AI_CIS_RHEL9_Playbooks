@@ -42,7 +42,7 @@
       task_01_cmd: "package_facts: manager=auto"
       task_01_rc: 0
       data_01: "{{ 'installed' if package_name in ansible_facts.packages else 'not_installed' }}"
-      status_01: "{{ 'SKIPPED' if package_name not in ansible_facts.packages else 'PASS' }}"
+      status_01: "{{ 'SKIP' if package_name not in ansible_facts.packages else 'PASS' }}"
       details_01: "{{ 'openssh-server is installed' if package_name in ansible_facts.packages else 'openssh-server is NOT installed - skipping remediation' }}"
       playbook_skipped: "{{ package_name not in ansible_facts.packages }}"
     tags: [execute]
@@ -65,7 +65,7 @@
       data_02: >-
         {{ 'backup exists (created or already present)' if (result_02 is defined and not result_02.failed | default(true))
            else ('backup skipped' if (playbook_skipped | default(false) | bool) else 'backup failed') }}
-      status_02: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_02 is defined and not result_02.failed | default(true)) else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_02 is defined and not result_02.failed | default(true)) else 'FAIL') }}"
       details_02: >-
         {{ 'Backup file exists at ' + config_file + '.bak' if (result_02 is defined and not result_02.failed | default(true))
            else ('Skipped - openssh-server not installed' if (playbook_skipped | default(false) | bool)
@@ -90,7 +90,7 @@
       task_03_cmd: "lineinfile: insert DisableForwarding yes before ^Include in {{ config_file }}"
       task_03_rc: "{{ result_03.rc | default(0) if result_03 is defined else -1 }}"
       data_03: "{{ 'DisableForwarding yes inserted' if (result_03.changed | default(false)) else ('already present' if (result_03 is defined and not result_03.failed | default(true)) else 'not executed') }}"
-      status_03: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_03 is defined and not result_03.failed | default(true)) else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_03 is defined and not result_03.failed | default(true)) else 'FAIL') }}"
       details_03: "{{ 'DisableForwarding yes added before Include entries' if (result_03.changed | default(false)) else ('DisableForwarding yes already present' if (result_03 is defined and not result_03.failed | default(true)) else ('Skipped - openssh-server not installed' if (playbook_skipped | default(false) | bool) else 'Failed to insert directive')) }}"
     tags: [execute]
 
@@ -110,7 +110,7 @@
       task_04_cmd: "lineinfile: remove ^DisableForwarding no from {{ config_file }}"
       task_04_rc: "{{ result_04.rc | default(0) if result_04 is defined else -1 }}"
       data_04: "{{ 'conflicting entries removed' if (result_04.changed | default(false)) else ('no conflicting entries found' if (result_04 is defined and not result_04.failed | default(true)) else 'not executed') }}"
-      status_04: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_04 is defined and not result_04.failed | default(true)) else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_04 is defined and not result_04.failed | default(true)) else 'FAIL') }}"
       details_04: "{{ 'Conflicting DisableForwarding no entries removed' if (result_04.changed | default(false)) else ('No conflicting entries to remove' if (result_04 is defined and not result_04.failed | default(true)) else ('Skipped - openssh-server not installed' if (playbook_skipped | default(false) | bool) else 'Failed to remove entries')) }}"
     tags: [execute]
 
@@ -129,7 +129,7 @@
       task_05_cmd: "systemctl restart {{ service_name }}"
       task_05_rc: "{{ result_05.rc | default(0) if result_05 is defined else -1 }}"
       data_05: "{{ 'sshd restarted' if (result_05.state | default('') == 'started') else ('not executed' if (playbook_skipped | default(false) | bool) else 'restart failed') }}"
-      status_05: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_05 is defined and not result_05.failed | default(true)) else 'FAIL') }}"
+      status_05: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_05 is defined and not result_05.failed | default(true)) else 'FAIL') }}"
       details_05: "{{ 'sshd service restarted successfully' if (result_05 is defined and not result_05.failed | default(true)) else ('Skipped - openssh-server not installed' if (playbook_skipped | default(false) | bool) else 'Failed to restart sshd') }}"
     tags: [execute]
 
@@ -149,7 +149,7 @@
       task_06_cmd: "sshd -T | grep -i disableforwarding"
       task_06_rc: "{{ result_06.rc | default(-1) if result_06 is defined else -1 }}"
       data_06: "{{ result_06.stdout | default('') | trim if result_06 is defined else 'not executed' }}"
-      status_06: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_06 is defined and result_06.rc | default(-1) == 0 and 'disableforwarding yes' in (result_06.stdout | default('') | lower)) else 'FAIL') }}"
+      status_06: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('PASS' if (result_06 is defined and result_06.rc | default(-1) == 0 and 'disableforwarding yes' in (result_06.stdout | default('') | lower)) else 'FAIL') }}"
       details_06: "{{ 'DisableForwarding is enabled (yes)' if (result_06 is defined and result_06.rc | default(-1) == 0 and 'disableforwarding yes' in (result_06.stdout | default('') | lower)) else ('DisableForwarding is NOT enabled' if (result_06 is defined and result_06.rc | default(-1) == 0) else ('Skipped - openssh-server not installed' if (playbook_skipped | default(false) | bool) else 'Verification failed')) }}"
     tags: [execute]
 

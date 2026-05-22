@@ -1,4 +1,4 @@
 req_01: "Check if mcstrans package is installed using command: `rpm -q mcstrans`. Expected result: package mcstrans is not installed"
 req_02: "Summarize overall compliance: if mcstrans is not installed, the system is compliant; otherwise, it is non-compliant."
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 package_name: "mcstrans"

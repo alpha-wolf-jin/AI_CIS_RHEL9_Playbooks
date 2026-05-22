@@ -22,7 +22,7 @@
 - name: "Set cis_result"
   ansible.builtin.set_fact:
     cis_result: >-
-      {{ 'SKIPPED' if result_01.rc | default(-1) != 0
+      {{ 'SKIP' if result_01.rc | default(-1) != 0
          else ('PASS' if result_02.rc | default(-1) == 1
          else ('FAIL' if result_02.rc | default(-1) == 0
          else 'UNKNOWN')) }}
@@ -44,9 +44,9 @@
     - "REQUIREMENT 02 - {{ req_02 }}:"
     - "  Task: Req 02 - Check if XDMCP is enabled in GDM configuration"
     - "  Command: grep -Eis '^\\s*Enable\\s*=\\s*true' /etc/gdm/custom.conf"
-    - "  Exit code: {{ (result_02.rc | default(-1)) if (result_01.rc | default(-1) == 0) else 'SKIPPED' }}"
+    - "  Exit code: {{ (result_02.rc | default(-1)) if (result_01.rc | default(-1) == 0) else 'SKIP' }}"
     - "  Data: {{ (result_02.stdout | default('') | trim) if (result_01.rc | default(-1) == 0) else 'N/A' }}"
-    - "  Status: {{ 'SKIPPED' if result_01.rc | default(-1) != 0 else ('PASS' if result_02.rc | default(-1) == 1 else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if result_01.rc | default(-1) != 0 else ('PASS' if result_02.rc | default(-1) == 1 else 'FAIL') }}"
     - "  Details: {{ 'Skipped - GDM not installed' if result_01.rc | default(-1) != 0 else ('XDMCP not enabled' if result_02.rc | default(-1) == 1 else ('XDMCP enabled' if result_02.rc | default(-1) == 0 else 'Error checking configuration')) }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -54,8 +54,8 @@
     - "  Command: N/A"
     - "  Exit code: N/A"
     - "  Data: N/A"
-    - "  Status: {{ 'SKIPPED' if result_01.rc | default(-1) != 0 else ('PASS' if result_02.rc | default(-1) == 1 else ('FAIL' if result_02.rc | default(-1) == 0 else 'UNKNOWN')) }}"
-    - "  Details: {{ 'GDM not installed; audit not applicable. SKIPPED.' if result_01.rc | default(-1) != 0 else ('XDMCP is not enabled. Compliant.' if result_02.rc | default(-1) == 1 else ('XDMCP is enabled. Non-compliant.' if result_02.rc | default(-1) == 0 else 'Error determining compliance')) }}"
+    - "  Status: {{ 'SKIP' if result_01.rc | default(-1) != 0 else ('PASS' if result_02.rc | default(-1) == 1 else ('FAIL' if result_02.rc | default(-1) == 0 else 'UNKNOWN')) }}"
+    - "  Details: {{ 'GDM not installed; audit not applicable. SKIP.' if result_01.rc | default(-1) != 0 else ('XDMCP is not enabled. Compliant.' if result_02.rc | default(-1) == 1 else ('XDMCP is enabled. Non-compliant.' if result_02.rc | default(-1) == 0 else 'Error determining compliance')) }}"
     - ""
     - "REQUIREMENT 04 - {{ req_04 }}:"
     - "  Task: Req 04 - Store final audit result"
@@ -68,5 +68,5 @@
     - "========================================================"
     - "OVERALL COMPLIANCE:"
     - "  Result: {{ cis_result }}"
-    - "  Details: {{ 'GDM not installed; audit not applicable. SKIPPED.' if result_01.rc | default(-1) != 0 else ('XDMCP is not enabled. Compliant.' if result_02.rc | default(-1) == 1 else ('XDMCP is enabled. Non-compliant.' if result_02.rc | default(-1) == 0 else 'Unable to determine compliance')) }}"
+    - "  Details: {{ 'GDM not installed; audit not applicable. SKIP.' if result_01.rc | default(-1) != 0 else ('XDMCP is not enabled. Compliant.' if result_02.rc | default(-1) == 1 else ('XDMCP is enabled. Non-compliant.' if result_02.rc | default(-1) == 0 else 'Unable to determine compliance')) }}"
     - "========================================================"

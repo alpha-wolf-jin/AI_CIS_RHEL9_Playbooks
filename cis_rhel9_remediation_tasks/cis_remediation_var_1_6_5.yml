@@ -1,8 +1,36 @@
-playbook_name: "cis_1_6_5_crypto_cbc_disable"
+playbook_name: "cis_1_6_5_remediation"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
 req_01: "Apply prerequisite check for crypto-policies package using command: `rpm -q crypto-policies`. Expected result: package is installed."
 req_02: |
-  Create or edit the subpolicy file to disable CBC ciphers for SSH using command: `printf '%s\\n' \"# This is a subpolicy to disable all CBC mode ciphers\" \"# for the SSH protocol (libssh and OpenSSH)\" \"cipher@SSH = -*-CBC\" >> /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod`. Expected result: file /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod is created with the specified content.
-req_03: "Apply the system-wide cryptographic policy including the NO-SSHCBC subpolicy using command: `update-crypto-policies --set DEFAULT:NO-SSHCBC`. Expected result: command succeeds without error."
+  Create or edit subpolicy file to disable CBC for SSH using command: `printf '%s\\n' '# This is a subpolicy to disable all CBC mode ciphers' '# for the SSH protocol (libssh and OpenSSH)' 'cipher@SSH = -*-CBC' >> /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod`. Expected result: file /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod exists with the specified content.
+req_03: "Apply the system-wide cryptographic policy including the NO-SSHCBC subpolicy using command: `update-crypto-policies --set DEFAULT:NO-SHA1:NO-WEAKMAC:NO-SSHCBC`. Expected result: command succeeds with no errors."
 req_04: "Reboot the system to make cryptographic settings effective using command: `reboot`. Expected result: system reboots successfully."
 req_05: "Verify that CBC ciphers are disabled for SSH using command: `update-crypto-policies --show`. Expected result: output includes NO-SSHCBC in the active policy."
+req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+audit_script: "/tmp/audit_cbc_ssh_cis_1_6_5.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     l_output="" l_output2=""
+     if grep -Piq -- '^\h*cipher\h*=\h*([^#\n\r]+)?-CBC\b' /etc/crypto-policies/state/CURRENT.pol; then
+        if grep -Piq -- '^\h*cipher@(lib|open)ssh(-server|-client)?\h*=\h*' /etc/crypto-policies/state/CURRENT.pol; then
+           if ! grep -Piq -- '^\h*cipher@(lib|open)ssh(-server|- client)?\h*=\h*([^#\n\r]+)?-CBC\b' /etc/crypto-policies/state/CURRENT.pol; then
+              l_output="$l_output\n - Cipher Block Chaining (CBC) is disabled for SSH"
+           else
+              l_output2="$l_output2\n - Cipher Block Chaining (CBC) is enabled for SSH"
+           fi
+        else
+           l_output2="$l_output2\n - Cipher Block Chaining (CBC) is enabled for SSH"
+        fi
+     else
+        l_output=" - Cipher Block Chaining (CBC) is disabled"
+     fi
+     if [ -z "$l_output2" ]; then # Provide output from checks
+        echo -e "\n- Audit Result:\n  ** PASS **\n$l_output\n"
+     else
+        echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output2\n"
+        [ -n "$l_output" ] && echo -e "\n- Correctly set:\n$l_output\n"
+     fi
+  }
+  {% endraw %}

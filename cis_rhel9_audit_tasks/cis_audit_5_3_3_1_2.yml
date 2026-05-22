@@ -145,7 +145,7 @@
       {%- set installed = pam_faillock_installed | default(false) -%}
       {%- set conf_exists = (status_02 | default('ERROR') | trim) == 'PASS' -%}
       {%- if not installed or not conf_exists -%}
-        SKIPPED because pam_faillock is not installed or faillock.conf does not exist
+        SKIP because pam_faillock is not installed or faillock.conf does not exist
       {%- elif (status_03 | default('ERROR') | trim) == 'PASS' and (status_04 | default('ERROR') | trim) == 'PASS' -%}
         System is compliant
       {%- else -%}

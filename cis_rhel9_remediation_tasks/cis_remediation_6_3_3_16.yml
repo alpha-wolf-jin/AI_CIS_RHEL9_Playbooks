@@ -138,8 +138,8 @@
       task_01_cmd: |
         lineinfile: path={{ audit_rules_file }} line=\"-a always,exit -F path=/usr/bin/setfacl -F perm=x -F auid>={{ uid_min_value }} -F auid!=unset -k perm_chng\"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
-      data_01: "{{ 'RULE_PRESENT' if (result_01 is not skipped and result_01.failed == false) else (result_01.msg | default('SKIPPED') | trim) }}"
-      status_01: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) or not (setfacl_available | default(false) | bool) or (result_01 is skipped) else ('APPLIED' if (result_01.failed | default(true) == false) else 'FAILED') }}"
+      data_01: "{{ 'RULE_PRESENT' if (result_01 is not skipped and result_01.failed == false) else (result_01.msg | default('SKIP') | trim) }}"
+      status_01: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) or not (setfacl_available | default(false) | bool) or (result_01 is skipped) else ('APPLIED' if (result_01.failed | default(true) == false) else 'FAILED') }}"
       details_01: "{{ 'auditd or setfacl not available, or UID_MIN unset - skipped' if (playbook_skipped | default(false) | bool) or not (setfacl_available | default(false) | bool) or (result_01 is skipped) else ('Rule added or already present' if (result_01.failed | default(true) == false) else 'Failed to apply rule') }}"
     tags: [execute]
 
@@ -148,8 +148,8 @@
       task_02_name: "Verify setfacl audit rule is active"
       task_02_cmd: "auditctl -l | grep -E 'path=/usr/bin/setfacl.*perm=x.*perm_chng'"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
-      data_02: "{{ result_02.stdout | default('SKIPPED') | trim }}"
-      status_02: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) or not (setfacl_available | default(false) | bool) else ('APPLIED' if 'VERIFY_FAILED' not in (result_02.stdout | default('VERIFY_FAILED')) else 'FAILED') }}"
+      data_02: "{{ result_02.stdout | default('SKIP') | trim }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) or not (setfacl_available | default(false) | bool) else ('APPLIED' if 'VERIFY_FAILED' not in (result_02.stdout | default('VERIFY_FAILED')) else 'FAILED') }}"
       details_02: "{{ 'auditd or setfacl not available - skipped' if (playbook_skipped | default(false) | bool) or not (setfacl_available | default(false) | bool) else ('Rule is active in auditctl' if 'VERIFY_FAILED' not in (result_02.stdout | default('VERIFY_FAILED')) else 'Rule not found in active audit rules') }}"
     tags: [execute]
 
@@ -158,7 +158,7 @@
       cis_result: >-
         {%- if status_02 == 'APPLIED' -%}PASS
         {%- elif status_02 == 'FAILED' -%}FAIL
-        {%- elif status_02 == 'SKIPPED' -%}SKIP
+        {%- elif status_02 == 'SKIP' -%}SKIP
         {%- else -%}ERROR
         {%- endif -%}
     tags: [execute]

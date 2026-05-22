@@ -2,7 +2,7 @@ req_01: "Check if the system-wide crypto policy file exists using command: `test
 req_02: |
   Check that no MAC algorithms with strength less than 128 bits are enabled using command: `grep -Pi -- '^\\h*mac\\h*=\\h*([^#\\n\\r]+)?-64\\b' /etc/crypto-policies/state/CURRENT.pol`. Expected result: no output (empty).
 req_03: "Summarize overall compliance: if the file exists and the grep command returns no output, then the system is compliant with disabling MACs less than 128 bits."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 policy_file: "/etc/crypto-policies/state/CURRENT.pol"
 grep_cmd: |
   {% raw %}grep -Pi -- '^\h*mac\h*=\h*([^#\n\r]+)?-64\b' /etc/crypto-policies/state/CURRENT.pol{% endraw %}

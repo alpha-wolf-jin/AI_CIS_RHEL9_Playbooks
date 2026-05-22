@@ -8,168 +8,164 @@
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Check if motd file exists"
+- name: "Snapshot - Check if /etc/motd exists"
   ansible.builtin.stat:
-    path: "{{ motd_path }}"
-  register: _snapshot_motd_stat
+    path: "{{ motd_file }}"
+  register: _sg_motd_stat
   tags: [snapshot]
-- name: "Snapshot - Backup motd if exists"
+- name: "Snapshot - Backup /etc/motd if exists"
   ansible.builtin.copy:
-    src: "{{ motd_path }}"
-    dest: "{{ backup_dir }}/motd"
+    src: "{{ motd_file }}"
+    dest: "{{ backup_dir }}/motd.present"
     remote_src: true
-  when: _snapshot_motd_stat.stat.exists
+  when: _sg_motd_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Mark /etc/motd as absent if not exists"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/motd.absent"
+  when: not _sg_motd_stat.stat.exists
   tags: [snapshot]
 
 - block:
-  - name: "Check if /etc/motd exists"
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+
+# Requirement 1
+  - name: "Req 01 - Check if /etc/motd exists"
     ansible.builtin.stat:
-      path: "{{ motd_path }}"
+      path: "{{ motd_file }}"
     register: motd_stat
-    tags: [execute]
-
-  - name: "Resolve symlink target of /etc/motd"
-    ansible.builtin.shell: "readlink -e {{ motd_path }}"
-    args:
-      executable: /bin/bash
-    register: motd_real
-    changed_when: false
     failed_when: false
-    when: motd_stat.stat.exists
     tags: [execute]
 
-  - name: "Req 1 - Apply ownership root:root to /etc/motd"
+  - name: "Store requirement 01 details"
+    set_fact:
+      task_01_name: "Check if /etc/motd exists"
+      task_01_cmd: "stat module on /etc/motd"
+      task_01_rc: "0"
+      data_01: "{{ 'exists' if motd_stat.stat.exists else 'does not exist' }}"
+      status_01: "PASS"
+      details_01: "{{ 'File exists' if motd_stat.stat.exists else 'File does not exist - no further checks needed' }}"
+    tags: [execute]
+
+# Requirement 2
+  - name: "Req 02 - Apply ownership root:root to /etc/motd"
     ansible.builtin.file:
-      path: "{{ motd_real.stdout }}"
+      path: "{{ motd_file }}"
       owner: root
       group: root
     when:
-    - not (remove_motd | default(false))
     - motd_stat.stat.exists
-    - motd_real is not failed
-    register: result_01
-    failed_when: false
-    tags: [execute]
-
-  - name: "Req 2 - Apply permissions u-x,go-wx to /etc/motd"
-    ansible.builtin.file:
-      path: "{{ motd_real.stdout }}"
-      mode: 'u-x,go-wx'
-    when:
-    - not (remove_motd | default(false))
-    - motd_stat.stat.exists
-    - motd_real is not failed
+    - not (remove_motd | bool)
     register: result_02
     failed_when: false
     tags: [execute]
 
-  - name: "Req 3 - Remove /etc/motd"
+  - name: "Store requirement 02 details"
+    set_fact:
+      task_02_name: "Apply ownership root:root to /etc/motd"
+      task_02_cmd: "chown root:root /etc/motd"
+      task_02_rc: "{{ result_02.rc | default(0) }}"
+      data_02: "{{ 'Ownership set to root:root' if not result_02.failed | default(false) else 'Failed to set ownership' }}"
+      status_02: "{{ 'SKIP' if result_02.skipped | default(false) else ('PASS' if not result_02.failed | default(false) else 'FAIL') }}"
+      details_02: "{{ 'File does not exist - ownership not needed' if result_02.skipped | default(false) else ('Ownership applied successfully' if not result_02.failed | default(false) else 'Failed to apply ownership') }}"
+    tags: [execute]
+
+# Requirement 3
+  - name: "Req 03 - Apply permissions u-x,go-wx to /etc/motd"
     ansible.builtin.file:
-      path: "{{ motd_path }}"
-      state: absent
-    when: remove_motd | default(false)
+      path: "{{ motd_file }}"
+      mode: 'u-x,go-wx'
+    when:
+    - motd_stat.stat.exists
+    - not (remove_motd | bool)
     register: result_03
     failed_when: false
     tags: [execute]
 
-  - name: "Req 4 - Verify /etc/motd configuration"
-    ansible.builtin.shell: "stat /etc/motd 2>/dev/null || echo '/etc/motd does not exist'"
+  - name: "Store requirement 03 details"
+    set_fact:
+      task_03_name: "Apply permissions u-x,go-wx to /etc/motd"
+      task_03_cmd: "chmod u-x,go-wx /etc/motd"
+      task_03_rc: "{{ result_03.rc | default(0) }}"
+      data_03: "{{ 'Permissions set to u-x,go-wx' if not result_03.failed | default(false) else 'Failed to set permissions' }}"
+      status_03: "{{ 'SKIP' if result_03.skipped | default(false) else ('PASS' if not result_03.failed | default(false) else 'FAIL') }}"
+      details_03: "{{ 'File does not exist - permissions not needed' if result_03.skipped | default(false) else ('Permissions applied successfully' if not result_03.failed | default(false) else 'Failed to apply permissions') }}"
+    tags: [execute]
+
+# Requirement 4
+  - name: "Req 04 - Verify /etc/motd configuration"
+    shell: |
+      if [ ! -e /etc/motd ]; then
+        echo "PASS"
+        exit 0
+      fi
+      mode=$(stat -Lc '%a' /etc/motd)
+      uid=$(stat -Lc '%u' /etc/motd)
+      gid=$(stat -Lc '%g' /etc/motd)
+      if [ "$uid" != "0" ] || [ "$gid" != "0" ]; then
+        echo "FAIL"
+        exit 0
+      fi
+      perm_dec=$((8#$mode))
+      if [ $(( perm_dec & 022 )) -ne 0 ] ||
+         [ $(( perm_dec & 0111 )) -ne 0 ] ||
+         [ $perm_dec -gt $((8#0644)) ]; then
+        echo "FAIL"
+      else
+        echo "PASS"
+      fi
+      exit 0
     args:
       executable: /bin/bash
-    register: result_04
-    changed_when: false
+    register: verify_result
     failed_when: false
+    changed_when: false
     tags: [execute]
 
-  - name: "Set report facts for requirements 1-4 (except details_04)"
+  - name: "Store requirement 04 details"
     set_fact:
-      task_01_name: "Apply chown root:root to motd"
-      task_01_cmd: "chown root:root $(readlink -e /etc/motd)"
-      task_01_rc: "{{ 0 if result_01 is not failed else result_01.rc | default(-1) }}"
-      data_01: "{{ 'ownership set to root:root' if result_01 is not failed else 'N/A' }}"
-      status_01: "{{ 'SKIPPED' if not (motd_stat.stat.exists and not (remove_motd | default(false))) else ('PASS' if result_01 is not failed else 'FAIL') }}"
-      details_01: >-
-        {%- if not motd_stat.stat.exists -%} Motd file does not exist
-        {%- elif remove_motd | default(false) -%} Removal mode selected, ownership step skipped
-        {%- elif result_01 is not failed -%} Ownership set correctly
-        {%- else -%} Failed to set ownership
-        {%- endif -%}
-
-      task_02_name: "Apply chmod u-x,go-wx to motd"
-      task_02_cmd: "chmod u-x,go-wx $(readlink -e /etc/motd)"
-      task_02_rc: "{{ 0 if result_02 is not failed else result_02.rc | default(-1) }}"
-      data_02: "{{ 'permissions set' if result_02 is not failed else 'N/A' }}"
-      status_02: "{{ 'SKIPPED' if not (motd_stat.stat.exists and not (remove_motd | default(false))) else ('PASS' if result_02 is not failed else 'FAIL') }}"
-      details_02: >-
-        {%- if not motd_stat.stat.exists -%} Motd file does not exist
-        {%- elif remove_motd | default(false) -%} Removal mode selected, permissions step skipped
-        {%- elif result_02 is not failed -%} Permissions set correctly
-        {%- else -%} Failed to set permissions
-        {%- endif -%}
-
-      task_03_name: "Remove /etc/motd"
-      task_03_cmd: "rm /etc/motd"
-      task_03_rc: "{{ 0 if result_03 is not failed else result_03.rc | default(-1) }}"
-      data_03: "{{ 'file removed' if result_03 is not failed else 'N/A' }}"
-      status_03: "{{ 'SKIPPED' if not (remove_motd | default(false)) else ('PASS' if result_03 is not failed else 'FAIL') }}"
-      details_03: "{{ 'Removal not requested' if not (remove_motd | default(false)) else ('File removed' if result_03 is not failed else 'Failed to remove file') }}"
-
       task_04_name: "Verify /etc/motd configuration"
-      task_04_cmd: "stat /etc/motd 2>/dev/null || echo '/etc/motd does not exist'"
-      task_04_rc: "{{ result_04.rc | default(-1) }}"
-      data_04: "{{ result_04.stdout | default('N/A') | trim }}"
-      status_04: >-
-        {%- set output = result_04.stdout | default('') | trim -%}
-        {%- if remove_motd | default(false) -%}
-          {%- if output == '/etc/motd does not exist' -%} PASS {%- else -%} FAIL {%- endif -%}
-        {%- else -%}
-          {%- if result_04.rc | default(1) == 0 and output | length > 0 -%}
-            {%- set mode_list = output | regex_findall('Access: \\(0?([0-7]+)/') -%}
-            {%- set uid_list = output | regex_findall('Uid: \\(\\s*([0-9]+)/') -%}
-            {%- set gid_list = output | regex_findall('Gid: \\(\\s*([0-9]+)/') -%}
-            {%- if mode_list and uid_list and gid_list -%}
-              {%- set mode_str = mode_list[0] -%}
-              {%- set uid_str = uid_list[0] -%}
-              {%- set gid_str = gid_list[0] -%}
-              {%- set mode_int = mode_str | int(base=8) -%}
-              {%- set u_perm = (mode_int // 64) % 8 -%}
-              {%- set g_perm = (mode_int // 8) % 8 -%}
-              {%- set o_perm = mode_int % 8 -%}
-              {%- if uid_str | int == 0 and gid_str | int == 0 and u_perm in [4, 6] and g_perm in [0, 4] and o_perm in [0, 4] -%} PASS {%- else -%} FAIL {%- endif -%}
-            {%- else -%} ERROR {%- endif -%}
-          {%- else -%} FAIL {%- endif -%}
-        {%- endif -%}
-    tags: [execute]
-
-  - name: "Set details for requirement 04"
-    set_fact:
+      task_04_cmd: "Shell script to verify motd ownership and permissions"
+      task_04_rc: "{{ verify_result.rc | default(-1) }}"
+      data_04: "{{ verify_result.stdout | default('') | trim }}"
+      status_04: "{{ verify_result.stdout | default('FAIL') | trim }}"
       details_04: >-
-        {%- if remove_motd | default(false) -%}
-          {%- if result_04.stdout | default('') | trim == '/etc/motd does not exist' -%} File removed successfully
-          {%- else -%} File still exists after removal attempt
-          {%- endif -%}
+        {%- if not motd_stat.stat.exists -%}
+        File does not exist - compliant by default
+        {%- elif verify_result.stdout | default('FAIL') | trim == 'PASS' -%}
+        Ownership and permissions are compliant
         {%- else -%}
-          {%- if status_04 | trim == 'PASS' -%} Ownership and permissions are correct
-          {%- else -%} Verification failed: {{ result_04.stdout | default('') | trim }}
-          {%- endif -%}
+        Non-compliant ownership or permissions detected
         {%- endif %}
     tags: [execute]
 
-  - name: "Req 5 - Store final remediation result as cis_result"
+# Requirement 5
+  - name: "Store final remediation result in cis_result"
     set_fact:
       cis_result: "{{ status_04 | default('ERROR') | trim }}"
     tags: [execute]
 
-  - name: "Set report facts for requirement 5"
-    set_fact:
-      task_05_name: "Set cis_result"
-      task_05_cmd: "set_fact: cis_result = {{ status_04 | default('ERROR') | trim }}"
-      task_05_rc: 0
-      data_05: "{{ cis_result }}"
-      status_05: "PASS"
-      details_05: "cis_result stored as {{ cis_result }}"
-    tags: [execute]
-
+# Requirement 6
   - name: "Generate remediation report"
     debug:
       msg:
@@ -177,62 +173,73 @@
       - "Reference: CIS Benchmark checkpoint 1.7.4"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
-      - "  Data: {{ data_01 | default('N/A') }}"
-      - "  Status: {{ status_01 | default('ERROR') }}"
-      - "  Details: {{ details_01 | default('None') }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
-      - "  Data: {{ data_02 | default('N/A') }}"
-      - "  Status: {{ status_02 | default('ERROR') }}"
-      - "  Details: {{ details_02 | default('None') }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
       - ""
       - "REQUIREMENT 03 - {{ req_03 }}:"
-      - "  Task: {{ task_03_name | default('Task not recorded') }}"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
       - "  Command: {{ task_03_cmd | default('N/A') }}"
       - "  Exit code: {{ task_03_rc | default(-1) }}"
-      - "  Data: {{ data_03 | default('N/A') }}"
-      - "  Status: {{ status_03 | default('ERROR') }}"
-      - "  Details: {{ details_03 | default('None') }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
       - "REQUIREMENT 04 - {{ req_04 }}:"
-      - "  Task: {{ task_04_name | default('Task not recorded') }}"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
       - "  Command: {{ task_04_cmd | default('N/A') }}"
       - "  Exit code: {{ task_04_rc | default(-1) }}"
-      - "  Data: {{ data_04 | default('N/A') }}"
-      - "  Status: {{ status_04 | default('ERROR') }}"
-      - "  Details: {{ details_04 | default('None') }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 05 - {{ req_05 }}:"
-      - "  Task: {{ task_05_name | default('Task not recorded') }}"
-      - "  Command: {{ task_05_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_05_rc | default(-1) }}"
-      - "  Data: {{ data_05 | default('N/A') }}"
-      - "  Status: {{ status_05 | default('ERROR') }}"
-      - "  Details: {{ details_05 | default('None') }}"
-      - ""
+      - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ cis_result | default('ERROR') }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+      - "========================================================"
     tags: [execute]
 
   always:
-  - name: "Restore - Check if backup exists"
+  - name: "Restore - Check if motd backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/motd"
-    register: _restore_backup_stat
+      path: "{{ backup_dir }}/motd.present"
+    register: _restore_present
+    failed_when: false
     tags: [restore]
 
-  - name: "Restore - Overwrite /etc/motd with backup"
+  - name: "Restore - Restore /etc/motd from backup"
     ansible.builtin.copy:
-      src: "{{ backup_dir }}/motd"
-      dest: "{{ motd_path }}"
+      src: "{{ backup_dir }}/motd.present"
+      dest: "{{ motd_file }}"
       remote_src: true
-    when: _restore_backup_stat.stat.exists
+    when: _restore_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if motd absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/motd.absent"
+    register: _restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete /etc/motd if it was absent before"
+    ansible.builtin.file:
+      path: "{{ motd_file }}"
+      state: absent
+    when: _restore_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
@@ -240,6 +247,5 @@
     ansible.builtin.file:
       path: "{{ backup_dir }}"
       state: absent
-    when: _restore_backup_stat.stat.exists
     failed_when: false
     tags: [restore]

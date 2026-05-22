@@ -2,4 +2,4 @@ req_01: "Check if grubby is installed using command: `which grubby || rpm -q gru
 req_02: |
   Check that SELinux is not disabled via bootloader parameters using command: `grubby --info=ALL | grep -Po '(selinux|enforcing)=0\\b'`. Expected result: no output returned.
 req_03: "Summarize overall compliance: if all checks pass, SELinux bootloader configuration is compliant; otherwise, it is non-compliant."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

@@ -51,22 +51,22 @@
     status_01: "{{ 'PASS' if result_01.rc == 0 else 'FAIL' }}"
     details_01: "{{ 'Package found' if result_01.rc == 0 else 'Package not found' }}"
     status_02: >-
-      {{ 'SKIPPED' if result_01.rc != 0 else
+      {{ 'SKIP' if result_01.rc != 0 else
          ('PASS' if ('NO_CBC' in result_02a.stdout | default('')) or ('NO_CHACHA' in result_02b.stdout | default('')) else 'FAIL') }}
     details_02: >-
-      {{ 'SKIPPED' if result_01.rc != 0 else
+      {{ 'SKIP' if result_01.rc != 0 else
          ('CBC or ChaCha disabled' if ('NO_CBC' in result_02a.stdout | default('')) or ('NO_CHACHA' in result_02b.stdout | default('')) else 'Neither CBC disabled nor CVE patched') }}
     status_03: >-
-      {{ 'SKIPPED' if result_01.rc != 0 else
+      {{ 'SKIP' if result_01.rc != 0 else
          ('PASS' if (result_03.stdout | default('') | trim) is version('9.3', '>=') else 'FAIL') }}
     details_03: >-
-      {{ 'SKIPPED' if result_01.rc != 0 else
+      {{ 'SKIP' if result_01.rc != 0 else
          ('Version ' ~ (result_03.stdout | default('') | trim) ~ ' is >= 9.3' if (result_03.stdout | default('') | trim) is version('9.3', '>=') else 'Version ' ~ (result_03.stdout | default('') | trim) ~ ' is < 9.3 or could not be determined') }}
     status_04: >-
-      {{ 'SKIPPED' if result_01.rc != 0 else
+      {{ 'SKIP' if result_01.rc != 0 else
          ('PASS' if 'DISABLE_ETM' in result_04.stdout | default('') else 'FAIL') }}
     details_04: >-
-      {{ 'SKIPPED' if result_01.rc != 0 else
+      {{ 'SKIP' if result_01.rc != 0 else
          ('EtM disabled for SSH' if 'DISABLE_ETM' in result_04.stdout | default('') else 'EtM not disabled') }}
 
 - name: "Store final audit result in cis_result"
@@ -100,14 +100,14 @@
     - "  Command: sshd -T 2>/dev/null | grep -i 'cipher.*cbc' || echo 'NO_CBC'"
     - "  Exit code: {{ 'N/A' if result_01.rc != 0 else result_02a.rc }}"
     - "  Data: {{ (result_02a.stdout | default('') | trim) if result_01.rc == 0 else 'N/A' }}"
-    - "  Status: {{ 'SKIPPED' if result_01.rc != 0 else ('PASS' if 'NO_CBC' in result_02a.stdout | default('') else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if result_01.rc != 0 else ('PASS' if 'NO_CBC' in result_02a.stdout | default('') else 'FAIL') }}"
     - "  Details: {{ 'Not applicable' if result_01.rc != 0 else ('CBC disabled' if 'NO_CBC' in result_02a.stdout | default('') else 'CBC ciphers found') }}"
     - "  Sub-check B - ChaCha20 KEX"
     - "  Task: Check ChaCha20 KEX disabled"
     - "  Command: sshd -T 2>/dev/null | grep -i 'kex.*chacha20-poly1305' || echo 'NO_CHACHA'"
     - "  Exit code: {{ 'N/A' if result_01.rc != 0 else result_02b.rc }}"
     - "  Data: {{ (result_02b.stdout | default('') | trim) if result_01.rc == 0 else 'N/A' }}"
-    - "  Status: {{ 'SKIPPED' if result_01.rc != 0 else ('PASS' if 'NO_CHACHA' in result_02b.stdout | default('') else 'FAIL') }}"
+    - "  Status: {{ 'SKIP' if result_01.rc != 0 else ('PASS' if 'NO_CHACHA' in result_02b.stdout | default('') else 'FAIL') }}"
     - "  Details: {{ 'Not applicable' if result_01.rc != 0 else ('ChaCha KEX disabled' if 'NO_CHACHA' in result_02b.stdout | default('') else 'ChaCha found') }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"

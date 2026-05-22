@@ -8,280 +8,293 @@
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Check if GDM or GDM3 is installed"
-  ansible.builtin.package_facts:
-    manager: auto
-  failed_when: false
-  tags: [snapshot]
-- name: "Snapshot - Set GDM installed status fact"
-  ansible.builtin.set_fact:
-    gdm_installed_snapshot: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
-  tags: [snapshot]
-- name: "Snapshot - Check if /etc/dconf/profile/gdm exists"
+- name: "Snapshot - Check if GDM profile exists"
   ansible.builtin.stat:
-    path: /etc/dconf/profile/gdm
+    path: "/etc/dconf/profile/gdm"
   register: _sg_profile_stat
   tags: [snapshot]
-- name: "Snapshot - Backup /etc/dconf/profile/gdm"
+- name: "Snapshot - Backup GDM profile if exists"
   ansible.builtin.copy:
-    src: /etc/dconf/profile/gdm
-    dest: "{{ backup_dir }}/profile_gdm.present"
+    src: "/etc/dconf/profile/gdm"
+    dest: "{{ backup_dir }}/gdm_profile.present"
     remote_src: true
   when: _sg_profile_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Mark /etc/dconf/profile/gdm as absent"
+- name: "Snapshot - Mark GDM profile as absent"
   ansible.builtin.copy:
     content: "absent"
-    dest: "{{ backup_dir }}/profile_gdm.absent"
-  when:
-  - not _sg_profile_stat.stat.exists
-  - gdm_installed_snapshot | default(false) | bool
+    dest: "{{ backup_dir }}/gdm_profile.absent"
+  when: not _sg_profile_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Check if /etc/dconf/db/gdm.d/01-banner-message exists"
+- name: "Snapshot - Check if GDM dconf db directory exists"
   ansible.builtin.stat:
-    path: /etc/dconf/db/gdm.d/01-banner-message
-  register: _sg_banner_stat
+    path: "/etc/dconf/db/gdm.d"
+  register: _sg_dbdir_stat
   tags: [snapshot]
-- name: "Snapshot - Backup /etc/dconf/db/gdm.d/01-banner-message"
-  ansible.builtin.copy:
-    src: /etc/dconf/db/gdm.d/01-banner-message
-    dest: "{{ backup_dir }}/01-banner-message.present"
-    remote_src: true
-  when: _sg_banner_stat.stat.exists
+- name: "Snapshot - Backup GDM dconf db directory if exists"
+  ansible.builtin.shell: "tar czf {{ backup_dir }}/gdm_dbdir.present.tar.gz -C /etc/dconf/db gdm.d"
+  args:
+    executable: /bin/bash
+  when: _sg_dbdir_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Mark /etc/dconf/db/gdm.d/01-banner-message as absent"
+- name: "Snapshot - Mark GDM dconf db directory as absent"
   ansible.builtin.copy:
     content: "absent"
-    dest: "{{ backup_dir }}/01-banner-message.absent"
-  when:
-  - not _sg_banner_stat.stat.exists
-  - gdm_installed_snapshot | default(false) | bool
+    dest: "{{ backup_dir }}/gdm_dbdir.absent"
+  when: not _sg_dbdir_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "{{ remediate_script }}"
+  register: _sg_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark remediation script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/remediate_script.absent"
+  when: not _sg_script_stat.stat.exists
   tags: [snapshot]
 
 - block:
-# === EXECUTE (tag: execute) ===
-  - name: "Check if GDM or GDM3 is installed"
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+    tags: [execute]
+
+  - name: "Req 1 - Check if GDM package is installed"
     ansible.builtin.package_facts:
       manager: auto
     failed_when: false
     tags: [execute]
 
-  - name: "Set GDM installed status fact"
+  - name: "Req 1 - Set GDM installation status fact"
     ansible.builtin.set_fact:
-      gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
-      playbook_skipped: "{{ not ('gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages) }}"
+      gdm_installed: "{{ ('gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages) | bool }}"
     tags: [execute]
 
-  - name: "Req 1 - Deploy GDM banner remediation script"
+  - name: "Req 1 - Copy remediation script to remote"
     ansible.builtin.copy:
-      content: |
-        #!/usr/bin/env bash
-        {
-           l_pkgoutput=""
-           if command -v dpkg-query > /dev/null 2>&1; then
-              l_pq="dpkg-query -W"
-           elif command -v rpm > /dev/null 2>&1; then
-              l_pq="rpm -q"
-           fi
-           l_pcl="gdm gdm3"
-           for l_pn in $l_pcl; do
-              $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="$l_pkgoutput\n - Package: \"$l_pn\" exists on the system\n - checking configuration"
-           done
-           if [ -n "$l_pkgoutput" ]; then
-              l_gdmprofile="{{ gdm_profile }}"
-              l_bmessage="{{ banner_message }}"
-              if [ ! -f "/etc/dconf/profile/$l_gdmprofile" ]; then
-                 echo "Creating profile \"$l_gdmprofile\""
-                 echo -e "user-db:user\nsystem-db:$l_gdmprofile\nfile- db:/usr/share/$l_gdmprofile/greeter-dconf-defaults" > /etc/dconf/profile/$l_gdmprofile
-              fi
-              if [ ! -d "/etc/dconf/db/$l_gdmprofile.d/" ]; then
-                 echo "Creating dconf database directory \"/etc/dconf/db/$l_gdmprofile.d/\""
-                 mkdir /etc/dconf/db/$l_gdmprofile.d/
-              fi
-              if ! grep -Piq '^\h*banner-message-enable\h*=\h*true\b' /etc/dconf/db/$l_gdmprofile.d/*; then
-                 echo "creating gdm keyfile for machine-wide settings"
-                 if ! grep -Piq -- '^\h*banner-message-enable\h*=\h*' /etc/dconf/db/$l_gdmprofile.d/*; then
-                    l_kfile="/etc/dconf/db/$l_gdmprofile.d/01-banner-message"
-                    echo -e "\n[org/gnome/login-screen]\nbanner-message-enable=true" >> "$l_kfile"
-                 else
-                    l_kfile="$(grep -Pil -- '^\h*banner-message-enable\h*=\h*' /etc/dconf/db/$l_gdmprofile.d/*)"
-                    ! grep -Pq '^\h*\[org\/gnome\/login-screen\]' "$l_kfile" && sed -ri '/^\s*banner- message-enable/ i\[org/gnome/login-screen]' "$l_kfile"
-                    ! grep -Pq '^\h*banner-message-enable\h*=\h*true\b' "$l_kfile" && sed -ri 's/^\s*(banner-message-enable\s*=\s*)(\S+)(\s*.*$)/\1true \3//' "$l_kfile"
-                 fi
-              fi
-              if ! grep -Piq "^\h*banner-message-text=[\'\"]+\S+" "$l_kfile"; then
-                 sed -ri "/^\s*banner-message-enable/ a\banner-message-text=$l_bmessage" "$l_kfile"
-              fi
-              dconf update
-           else
-              echo -e "\n\n - GNOME Desktop Manager isn't installed\n - Recommendation is Not Applicable\n - No remediation required\n"
-           fi
-        }
-      dest: /tmp/remediate_gdm_banner.sh
+      dest: "{{ remediate_script }}"
       mode: '0700'
-    when: not (playbook_skipped | default(false) | bool)
-    failed_when: false
+      content: "{{ remediate_script_content }}"
+    when: gdm_installed | bool
     tags: [execute]
 
   - name: "Req 1 - Execute remediation script"
-    ansible.builtin.shell: /bin/bash /tmp/remediate_gdm_banner.sh
+    ansible.builtin.shell: /bin/bash "{{ remediate_script }}"
     args:
       executable: /bin/bash
-    register: result_01
-    when: not (playbook_skipped | default(false) | bool)
+    register: remediate_result
+    when: gdm_installed | bool
     failed_when: false
     tags: [execute]
 
-  - name: "Req 2 - Verify GDM login banner configuration"
+  - name: "Req 1 - Remove temporary remediation script"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    when: gdm_installed | bool
+    tags: [execute]
+
+  - name: "Req 2 - Verify GDM login banner is enabled"
     ansible.builtin.shell: |
-      if [ -f "/etc/dconf/profile/gdm" ] && [ -d "/etc/dconf/db/gdm.d" ]; then
-         if grep -Piq '^\h*banner-message-enable\h*=\h*true\b' /etc/dconf/db/gdm.d/* && \
-            grep -Piq '^\h*banner-message-text=[\x27"]+\S+' /etc/dconf/db/gdm.d/*; then
-            echo "COMPLIANT"
+      l_output=""
+      l_output2=""
+      l_gdmfile="$(grep -Prils '^\h*banner-message-enable\b' /etc/dconf/db/*.d)"
+      if [ -n "$l_gdmfile" ]; then
+         l_gdmprofile="$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_gdmfile")"
+         if grep -Pisq '^\h*banner-message-enable=true\b' "$l_gdmfile"; then
+            l_output="$l_output\n - The \"banner-message-enable\" option is enabled in \"$l_gdmfile\""
          else
-            echo "NOT_COMPLIANT"
+            l_output2="$l_output2\n - The \"banner-message-enable\" option is not enabled"
+         fi
+         l_lsbt="$(grep -Pios '^\h*banner-message-text=.*$' "$l_gdmfile")"
+         if [ -n "$l_lsbt" ]; then
+            l_output="$l_output\n - The \"banner-message-text\" option is set in \"$l_gdmfile\"\n - banner-message-text is set to:\n  - \"$l_lsbt\""
+         else
+            l_output2="$l_output2\n - The \"banner-message-text\" option is not set"
+         fi
+         if grep -Pq "^\h*system-db:$l_gdmprofile" /etc/dconf/profile/"$l_gdmprofile"; then
+            l_output="$l_output\n - The \"$l_gdmprofile\" profile exists"
+         else
+            l_output2="$l_output2\n - The \"$l_gdmprofile\" profile doesn't exist"
+         fi
+         if [ -f "/etc/dconf/db/$l_gdmprofile" ]; then
+            l_output="$l_output\n - The \"$l_gdmprofile\" profile exists in the dconf database"
+         else
+            l_output2="$l_output2\n - The \"$l_gdmprofile\" profile doesn't exist in the dconf database"
          fi
       else
-         echo "NOT_COMPLIANT"
+         l_output2="$l_output2\n - The \"banner-message-enable\" option isn't configured"
+      fi
+      if [ -z "$l_output2" ]; then
+         echo -e "\n- Audit Result:\n  ** PASS **\n$l_output\n"
+      else
+         echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output2\n"
+         [ -n "$l_output" ] && echo -e "\n- Correctly set:\n$l_output\n"
       fi
     args:
       executable: /bin/bash
-    register: result_02
-    when: not (playbook_skipped | default(false) | bool)
+    register: verify_result
+    when: gdm_installed | bool
     failed_when: false
+    changed_when: false
     tags: [execute]
 
-  - name: "Store requirement 01 details"
-    ansible.builtin.set_fact:
-      task_01_name: "Run remediation script for GDM login banner"
-      task_01_cmd: "/bin/bash /tmp/remediate_gdm_banner.sh"
-      task_01_rc: "{{ result_01.rc | default(-1) }}"
-      data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: >-
-        {%- if playbook_skipped | default(false) | bool %}SKIPPED
-        {%- elif result_01.rc | default(-1) == 0 %}APPLIED
-        {%- else %}FAILED{%- endif %}
-      details_01: >-
-        {%- if playbook_skipped | default(false) | bool %}GDM not installed - skipped
-        {%- elif result_01.rc | default(-1) == 0 %}Script executed successfully
-        {%- else %}Script failed with rc {{ result_01.rc | default(-1) }}{%- endif %}
-    tags: [execute]
-
-  - name: "Store requirement 02 details"
+  - name: "Req 2 - Store verification details"
     ansible.builtin.set_fact:
       task_02_name: "Verify GDM login banner configuration"
-      task_02_cmd: "grep checks for banner-message-enable and banner-message-text in dconf"
-      task_02_rc: "{{ result_02.rc | default(-1) }}"
-      data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: >-
-        {%- if playbook_skipped | default(false) | bool %}SKIPPED
-        {%- elif result_02.stdout | default('') | trim == 'COMPLIANT' %}APPLIED
-        {%- else %}FAILED{%- endif %}
-      details_02: >-
-        {%- if playbook_skipped | default(false) | bool %}GDM not installed - skipped
-        {%- elif result_02.stdout | default('') | trim == 'COMPLIANT' %}System is compliant
-        {%- else %}System is not compliant{%- endif %}
+      task_02_cmd: "bash script (verify CIS 1.8.2)"
+      task_02_rc: "{{ verify_result.rc | default(-1) }}"
+      data_02: "{{ verify_result.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if '** PASS **' in verify_result.stdout | default('') else 'FAIL' if '** FAIL **' in verify_result.stdout | default('') else 'ERROR') | trim }}"
+      details_02: "{{ ('Verification passed' if '** PASS **' in verify_result.stdout | default('') else 'Verification failed' if '** FAIL **' in verify_result.stdout | default('') else 'Unable to determine compliance from script output') | trim }}"
+    when: gdm_installed | bool
     tags: [execute]
 
-  - name: "Req 3 - Generate remediation report"
+  - name: "Req 2 - Set SKIP when GDM not installed"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify GDM login banner configuration"
+      task_02_cmd: "bash script (verify CIS 1.8.2)"
+      task_02_rc: 0
+      data_02: "GDM is not installed - verification not applicable"
+      status_02: "SKIP"
+      details_02: "GDM or GDM3 package not found"
+    when: not gdm_installed | bool
+    tags: [execute]
+
+  - name: "Req 3 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Set cis_result variable"
+      task_03_cmd: "set_fact from status_02"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "{{ status_02 | default('ERROR') | trim }}"
+      details_03: "Overall remediation status stored from status_02"
+    tags: [execute]
+
+  - name: "Generate remediation report"
     ansible.builtin.debug:
       msg:
       - "REMEDIATION REPORT — CIS 1.8.2"
       - "Reference: CIS Benchmark checkpoint 1.8.2"
       - ""
-      - "Requirement 1 - Run remediation script to configure GDM login banner:"
-      - "  Task: {{ task_01_name }}"
-      - "  Command: {{ task_01_cmd }}"
-      - "  Exit code: {{ task_01_rc }}"
-      - "  Data: {{ data_01 }}"
-      - "  Status: {{ status_01 }}"
-      - "  Details: {{ details_01 }}"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
       - ""
-      - "Requirement 2 - Verify GDM login banner is configured:"
-      - "  Task: {{ task_02_name }}"
-      - "  Command: {{ task_02_cmd }}"
-      - "  Exit code: {{ task_02_rc }}"
-      - "  Data: {{ data_02 }}"
-      - "  Status: {{ status_02 }}"
-      - "  Details: {{ details_02 }}"
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ status_02 }}"
-      - "  Details: {{ details_02 }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
-        # === RESTORE (tag: restore) ===
-        # All restore tasks discover state from disk (no references to pre_tasks or block registers)
-
   - name: "Restore - Check if backup directory exists"
     ansible.builtin.stat:
       path: "{{ backup_dir }}"
-    register: _restore_backup_dir
+    register: _restore_dir
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if profile backup exists"
+  - name: "Restore - Check if GDM profile backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/profile_gdm.present"
-    register: _restore_profile_backup
+      path: "{{ backup_dir }}/gdm_profile.present"
+    register: _restore_profile
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore /etc/dconf/profile/gdm from backup"
+  - name: "Restore - Restore GDM profile from backup"
     ansible.builtin.copy:
-      src: "{{ backup_dir }}/profile_gdm.present"
-      dest: /etc/dconf/profile/gdm
+      src: "{{ backup_dir }}/gdm_profile.present"
+      dest: "/etc/dconf/profile/gdm"
       remote_src: true
-    when: _restore_profile_backup.stat.exists | default(false)
+    when: _restore_profile.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if profile absent marker exists"
+  - name: "Restore - Check if GDM profile absent marker exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/profile_gdm.absent"
+      path: "{{ backup_dir }}/gdm_profile.absent"
     register: _restore_profile_absent
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Delete /etc/dconf/profile/gdm if it was created"
+  - name: "Restore - Delete GDM profile if it was absent before"
     ansible.builtin.file:
-      path: /etc/dconf/profile/gdm
+      path: "/etc/dconf/profile/gdm"
       state: absent
     when: _restore_profile_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if banner keyfile backup exists"
+  - name: "Restore - Check if GDM dconf db backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/01-banner-message.present"
-    register: _restore_banner_backup
+      path: "{{ backup_dir }}/gdm_dbdir.present.tar.gz"
+    register: _restore_dbdir
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore /etc/dconf/db/gdm.d/01-banner-message from backup"
-    ansible.builtin.copy:
-      src: "{{ backup_dir }}/01-banner-message.present"
-      dest: /etc/dconf/db/gdm.d/01-banner-message
-      remote_src: true
-    when: _restore_banner_backup.stat.exists | default(false)
+  - name: "Restore - Restore GDM dconf db directory from backup"
+    ansible.builtin.shell: "rm -rf /etc/dconf/db/gdm.d && tar xzf {{ backup_dir }}/gdm_dbdir.present.tar.gz -C /etc/dconf/db"
+    args:
+      executable: /bin/bash
+    when: _restore_dbdir.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if banner keyfile absent marker exists"
+  - name: "Restore - Check if GDM dconf db absent marker exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/01-banner-message.absent"
-    register: _restore_banner_absent
+      path: "{{ backup_dir }}/gdm_dbdir.absent"
+    register: _restore_dbdir_absent
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Delete /etc/dconf/db/gdm.d/01-banner-message if it was created"
+  - name: "Restore - Delete GDM dconf db directory if it was absent before"
     ansible.builtin.file:
-      path: /etc/dconf/db/gdm.d/01-banner-message
+      path: "/etc/dconf/db/gdm.d"
       state: absent
-    when: _restore_banner_absent.stat.exists | default(false)
+    when: _restore_dbdir_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if remediation script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediate_script.absent"
+    register: _restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete remediation script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    when: _restore_script_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
@@ -289,6 +302,6 @@
     ansible.builtin.file:
       path: "{{ backup_dir }}"
       state: absent
-    when: _restore_backup_dir.stat.exists | default(false)
+    when: _restore_dir.stat.exists | default(false)
     failed_when: false
     tags: [restore]

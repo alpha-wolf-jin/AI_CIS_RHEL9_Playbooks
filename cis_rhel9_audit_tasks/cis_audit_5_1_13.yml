@@ -78,7 +78,7 @@
     data_02: "{{ result_02.stdout | default('') | trim }}"
     status_02: >-
       {%- if not ssh_installed | bool -%}
-        SKIPPED
+        SKIP
       {%- elif result_02.rc | default(-1) == 0 and ('ignorerhosts yes' in (result_02.stdout | default('') | lower)) -%}
         PASS
       {%- else -%}
@@ -110,7 +110,7 @@
     data_03: "{{ result_03.stdout | default('') | trim }}"
     status_03: >-
       {%- if not ssh_installed | bool -%}
-        SKIPPED
+        SKIP
       {%- elif result_03.rc | default(-1) == 0 and ('ignorerhosts yes' in (result_03.stdout | default('') | lower)) -%}
         PASS
       {%- else -%}

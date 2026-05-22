@@ -202,7 +202,7 @@
       task_01_cmd: "/bin/bash /tmp/cis_umask_audit.sh; copy umask 027 to /etc/profile.d/50-systemwide_umask.sh; fix umask in /etc/login.defs"
       task_01_rc: "{{ 0 if (bash_installed | bool and result_01_remediate is not skipped and result_01_remediate is not failed) else -1 }}"
       data_01: "{{ result_01_audit.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not (bash_installed | bool) else ('PASS' if (result_01_remediate is not skipped and result_01_remediate is not failed) else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if not (bash_installed | bool) else ('PASS' if (result_01_remediate is not skipped and result_01_remediate is not failed) else 'FAIL') }}"
       details_01: "{{ 'Bash not installed - skipped' if not (bash_installed | bool) else ('Umask 027 configured successfully' if (result_01_remediate is not skipped and result_01_remediate is not failed) else 'Failed to configure umask') }}"
     tags: [execute]
 
@@ -212,7 +212,7 @@
       task_02_cmd: "grep -Psiq umask pattern in /etc/profile.d/50-systemwide_umask.sh and /etc/login.defs"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (bash_installed | bool) else ('PASS' if 'PASS:' in (result_02.stdout | default('')) else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if not (bash_installed | bool) else ('PASS' if 'PASS:' in (result_02.stdout | default('')) else 'FAIL') }}"
       details_02: "{{ 'Bash not installed - skipped' if not (bash_installed | bool) else ('Umask verified correctly' if 'PASS:' in (result_02.stdout | default('')) else 'Umask verification failed: ' + (result_02.stdout | default(''))) }}"
     tags: [execute]
 

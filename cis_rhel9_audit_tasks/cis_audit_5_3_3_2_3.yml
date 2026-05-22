@@ -41,35 +41,35 @@
     task_05_rc: "N/A"
     cis_result: "UNKNOWN"
 
-- name: "Set statuses to SKIPPED when pwquality package not installed"
+- name: "Set statuses to SKIP when pwquality package not installed"
   ansible.builtin.set_fact:
     data_01: ""
-    status_01: "SKIPPED"
+    status_01: "SKIP"
     details_01: "Not applicable: libpwquality package not installed"
     task_01_name: "Check pwquality configuration files existence"
     task_01_cmd: "ls /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null || true"
     task_01_rc: -1
     data_02: ""
-    status_02: "SKIPPED"
+    status_02: "SKIP"
     details_02: "Not applicable: libpwquality package not installed"
     task_02_name: "Check password complexity settings in config files"
     task_02_cmd: |
       grep -Psi -- '^\\h*(minclass|[dulo]credit)\\b' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf
     task_02_rc: -1
     data_03: ""
-    status_03: "SKIPPED"
+    status_03: "SKIP"
     details_03: "Not applicable: libpwquality package not installed"
     task_03_name: "Check for weak password complexity in PAM files"
     task_03_cmd: |
       grep -Psi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwquality\\.so\\h+([^#\\n\\r]+\\h+)?(minclass=[0-3]|[dulo]credit=[^-]\\d*)\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth
     task_03_rc: -1
     data_04: ""
-    status_04: "SKIPPED"
+    status_04: "SKIP"
     details_04: "Not applicable: libpwquality package not installed"
     data_05: ""
-    status_05: "SKIPPED"
+    status_05: "SKIP"
     details_05: "Not applicable: libpwquality package not installed"
-    cis_result: "SKIPPED"
+    cis_result: "SKIP"
   when: "'libpwquality' not in ansible_facts.packages"
 
 - name: "Req 01 - Check if pwquality configuration files exist"

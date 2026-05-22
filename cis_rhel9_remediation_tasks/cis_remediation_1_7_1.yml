@@ -8,198 +8,266 @@
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Check if backup files already exist"
-  ansible.builtin.stat:
-    path: "{{ backup_dir }}/motd.present"
-  register: _snap_motd_backup_exists
-  tags: [snapshot]
 - name: "Snapshot - Check if /etc/motd exists"
   ansible.builtin.stat:
     path: /etc/motd
-  register: motd_stat
+  register: _snap_motd_stat
   tags: [snapshot]
-- name: "Snapshot - Backup /etc/motd if exists and not already backed up"
+- name: "Snapshot - Backup /etc/motd if exists"
   ansible.builtin.copy:
     src: /etc/motd
     dest: "{{ backup_dir }}/motd.present"
     remote_src: true
-  when:
-  - motd_stat.stat.exists
-  - not (_snap_motd_backup_exists.stat.exists | default(false))
+  when: _snap_motd_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Check if backup motd.d directory already exists"
-  ansible.builtin.stat:
-    path: "{{ backup_dir }}/motd.d"
-  register: _snap_motdd_backup_exists
-  tags: [snapshot]
-- name: "Snapshot - Check if /etc/motd.d is a directory"
-  ansible.builtin.stat:
-    path: /etc/motd.d
-  register: motdd_stat
-  tags: [snapshot]
-- name: "Snapshot - Backup /etc/motd.d directory if not already backed up"
+- name: "Snapshot - Mark /etc/motd as absent"
   ansible.builtin.copy:
-    src: /etc/motd.d/
-    dest: "{{ backup_dir }}/motd.d/"
-    remote_src: true
-    directory_mode: '0700'
-  when:
-  - motdd_stat.stat.isdir is defined and motdd_stat.stat.isdir
-  - not (_snap_motdd_backup_exists.stat.isdir is defined and _snap_motdd_backup_exists.stat.isdir)
+    content: "absent"
+    dest: "{{ backup_dir }}/motd.absent"
+  when: not _snap_motd_stat.stat.exists
+  tags: [snapshot]
+- name: "Snapshot - Record file list in /etc/motd.d"
+  ansible.builtin.shell: find /etc/motd.d/ -maxdepth 1 -type f 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  register: _snap_motd_d_files
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save /etc/motd.d file list"
+  ansible.builtin.copy:
+    content: "{{ _snap_motd_d_files.stdout | default('') }}"
+    dest: "{{ backup_dir }}/motd_d.filelist"
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script already exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: _snap_audit_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark audit script as pre-existing"
+  ansible.builtin.copy:
+    content: "existed"
+    dest: "{{ backup_dir }}/audit_script_existed.marker"
+  when: _snap_audit_script_stat.stat.exists
   tags: [snapshot]
 
 - block:
-# === EXECUTE (tag: execute) ===
-  - name: "Req 01 - Get OS identifier from /etc/os-release"
-    ansible.builtin.shell: "grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '\"'"
-    args:
-      executable: /bin/bash
-    register: os_id
-    changed_when: false
-    failed_when: false
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
     tags: [execute]
 
-  - name: "Req 01 - Edit /etc/motd to remove system information patterns"
-    ansible.builtin.shell: |
-      if [ -f /etc/motd ]; then
-        sed -i -E '/\\\\(m|r|s|v)|(^|[^[:alnum:]]){{ os_id.stdout | trim }}([^[:alnum:]]|$)/d' /etc/motd
-      fi
-    args:
-      executable: /bin/bash
-    failed_when: false
-    tags: [execute]
-    register: cleanup_motd
-
-  - name: "Req 01 - Remove system information patterns from /etc/motd.d files"
-    ansible.builtin.shell: |
-      find /etc/motd.d -type f -exec sed -i -E '/\\\\(m|r|s|v)|(^|[^[:alnum:]]){{ os_id.stdout | trim }}([^[:alnum:]]|$)/d' {} \;
-    args:
-      executable: /bin/bash
-    failed_when: false
-    tags: [execute]
-    register: cleanup_sed
-
-  - name: "Req 01 - Copy provided audit script"
-    ansible.builtin.copy:
-      content: |
-        {% raw %}
-        #!/usr/bin/env bash
-        {
-           a_files=()
-           for l_file in /etc/motd{,.d/*}; do
-              if grep -Psqi -- "(\\\v|\\\r|\\\m|\\\s|\b$(grep ^ID= /etc/os-release | cut -d= -f2 | sed -e 's/"//g')\b)" "$l_file"; then
-                 echo -e "\n - File: \"$l_file\" includes system information. Edit this file to remove these entries"
-              else
-              a_files+=("$l_file")
-              fi
-           done
-           if [ "${#a_files[@]}" -gt 0 ]; then
-              echo -e "\n-  ** Please review the following files and verify their contents follow local site policy **\n"
-              printf '%s\n' "${a_files[@]}"
-           fi
-        }
-        {% endraw %}
-      dest: /tmp/motd_audit.sh
-      mode: '0700'
-    failed_when: false
-    tags: [execute]
-
-  - name: "Req 01 - Execute audit script"
-    ansible.builtin.shell: /bin/bash /tmp/motd_audit.sh
-    args:
-      executable: /bin/bash
-    register: audit_result
-    failed_when: false
-    tags: [execute]
-
-  - name: "Req 01 - Delete audit script"
+  - name: "Req 01 - Remove /etc/motd if it exists"
     ansible.builtin.file:
-      path: /tmp/motd_audit.sh
+      path: /etc/motd
       state: absent
+    register: result_01_delete
     failed_when: false
     tags: [execute]
 
-  - name: "Req 02 - Copy verify script"
-    ansible.builtin.copy:
-      content: |
-        {% raw %}
-        #!/usr/bin/env bash
-        if [ -f /etc/motd ]; then
-          if grep -Psiq -- "(\\v|\\r|\\m|\\s|\\b$(grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '"')\\b)" /etc/motd; then
-            echo "FAIL: /etc/motd contains system information"
-            exit 1
-          fi
-        fi
-        if grep -Psiq -- "(\\v|\\r|\\m|\\s|\\b$(grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '"')\\b)" /etc/motd.d/* 2>/dev/null; then
-          echo "FAIL: Found system information in /etc/motd.d"
-          exit 1
-        fi
-        echo "PASS: Compliant"
-        {% endraw %}
-      dest: /tmp/verify_motd.sh
-      mode: '0700'
-    failed_when: false
-    tags: [execute]
-
-  - name: "Req 02 - Execute verify script"
-    ansible.builtin.shell: /bin/bash /tmp/verify_motd.sh
+  - name: "Req 01 - Remove system information from /etc/motd.d files"
+    ansible.builtin.shell: |
+      for f in /etc/motd.d/*; do
+        [ -f "$f" ] || continue
+        sed -i -E 's/\\[vrms]//g' "$f"
+        os_id=$(grep ^ID= /etc/os-release | cut -d= -f2 | sed -e 's/"//g')
+        sed -i "s/\b$os_id\b//g" "$f"
+      done
     args:
       executable: /bin/bash
-    register: verify_result
+    register: result_01_clean
+    failed_when: false
     changed_when: false
-    failed_when: false
     tags: [execute]
 
-  - name: "Req 02 - Delete verify script"
+  - name: "Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute remediation script"
+      task_01_cmd: "Remove /etc/motd and clean /etc/motd.d/* files"
+      task_01_rc: "{{ 0 if (result_01_delete is not failed and result_01_clean is not failed) else 1 }}"
+      data_01: "Remediation applied: /etc/motd removed, /etc/motd.d/* files cleaned of system information"
+      status_01: "{{ 'PASS' if (result_01_delete is not failed and result_01_clean is not failed) else 'FAIL' }}"
+      details_01: "{{ 'Remediation completed successfully' if (result_01_delete is not failed and result_01_clean is not failed) else 'Remediation encountered errors' }}"
+    tags: [execute]
+
+  - name: "Req 02 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Execute audit script for verification"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Remove temporary audit script"
     ansible.builtin.file:
-      path: /tmp/verify_motd.sh
+      path: "{{ audit_script }}"
       state: absent
-    failed_when: false
+    changed_when: false
     tags: [execute]
 
-  - name: "Set facts for report"
-    set_fact:
-      task_01_name: "MOTD Remediation"
-      task_01_cmd: "Edit /etc/motd and /etc/motd.d files to remove system info patterns, run audit script"
-      task_01_rc: "{{ os_id.rc | default(-1) if os_id is defined else -1 }}"
-      data_01: "{{ audit_result.stdout | default('') }}"
-      status_01: "{{ 'APPLIED' if (verify_result.rc | default(-1)) == 0 else 'FAILED' }}"
-      details_01: "{{ 'Remediation applied successfully' if (verify_result.rc | default(-1)) == 0 else 'Remediation incomplete - see verify results' }}"
-      task_02_name: "Verify MOTD compliance"
-      task_02_cmd: "grep for system info, check /etc/motd and /etc/motd.d contents"
-      task_02_rc: "{{ verify_result.rc | default(-1) }}"
-      data_02: "{{ verify_result.stdout | default('') | trim }}"
-      status_02: "{{ 'PASS' if verify_result.rc | default(-1) == 0 else 'FAIL' }}"
-      details_02: "{{ 'System is compliant' if verify_result.rc | default(-1) == 0 else 'Found violations' }}"
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Execute audit script for verification"
+      task_02_cmd: "/bin/bash {{ audit_script }}"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: "{{ ('PASS' if '** PASS **' in result_02.stdout | default('') else 'FAIL') | trim }}"
+      details_02: "{{ ('Audit PASSED: No MOTD files contain system information' if '** PASS **' in result_02.stdout | default('') else 'Audit FAILED: MOTD files contain system information') | trim }}"
     tags: [execute]
 
-  - name: "Req 03 - Generate remediation report"
-    debug:
+  - name: "Req 03 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store final remediation result"
+      task_03_cmd: "set_fact: cis_result = status_02"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "{{ status_02 | default('ERROR') | trim }}"
+      details_03: "cis_result set to {{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
       msg:
-      - "========================================================"
-      - "        REMEDIATION REPORT — CIS 1.7.1"
-      - "========================================================"
+      - "REMEDIATION REPORT — CIS 1.7.1"
       - "Reference: CIS Benchmark checkpoint 1.7.1"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ 'System is compliant' if status_02 | default('UNKNOWN') | trim == 'PASS' else 'Further remediation required' }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
+
+  always:
+  - name: "Restore - Check if motd backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/motd.present"
+    register: _restore_motd_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore /etc/motd from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/motd.present"
+      dest: /etc/motd
+      remote_src: true
+    when: _restore_motd_present.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if motd absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/motd.absent"
+    register: _restore_motd_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete /etc/motd if it was absent before"
+    ansible.builtin.file:
+      path: /etc/motd
+      state: absent
+    when: _restore_motd_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Read original /etc/motd.d file list"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/motd_d.filelist"
+    register: _restore_motd_d_filelist
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Find current files in /etc/motd.d"
+    ansible.builtin.shell: find /etc/motd.d/ -maxdepth 1 -type f 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    register: _restore_motd_d_current
+    changed_when: false
+    failed_when: false
+    when: _restore_motd_d_filelist.content is defined
+    tags: [restore]
+
+  - name: "Restore - Delete files added during execution in /etc/motd.d"
+    ansible.builtin.file:
+      path: "{{ item }}"
+      state: absent
+    loop: >-
+      {{
+        (_restore_motd_d_current.stdout_lines | default([]))
+        | difference((_restore_motd_d_filelist.content | default('') | b64decode).splitlines())
+      }}
+    when:
+    - _restore_motd_d_filelist.content is defined
+    - _restore_motd_d_current.stdout_lines is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if audit script pre-existed marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/audit_script_existed.marker"
+    register: _restore_audit_script_marker
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if it was created by this playbook"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: not _restore_audit_script_marker.stat.exists | default(false)
+    changed_when: false
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

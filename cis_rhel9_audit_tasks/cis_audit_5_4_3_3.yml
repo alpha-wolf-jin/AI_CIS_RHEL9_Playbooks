@@ -87,7 +87,7 @@
       task_01_rc: "{{ audit_result.rc | default(-1) }}"
       data_01: "{{ audit_result.stdout | default('') | trim }}"
       status_01: >-
-        {{ 'SKIPPED' if not (bash_installed | default(false))
+        {{ 'SKIP' if not (bash_installed | default(false))
            else ('PASS' if audit_result.stdout is defined
                  else 'FAIL') }}
       details_01: >-
@@ -124,7 +124,7 @@
 
   - name: "Req 03 - Store cis_result"
     set_fact:
-      cis_result: "{{ 'SKIPPED' if compliance_result == 'NOT_APPLICABLE' else compliance_result }}"
+      cis_result: "{{ 'SKIP' if compliance_result == 'NOT_APPLICABLE' else compliance_result }}"
     tags: [audit, compliance, execute]
 
   - name: "Req 03 - Store requirement 03 details"
@@ -133,8 +133,8 @@
       task_03_cmd: "set_fact cis_result: {{ cis_result }}"
       task_03_rc: "N/A"
       data_03: "cis_result set to {{ cis_result }}"
-      status_03: "{{ 'PASS' if cis_result in ['PASS','FAIL','SKIPPED'] else 'FAIL' }}"
-      details_03: "{{ 'cis_result stored successfully' if cis_result in ['PASS','FAIL','SKIPPED'] else 'Unable to store cis_result due to unknown compliance status' }}"
+      status_03: "{{ 'PASS' if cis_result in ['PASS','FAIL','SKIP'] else 'FAIL' }}"
+      details_03: "{{ 'cis_result stored successfully' if cis_result in ['PASS','FAIL','SKIP'] else 'Unable to store cis_result due to unknown compliance status' }}"
     tags: [audit, execute]
 
   - name: "Req 04 - Store requirement 04 details"

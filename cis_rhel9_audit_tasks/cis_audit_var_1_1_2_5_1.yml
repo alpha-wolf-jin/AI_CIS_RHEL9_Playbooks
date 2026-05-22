@@ -1,4 +1,4 @@
 req_01: "Check if /var/tmp is a separate partition by running the command: `findmnt -kn /var/tmp`. Expected result: Output shows /var/tmp is mounted with a device (e.g., /dev/sdb) and filesystem options (e.g., rw,nosuid,nodev,noexec,relatime,seclabel)."
 req_02: "Verify that the output of the command is not empty, indicating /var/tmp is mounted as a separate partition. Expected result: Non-empty output with mount details."
 req_03: "Summarize overall compliance: If /var/tmp is mounted as a separate partition, the requirement is compliant; otherwise, it is non-compliant."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

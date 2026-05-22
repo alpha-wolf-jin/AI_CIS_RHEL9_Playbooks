@@ -112,7 +112,7 @@
     task_01_cmd: "lineinfile + augenrules --load"
     task_01_rc: "{{ result_01_load.rc | default(-1) }}"
     data_01: "{{ result_01_load.stdout | default('') | trim }}"
-    status_01: "{{ ('SKIPPED' if not (auditd_installed | default(false) | bool) else ('FAIL' if (uid_min_result.stdout | default('') | trim | length == 0) else ('PASS' if (result_01_load.rc | default(-1)) == 0 else 'FAIL'))) | trim }}"
+    status_01: "{{ ('SKIP' if not (auditd_installed | default(false) | bool) else ('FAIL' if (uid_min_result.stdout | default('') | trim | length == 0) else ('PASS' if (result_01_load.rc | default(-1)) == 0 else 'FAIL'))) | trim }}"
     details_01: "{{ ('auditd not installed - skipped' if not (auditd_installed | default(false) | bool) else ('UID_MIN not set, cannot add audit rule' if (uid_min_result.stdout | default('') | trim | length == 0) else ('Audit rule added and loaded successfully' if (result_01_load.rc | default(-1)) == 0 else 'Failed to load audit rules'))) | trim }}"
   tags: [execute]
 - name: "Store requirement 02 details"
@@ -121,7 +121,7 @@
     task_02_cmd: "auditctl -l | grep -E 'path={{ audit_binary }}.*key={{ audit_key }}'"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
-    status_02: "{{ 'SKIPPED' if not (auditd_installed | default(false) | bool) else ('PASS' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'FAIL') }}"
+    status_02: "{{ 'SKIP' if not (auditd_installed | default(false) | bool) else ('PASS' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'FAIL') }}"
     details_02: "{{ 'auditd not installed - skipped' if not (auditd_installed | default(false) | bool) else ('chcon audit rule is active' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'chcon audit rule NOT found in active rules') }}"
   tags: [execute]
 - name: "Req 03 - Store overall remediation result in cis_result"

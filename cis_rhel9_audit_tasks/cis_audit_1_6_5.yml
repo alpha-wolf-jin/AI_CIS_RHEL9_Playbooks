@@ -57,7 +57,7 @@
       task_01_cmd: "{{ '/bin/bash ' + audit_script if crypto_policies_installed | bool else 'N/A' }}"
       task_01_rc: "{{ audit_result.rc | default(-1) if crypto_policies_installed | bool else -1 }}"
       data_01: "{{ audit_result.stdout | default('') | trim if crypto_policies_installed | bool else 'N/A' }}"
-      status_01: "{{ 'PASS' if crypto_policies_installed | bool and audit_result.rc | default(-1) == 0 else ('SKIPPED' if not crypto_policies_installed | bool else 'FAIL') }}"
+      status_01: "{{ 'PASS' if crypto_policies_installed | bool and audit_result.rc | default(-1) == 0 else ('SKIP' if not crypto_policies_installed | bool else 'FAIL') }}"
       details_01: "{{ 'Audit script executed successfully' if crypto_policies_installed | bool and audit_result.rc | default(-1) == 0 else ('crypto-policies not installed' if not crypto_policies_installed | bool else 'Audit script execution failed') }}"
     tags: [execute, audit]
 
@@ -87,7 +87,7 @@
       task_03_cmd: "set_fact: cis_result={{ status_02 }}"
       task_03_rc: 0
       data_03: "{{ cis_result | default('') | trim }}"
-      status_03: "{{ 'PASS' if cis_result is defined and cis_result in ['PASS','FAIL','SKIPPED','UNKNOWN','NOT_APPLICABLE'] else 'UNKNOWN' }}"
+      status_03: "{{ 'PASS' if cis_result is defined and cis_result in ['PASS','FAIL','SKIP','UNKNOWN','NOT_APPLICABLE'] else 'UNKNOWN' }}"
       details_03: "cis_result variable set to {{ cis_result | default('') | trim }}"
     tags: [execute, audit]
 

@@ -196,8 +196,8 @@
       task_02_name: "Verify Compress=yes in journald configuration"
       task_02_cmd: "N/A"
       task_02_rc: 0
-      data_02: "SKIPPED"
-      status_02: "SKIPPED"
+      data_02: "SKIP"
+      status_02: "SKIP"
       details_02: "systemd package not installed - remediation not applicable"
     when: "playbook_skipped | default(false) | bool"
     tags: [execute]

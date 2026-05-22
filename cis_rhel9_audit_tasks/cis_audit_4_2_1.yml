@@ -165,7 +165,7 @@
   set_fact:
     status_05: >-
       {%- if not (firewalld_installed | default(false) | bool) -%}NOT_APPLICABLE
-      {%- elif (nftables_enabled | default(false) | bool) -%}SKIPPED
+      {%- elif (nftables_enabled | default(false) | bool) -%}SKIP
       {%- elif (status_01 | default('UNKNOWN')) == 'PASS' and
               (status_02 | default('UNKNOWN')) == 'PASS' and
               (status_03 | default('UNKNOWN')) == 'PASS' and

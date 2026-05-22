@@ -81,24 +81,24 @@
       task_01_cmd: "package_facts: manager=auto"
       task_01_rc: 0
       data_01: "{{ 'installed' if 'openssh-server' in ansible_facts.packages else 'not_installed' }}"
-      status_01: "{{ 'SKIPPED' if 'openssh-server' not in ansible_facts.packages else 'PASS' }}"
+      status_01: "{{ 'SKIP' if 'openssh-server' not in ansible_facts.packages else 'PASS' }}"
       details_01: "{{ 'OpenSSH server not installed - remediation skipped' if 'openssh-server' not in ansible_facts.packages else 'OpenSSH server is installed' }}"
       playbook_skipped: "{{ 'openssh-server' not in ansible_facts.packages }}"
     tags: [execute]
 
   - name: "Set skipped status for remaining requirements when prerequisite not met"
     set_fact:
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "Skipped - openssh-server not installed"
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "Skipped - openssh-server not installed"
-      status_04: "SKIPPED"
+      status_04: "SKIP"
       details_04: "Skipped - openssh-server not installed"
-      status_05: "SKIPPED"
+      status_05: "SKIP"
       details_05: "Skipped - openssh-server not installed"
-      status_06: "SKIPPED"
+      status_06: "SKIP"
       details_06: "Skipped - openssh-server not installed"
-      status_07: "SKIPPED"
+      status_07: "SKIP"
       details_07: "Skipped - openssh-server not installed"
     when: "playbook_skipped | default(false) | bool"
     tags: [execute]
@@ -141,7 +141,7 @@
       task_03_cmd: "sed -i '/^Include/i UsePAM yes' /etc/ssh/sshd_config"
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'PASS' if result_03.rc | default(-1) == 0 else ('SKIPPED' if result_02.rc | default(1) == 0 else 'FAIL') }}"
+      status_03: "{{ 'PASS' if result_03.rc | default(-1) == 0 else ('SKIP' if result_02.rc | default(1) == 0 else 'FAIL') }}"
       details_03: "{{ 'UsePAM yes inserted before Include' if result_03.rc | default(-1) == 0 else ('Already set correctly - skipped' if result_02.rc | default(1) == 0 else 'Failed to set UsePAM') }}"
     when: "not playbook_skipped | default(false) | bool"
     tags: [execute]

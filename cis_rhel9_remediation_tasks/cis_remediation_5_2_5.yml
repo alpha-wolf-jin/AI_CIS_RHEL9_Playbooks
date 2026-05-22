@@ -128,7 +128,7 @@
         find /etc/sudoers /etc/sudoers.d/ -type f ! -name '*.bak' -exec sed -i '/!authenticate/d' {} \\;
       task_01_rc: "{{ remediate_result.rc | default(-1) }}"
       data_01: "{{ remediate_result.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not (sudo_installed | default(false)) else ('APPLIED' if (authenticate_check.stdout | default('')) == 'NOT_FOUND' or (remediate_result.rc | default(-1)) == 0 else 'FAILED') }}"
+      status_01: "{{ 'SKIP' if not (sudo_installed | default(false)) else ('APPLIED' if (authenticate_check.stdout | default('')) == 'NOT_FOUND' or (remediate_result.rc | default(-1)) == 0 else 'FAILED') }}"
       details_01: "{{ 'sudo package not installed' if not (sudo_installed | default(false)) else ('No !authenticate entries found - system already compliant' if (authenticate_check.stdout | default('')) == 'NOT_FOUND' else ('Successfully removed !authenticate entries' if (remediate_result.rc | default(-1)) == 0 else 'Failed to remove !authenticate entries')) }}"
     tags: [execute]
 
@@ -138,7 +138,7 @@
       task_02_cmd: "grep -rs '!authenticate' /etc/sudoers /etc/sudoers.d/"
       task_02_rc: "{{ verify_result.rc | default(-1) }}"
       data_02: "{{ verify_result.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (sudo_installed | default(false)) else ('APPLIED' if (verify_result.rc | default(-1)) == 0 else 'FAILED') }}"
+      status_02: "{{ 'SKIP' if not (sudo_installed | default(false)) else ('APPLIED' if (verify_result.rc | default(-1)) == 0 else 'FAILED') }}"
       details_02: "{{ 'sudo package not installed' if not (sudo_installed | default(false)) else ('Verification passed - no !authenticate found' if (verify_result.rc | default(-1)) == 0 else 'Verification failed - !authenticate still present') }}"
     tags: [execute]
 
@@ -147,7 +147,7 @@
       cis_result: >-
         {%- if status_02 == 'APPLIED' -%}PASS
         {%- elif status_02 == 'FAILED' -%}FAIL
-        {%- elif status_02 == 'SKIPPED' -%}SKIP
+        {%- elif status_02 == 'SKIP' -%}SKIP
         {%- else -%}ERROR
         {%- endif -%}
     tags: [execute]

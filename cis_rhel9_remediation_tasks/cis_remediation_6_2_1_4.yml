@@ -168,7 +168,7 @@
       task_01_cmd: "dpkg -l | grep -E 'systemd-journald|rsyslog' (or rpm -qa)"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if 'NOT_FOUND' in (result_01.stdout | default('')) else 'PASS' }}"
+      status_01: "{{ 'SKIP' if 'NOT_FOUND' in (result_01.stdout | default('')) else 'PASS' }}"
       details_01: "{{ 'No logging package found - remediation skipped' if 'NOT_FOUND' in (result_01.stdout | default('')) else 'Logging package found' }}"
     tags: [execute]
 
@@ -190,7 +190,7 @@
       task_02_cmd: "set_fact selected_logging=journald"
       task_02_rc: 0
       data_02: "N/A"
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "No logging packages installed"
     when: "'NOT_FOUND' in (result_01.stdout | default(''))"
     tags: [execute]
@@ -220,7 +220,7 @@
       task_03_cmd: "copy override.conf to /etc/systemd/system/systemd-journald.service.d/"
       task_03_rc: "{{ -1 if (result_03 is not defined or result_03 is skipped) else 0 }}"
       data_03: "{{ 'override.conf written' if (result_03 is defined and result_03.changed | default(false)) else 'already configured or skipped' }}"
-      status_03: "{{ 'PASS' if selected_logging == 'journald' else 'SKIPPED' }}"
+      status_03: "{{ 'PASS' if selected_logging == 'journald' else 'SKIP' }}"
       details_03: "{{ 'systemd-journald.service override configured' if selected_logging == 'journald' else 'rsyslog selected - journald config skipped' }}"
     when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
     tags: [execute]
@@ -231,7 +231,7 @@
       task_03_cmd: "N/A"
       task_03_rc: -1
       data_03: "N/A"
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "No logging packages installed"
     when: "'NOT_FOUND' in (result_01.stdout | default(''))"
     tags: [execute]
@@ -253,7 +253,7 @@
       task_04_cmd: "systemctl stop rsyslog.service && systemctl disable rsyslog.service && systemctl mask rsyslog.service"
       task_04_rc: "{{ 0 if (result_04 is defined and result_04.status is defined) else -1 }}"
       data_04: "{{ 'rsyslog stopped, disabled, and masked' if (result_04 is defined and result_04.status is defined) else 'N/A' }}"
-      status_04: "{{ 'PASS' if (result_04 is defined and result_04.status is defined) else 'SKIPPED' }}"
+      status_04: "{{ 'PASS' if (result_04 is defined and result_04.status is defined) else 'SKIP' }}"
       details_04: "{{ 'rsyslog disabled - only journald active' if (result_04 is defined and result_04.status is defined) else 'No logging packages or rsyslog selected' }}"
     when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
     tags: [execute]
@@ -264,7 +264,7 @@
       task_04_cmd: "N/A"
       task_04_rc: -1
       data_04: "N/A"
-      status_04: "SKIPPED"
+      status_04: "SKIP"
       details_04: "No logging packages installed"
     when: "'NOT_FOUND' in (result_01.stdout | default(''))"
     tags: [execute]
@@ -306,7 +306,7 @@
       task_05_cmd: "N/A"
       task_05_rc: -1
       data_05: "N/A"
-      status_05: "SKIPPED"
+      status_05: "SKIP"
       details_05: "No logging packages installed"
     when: "'NOT_FOUND' in (result_01.stdout | default(''))"
     tags: [execute]
@@ -336,7 +336,7 @@
       task_06_cmd: "copy override.conf to /etc/systemd/system/systemd-journal-upload.service.d/"
       task_06_rc: "{{ 0 if (result_06 is defined and result_06.changed | default(false)) else 0 }}"
       data_06: "{{ 'override.conf written' if (result_06 is defined and result_06.changed | default(false)) else 'already configured or skipped' }}"
-      status_06: "{{ 'PASS' if selected_logging == 'journald' else 'SKIPPED' }}"
+      status_06: "{{ 'PASS' if selected_logging == 'journald' else 'SKIP' }}"
       details_06: "{{ 'systemd-journal-upload.service override configured' if selected_logging == 'journald' else 'rsyslog selected - journal-remote skipped' }}"
     when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
     tags: [execute]
@@ -347,7 +347,7 @@
       task_06_cmd: "N/A"
       task_06_rc: -1
       data_06: "N/A"
-      status_06: "SKIPPED"
+      status_06: "SKIP"
       details_06: "No logging packages installed"
     when: "'NOT_FOUND' in (result_01.stdout | default(''))"
     tags: [execute]
@@ -368,7 +368,7 @@
       task_07_cmd: "systemctl restart systemd-journald"
       task_07_rc: "{{ 0 if (result_07 is defined and result_07.state is defined) else -1 }}"
       data_07: "{{ 'systemd-journald restarted successfully' if (result_07 is defined and result_07.state is defined) else 'N/A' }}"
-      status_07: "{{ 'PASS' if (result_07 is defined and result_07.state is defined) else 'SKIPPED' }}"
+      status_07: "{{ 'PASS' if (result_07 is defined and result_07.state is defined) else 'SKIP' }}"
       details_07: "{{ 'systemd-journald restarted' if (result_07 is defined and result_07.state is defined) else 'rsyslog selected or no packages' }}"
     when: "'NOT_FOUND' not in (result_01.stdout | default(''))"
     tags: [execute]
@@ -379,7 +379,7 @@
       task_07_cmd: "N/A"
       task_07_rc: -1
       data_07: "N/A"
-      status_07: "SKIPPED"
+      status_07: "SKIP"
       details_07: "No logging packages installed"
     when: "'NOT_FOUND' in (result_01.stdout | default(''))"
     tags: [execute]
@@ -412,7 +412,7 @@
       task_08_cmd: "N/A"
       task_08_rc: -1
       data_08: "N/A"
-      status_08: "SKIPPED"
+      status_08: "SKIP"
       details_08: "No logging packages installed"
     when: "'NOT_FOUND' in (result_01.stdout | default(''))"
     tags: [execute]

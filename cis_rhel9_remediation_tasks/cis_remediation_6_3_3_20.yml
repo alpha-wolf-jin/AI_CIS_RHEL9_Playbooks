@@ -78,7 +78,7 @@
       task_01_cmd: "dpkg -l auditd || rpm -q audit"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if 'NOT_INSTALLED' in (result_01.stdout | default('')) else ('PASS' if 'INSTALLED' in (result_01.stdout | default('')) else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if 'NOT_INSTALLED' in (result_01.stdout | default('')) else ('PASS' if 'INSTALLED' in (result_01.stdout | default('')) else 'FAIL') }}"
       details_01: "{{ 'auditd is installed' if 'INSTALLED' in (result_01.stdout | default('')) else ('auditd is NOT installed - skipping remediation' if 'NOT_INSTALLED' in (result_01.stdout | default('')) else 'Failed to check auditd installation') }}"
     tags: [execute]
 
@@ -100,7 +100,7 @@
       task_02_cmd: "lineinfile: path={{ audit_rules_file }} line='-e 2'"
       task_02_rc: "{{ 0 if result_02 is not skipped else 0 }}"
       data_02: "{{ 'Rule added/verified' if result_02 is not skipped else 'Skipped' }}"
-      status_02: "{{ 'SKIPPED' if result_02 is skipped else ('PASS' if result_02 is not failed else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else ('PASS' if result_02 is not failed else 'FAIL') }}"
       details_02: "{{ 'auditd not installed - skipped' if result_02 is skipped else ('Immutable rule -e 2 added/verified in ' + audit_rules_file) if result_02 is not failed else 'Failed to add immutable rule: ' + (result_02.msg | default('unknown error')) }}"
     tags: [execute]
 
@@ -120,7 +120,7 @@
       task_03_cmd: "augenrules --load"
       task_03_rc: "{{ result_03.rc | default(-1) if result_03 is not skipped else 0 }}"
       data_03: "{{ result_03.stdout | default('') | trim if result_03 is not skipped else 'Skipped' }}"
-      status_03: "{{ 'SKIPPED' if result_03 is skipped else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if result_03 is skipped else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') }}"
       details_03: "{{ 'auditd not installed - skipped' if result_03 is skipped else 'Rules loaded successfully' if result_03.rc | default(-1) == 0 else 'Failed to load rules: ' + (result_03.stderr | default('') | trim) }}"
     tags: [execute]
 
@@ -147,7 +147,7 @@
       task_04_cmd: "auditctl -s | grep 'enabled'"
       task_04_rc: "{{ result_04.rc | default(-1) if result_04 is not skipped else 0 }}"
       data_04: "{{ result_04.stdout | default('') | trim if result_04 is not skipped else 'Skipped' }}"
-      status_04: "{{ 'SKIPPED' if result_04 is skipped else ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if result_04 is skipped else ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL') }}"
       details_04: "{{ 'auditd not installed - skipped' if result_04 is skipped else result_04.stdout | default('') | trim if result_04.rc | default(-1) == 0 else 'Failed to check reboot status' }}"
     tags: [execute]
 
@@ -170,7 +170,7 @@
       task_05_cmd: "auditctl -s | grep enabled"
       task_05_rc: "{{ result_05.rc | default(-1) if result_05 is not skipped else 0 }}"
       data_05: "{{ result_05.stdout | default('') | trim if result_05 is not skipped else 'Skipped' }}"
-      status_05: "{{ 'SKIPPED' if result_05 is skipped else ('PASS' if 'enabled 2' in (result_05.stdout | default('')) else 'FAIL') }}"
+      status_05: "{{ 'SKIP' if result_05 is skipped else ('PASS' if 'enabled 2' in (result_05.stdout | default('')) else 'FAIL') }}"
       details_05: "{{ 'auditd not installed - skipped' if result_05 is skipped else 'Immutable config confirmed' if 'enabled 2' in (result_05.stdout | default('')) else 'Immutable config NOT confirmed: ' + (result_05.stdout | default('') | trim) }}"
     tags: [execute]
 
@@ -178,7 +178,7 @@
     ansible.builtin.set_fact:
       cis_result: >-
         {{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' and status_03 == 'PASS' and status_04 == 'PASS' and status_05 == 'PASS'
-           else ('SKIPPED' if status_01 == 'SKIPPED' else 'FAIL') }}
+           else ('SKIP' if status_01 == 'SKIP' else 'FAIL') }}
     tags: [execute]
 
   - name: "Generate remediation report"
@@ -232,7 +232,7 @@
       - "========================================================"
       - "OVERALL REMEDIATION:"
       - "  Result: {{ cis_result | default('ERROR') | trim }}"
-      - "  Details: {{ 'All requirements passed' if cis_result == 'PASS' else ('Prerequisite not met - remediation skipped' if cis_result == 'SKIPPED' else 'One or more requirements failed') }}"
+      - "  Details: {{ 'All requirements passed' if cis_result == 'PASS' else ('Prerequisite not met - remediation skipped' if cis_result == 'SKIP' else 'One or more requirements failed') }}"
       - "========================================================"
     tags: [execute]
 

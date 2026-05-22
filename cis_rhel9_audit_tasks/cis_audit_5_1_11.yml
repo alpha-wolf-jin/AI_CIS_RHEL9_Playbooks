@@ -81,7 +81,7 @@
   ansible.builtin.set_fact:
     cis_result: >-
       {{ 
-        ('SKIPPED' if not sshd_installed | bool 
+        ('SKIP' if not sshd_installed | bool 
          else ('PASS' if ( ('gssapiauthentication no' in (result_02.stdout | default('') | lower)) 
                            and ('gssapiauthentication no' in (result_03.stdout | default('') | lower)) 
                            and ('gssapiauthentication no' in (result_04.stdout | default('') | lower)) 
@@ -113,7 +113,7 @@
     - "  Command: sshd -T | grep -i gssapiauthentication || echo 'NOT_FOUND'"
     - "  Exit code: {{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
     - "  Data: {{ result_02.stdout | default('N/A') | trim if result_02 is defined else 'N/A' }}"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if (result_02 is defined and 'gssapiauthentication no' in (result_02.stdout | default('') | lower)) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if (result_02 is defined and 'gssapiauthentication no' in (result_02.stdout | default('') | lower)) else 'FAIL')) | trim }}"
     - "  Details: {{ ('OpenSSH server not installed' if not sshd_installed | bool else ('Global setting is disabled' if (result_02 is defined and 'gssapiauthentication no' in (result_02.stdout | default('') | lower)) else 'Global setting not disabled or not found')) | trim }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -121,7 +121,7 @@
     - "  Command: sshd -T -C user=sshuser | grep -i gssapiauthentication || echo 'NOT_FOUND'"
     - "  Exit code: {{ result_03.rc | default(-1) if result_03 is defined else -1 }}"
     - "  Data: {{ result_03.stdout | default('N/A') | trim if result_03 is defined else 'N/A' }}"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if (result_03 is defined and 'gssapiauthentication no' in (result_03.stdout | default('') | lower)) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if (result_03 is defined and 'gssapiauthentication no' in (result_03.stdout | default('') | lower)) else 'FAIL')) | trim }}"
     - "  Details: {{ ('OpenSSH server not installed' if not sshd_installed | bool else ('User match setting is disabled' if (result_03 is defined and 'gssapiauthentication no' in (result_03.stdout | default('') | lower)) else 'User match setting not disabled or not found')) | trim }}"
     - ""
     - "REQUIREMENT 04 - {{ req_04 }}:"
@@ -129,7 +129,7 @@
     - "  Command: sshd -T -C addr=192.168.1.1 | grep -i gssapiauthentication || echo 'NOT_FOUND'"
     - "  Exit code: {{ result_04.rc | default(-1) if result_04 is defined else -1 }}"
     - "  Data: {{ result_04.stdout | default('N/A') | trim if result_04 is defined else 'N/A' }}"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if (result_04 is defined and 'gssapiauthentication no' in (result_04.stdout | default('') | lower)) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if (result_04 is defined and 'gssapiauthentication no' in (result_04.stdout | default('') | lower)) else 'FAIL')) | trim }}"
     - "  Details: {{ ('OpenSSH server not installed' if not sshd_installed | bool else ('Source address setting is disabled' if (result_04 is defined and 'gssapiauthentication no' in (result_04.stdout | default('') | lower)) else 'Source address setting not disabled or not found')) | trim }}"
     - ""
     - "REQUIREMENT 05 - {{ req_05 }}:"
@@ -137,7 +137,7 @@
     - "  Command: sshd -T -C host=example.com | grep -i gssapiauthentication || echo 'NOT_FOUND'"
     - "  Exit code: {{ result_05.rc | default(-1) if result_05 is defined else -1 }}"
     - "  Data: {{ result_05.stdout | default('N/A') | trim if result_05 is defined else 'N/A' }}"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if (result_05 is defined and 'gssapiauthentication no' in (result_05.stdout | default('') | lower)) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if (result_05 is defined and 'gssapiauthentication no' in (result_05.stdout | default('') | lower)) else 'FAIL')) | trim }}"
     - "  Details: {{ ('OpenSSH server not installed' if not sshd_installed | bool else ('Host setting is disabled' if (result_05 is defined and 'gssapiauthentication no' in (result_05.stdout | default('') | lower)) else 'Host setting not disabled or not found')) | trim }}"
     - ""
     - "REQUIREMENT 06 - {{ req_06 }}:"
@@ -145,7 +145,7 @@
     - "  Command: sshd -T -C laddr=10.0.0.1 | grep -i gssapiauthentication || echo 'NOT_FOUND'"
     - "  Exit code: {{ result_06.rc | default(-1) if result_06 is defined else -1 }}"
     - "  Data: {{ result_06.stdout | default('N/A') | trim if result_06 is defined else 'N/A' }}"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if (result_06 is defined and 'gssapiauthentication no' in (result_06.stdout | default('') | lower)) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if (result_06 is defined and 'gssapiauthentication no' in (result_06.stdout | default('') | lower)) else 'FAIL')) | trim }}"
     - "  Details: {{ ('OpenSSH server not installed' if not sshd_installed | bool else ('Local address setting is disabled' if (result_06 is defined and 'gssapiauthentication no' in (result_06.stdout | default('') | lower)) else 'Local address setting not disabled or not found')) | trim }}"
     - ""
     - "REQUIREMENT 07 - {{ req_07 }}:"
@@ -153,7 +153,7 @@
     - "  Command: sshd -T -C lport=22 | grep -i gssapiauthentication || echo 'NOT_FOUND'"
     - "  Exit code: {{ result_07.rc | default(-1) if result_07 is defined else -1 }}"
     - "  Data: {{ result_07.stdout | default('N/A') | trim if result_07 is defined else 'N/A' }}"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if (result_07 is defined and 'gssapiauthentication no' in (result_07.stdout | default('') | lower)) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if (result_07 is defined and 'gssapiauthentication no' in (result_07.stdout | default('') | lower)) else 'FAIL')) | trim }}"
     - "  Details: {{ ('OpenSSH server not installed' if not sshd_installed | bool else ('Local port setting is disabled' if (result_07 is defined and 'gssapiauthentication no' in (result_07.stdout | default('') | lower)) else 'Local port setting not disabled or not found')) | trim }}"
     - ""
     - "REQUIREMENT 08 - {{ req_08 }}:"
@@ -161,7 +161,7 @@
     - "  Command: sshd -T -C rdomain=example | grep -i gssapiauthentication || echo 'NOT_FOUND'"
     - "  Exit code: {{ result_08.rc | default(-1) if result_08 is defined else -1 }}"
     - "  Data: {{ result_08.stdout | default('N/A') | trim if result_08 is defined else 'N/A' }}"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if (result_08 is defined and 'gssapiauthentication no' in (result_08.stdout | default('') | lower)) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if (result_08 is defined and 'gssapiauthentication no' in (result_08.stdout | default('') | lower)) else 'FAIL')) | trim }}"
     - "  Details: {{ ('OpenSSH server not installed' if not sshd_installed | bool else ('Routing domain setting is disabled' if (result_08 is defined and 'gssapiauthentication no' in (result_08.stdout | default('') | lower)) else 'Routing domain setting not disabled or not found')) | trim }}"
     - ""
     - "REQUIREMENT 09 - {{ req_09 }}:"
@@ -169,7 +169,7 @@
     - "  Command: N/A"
     - "  Exit code: N/A"
     - "  Data: N/A"
-    - "  Status: {{ ('SKIPPED' if not sshd_installed | bool else ('PASS' if ( ('gssapiauthentication no' in (result_02.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_03.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_04.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_05.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_06.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_07.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_08.stdout | default('') | lower)) ) else 'FAIL')) | trim }}"
+    - "  Status: {{ ('SKIP' if not sshd_installed | bool else ('PASS' if ( ('gssapiauthentication no' in (result_02.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_03.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_04.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_05.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_06.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_07.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_08.stdout | default('') | lower)) ) else 'FAIL')) | trim }}"
     - "  Details: {{ 'OpenSSH server not installed' if not sshd_installed | bool else ('All applicable checks passed' if ( ('gssapiauthentication no' in (result_02.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_03.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_04.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_05.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_06.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_07.stdout | default('') | lower)) and ('gssapiauthentication no' in (result_08.stdout | default('') | lower)) ) else 'Some checks failed') | trim }}"
     - ""
     - "========================================================"

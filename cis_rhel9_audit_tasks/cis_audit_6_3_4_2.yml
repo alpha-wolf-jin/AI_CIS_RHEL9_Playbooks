@@ -23,7 +23,7 @@
   - name: "Initialize requirement 01 data when auditd not installed"
     ansible.builtin.set_fact:
       data_01: "auditd not installed"
-      status_01: "SKIPPED"
+      status_01: "SKIP"
       details_01: "Audit daemon (auditd) is not installed. CIS 6.3.4.2 not applicable."
       task_01_name: "Check audit log files mode"
       task_01_cmd: "N/A (auditd missing)"

@@ -37,7 +37,7 @@
       grep -r "^[^#].*\!authenticate" /etc/sudoers*
     task_02_rc: "{{ result_02.rc | default(-1) if sudo_installed | default(false) else -1 }}"
     data_02: "{{ result_02.stdout | default('') | trim if sudo_installed | default(false) else 'N/A' }}"
-    status_02: "{{ ('PASS' if sudo_installed | default(false) and result_02.rc | default(-1) != 0 else ('FAIL' if sudo_installed | default(false) and result_02.rc | default(-1) == 0 else 'SKIPPED')) | trim }}"
+    status_02: "{{ ('PASS' if sudo_installed | default(false) and result_02.rc | default(-1) != 0 else ('FAIL' if sudo_installed | default(false) and result_02.rc | default(-1) == 0 else 'SKIP')) | trim }}"
     details_02: "{{ ('No !authenticate lines found' if sudo_installed | default(false) and result_02.rc | default(-1) != 0 else ('Found !authenticate lines' if sudo_installed | default(false) and result_02.rc | default(-1) == 0 else 'Sudo is not installed, check not applicable')) | trim }}"
 
 - name: "Req 03 - Summarize overall compliance status"
@@ -46,7 +46,7 @@
     task_03_cmd: "N/A"
     task_03_rc: -1
     data_03: "N/A"
-    status_03: "{{ ('PASS' if sudo_installed | default(false) and status_02 == 'PASS' else ('FAIL' if sudo_installed | default(false) and status_02 == 'FAIL' else 'SKIPPED')) | trim }}"
+    status_03: "{{ ('PASS' if sudo_installed | default(false) and status_02 == 'PASS' else ('FAIL' if sudo_installed | default(false) and status_02 == 'FAIL' else 'SKIP')) | trim }}"
     details_03: "{{ ('System is compliant: re-authentication for privilege escalation is required' if sudo_installed | default(false) and status_02 == 'PASS' else ('System is non-compliant: found !authenticate tag(s)' if sudo_installed | default(false) and status_02 == 'FAIL' else 'Sudo not installed, check not applicable')) | trim }}"
 
 - name: "Store final audit result in cis_result"

@@ -4,18 +4,12 @@
 
 - name: "Initialize data variables"
   ansible.builtin.set_fact:
-    data_01: "Not collected yet"
     data_02: "Not collected yet"
-    data_03: "Not collected yet"
-    status_01: "UNKNOWN"
-    status_02: "UNKNOWN"
-    status_03: "UNKNOWN"
-    details_01: "Not evaluated"
+    status_02: "ERROR"
     details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
     details_03: "Not evaluated"
-    task_01_name: "Not executed"
-    task_01_cmd: "N/A"
-    task_01_rc: -1
     task_02_name: "Not executed"
     task_02_cmd: "N/A"
     task_02_rc: -1
@@ -23,140 +17,115 @@
     task_03_cmd: "N/A"
     task_03_rc: -1
 
-- name: "Gather installed package facts"
+- name: "Check if GDM package is installed"
   ansible.builtin.package_facts:
     manager: auto
   failed_when: false
-  tags: [audit]
+
 - name: "Set GDM installation status fact"
   ansible.builtin.set_fact:
     gdm_installed: "{{ ('gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages) | bool }}"
-  tags: [audit]
-- name: "Req 01 - Run GDM login banner audit script"
+
+- name: "Req 02 - Run GDM login banner audit script inline"
   ansible.builtin.shell: |
-    {% raw %}
-    #!/usr/bin/env bash
-    {
-       l_pkgoutput=""
-       if command -v dpkg-query > /dev/null 2>&1; then
-          l_pq="dpkg-query -W"
-       elif command -v rpm > /dev/null 2>&1; then
-          l_pq="rpm -q"
-       fi
-       l_pcl="gdm gdm3" # Space separated list of packages to check
-       for l_pn in $l_pcl; do
-          $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="$l_pkgoutput\n - Package: \"$l_pn\" exists on the system\n - checking configuration"
-       done
-       if [ -n "$l_pkgoutput" ]; then
-          l_output="" l_output2=""
-          echo -e "$l_pkgoutput"
-          # Look for existing settings and set variables if they exist
-          l_gdmfile="$(grep -Prils '^\h*banner-message-enable\b' /etc/dconf/db/*.d)"
-          if [ -n "$l_gdmfile" ]; then
-             # Set profile name based on dconf db directory ({PROFILE_NAME}.d)
-             l_gdmprofile="$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_gdmfile")"
-             # Check if banner message is enabled
-             if grep -Pisq '^\h*banner-message-enable=true\b' "$l_gdmfile"; then
-                l_output="$l_output\n - The \"banner-message-enable\" option is enabled in \"$l_gdmfile\""
-             else
-                l_output2="$l_output2\n - The \"banner-message-enable\" option is not enabled"
-             fi
-             l_lsbt="$(grep -Pios '^\h*banner-message-text=.*$' "$l_gdmfile")"
-             if [ -n "$l_lsbt" ]; then
-                l_output="$l_output\n - The \"banner-message-text\" option is set in \"$l_gdmfile\"\n - banner-message-text is set to:\n  - \"$l_lsbt\""
-             else
-                l_output2="$l_output2\n - The \"banner-message-text\" option is not set"
-             fi
-             if grep -Pq "^\h*system-db:$l_gdmprofile" /etc/dconf/profile/"$l_gdmprofile"; then
-                l_output="$l_output\n - The \"$l_gdmprofile\" profile exists"
-             else
-                l_output2="$l_output2\n - The \"$l_gdmprofile\" profile doesn't exist"
-             fi
-             if [ -f "/etc/dconf/db/$l_gdmprofile" ]; then
-                l_output="$l_output\n - The \"$l_gdmprofile\" profile exists in the dconf database"
-             else
-                l_output2="$l_output2\n - The \"$l_gdmprofile\" profile doesn't exist in the dconf database"
-             fi
+    l_pkgoutput=""
+    if command -v dpkg-query > /dev/null 2>&1; then
+       l_pq="dpkg-query -W"
+    elif command -v rpm > /dev/null 2>&1; then
+       l_pq="rpm -q"
+    fi
+    l_pcl="gdm gdm3"
+    for l_pn in $l_pcl; do
+       $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="$l_pkgoutput\n - Package: \"$l_pn\" exists on the system\n - checking configuration"
+    done
+    if [ -n "$l_pkgoutput" ]; then
+       l_output="" l_output2=""
+       echo -e "$l_pkgoutput"
+       l_gdmfile="$(grep -Prils '^\h*banner-message-enable\b' /etc/dconf/db/*.d)"
+       if [ -n "$l_gdmfile" ]; then
+          l_gdmprofile="$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_gdmfile")"
+          if grep -Pisq '^\h*banner-message-enable=true\b' "$l_gdmfile"; then
+             l_output="$l_output\n - The \"banner-message-enable\" option is enabled in \"$l_gdmfile\""
           else
-             l_output2="$l_output2\n - The \"banner-message-enable\" option isn't configured"
+             l_output2="$l_output2\n - The \"banner-message-enable\" option is not enabled"
+          fi
+          l_lsbt="$(grep -Pios '^\h*banner-message-text=.*$' "$l_gdmfile")"
+          if [ -n "$l_lsbt" ]; then
+             l_output="$l_output\n - The \"banner-message-text\" option is set in \"$l_gdmfile\"\n - banner-message-text is set to:\n  - \"$l_lsbt\""
+          else
+             l_output2="$l_output2\n - The \"banner-message-text\" option is not set"
+          fi
+          if grep -Pq "^\h*system-db:$l_gdmprofile" /etc/dconf/profile/"$l_gdmprofile"; then
+             l_output="$l_output\n - The \"$l_gdmprofile\" profile exists"
+          else
+             l_output2="$l_output2\n - The \"$l_gdmprofile\" profile doesn't exist"
+          fi
+          if [ -f "/etc/dconf/db/$l_gdmprofile" ]; then
+             l_output="$l_output\n - The \"$l_gdmprofile\" profile exists in the dconf database"
+          else
+             l_output2="$l_output2\n - The \"$l_gdmprofile\" profile doesn't exist in the dconf database"
           fi
        else
-          echo -e "\n\n - GNOME Desktop Manager isn't installed\n - Recommendation is Not Applicable\n- Audit result:\n  *** PASS ***\n"
+          l_output2="$l_output2\n - The \"banner-message-enable\" option isn't configured"
        fi
-       # Report results. If no failures output in l_output2, we pass
-       if [ -z "$l_output2" ]; then
-          echo -e "\n- Audit Result:\n  ** PASS **\n$l_output\n"
-       else
-          echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output2\n"
-          [ -n "$l_output" ] && echo -e "\n- Correctly set:\n$l_output\n"
-       fi
-    }
-    {% endraw %}
+    else
+       echo -e "\n\n - GNOME Desktop Manager isn't installed\n - Recommendation is Not Applicable\n- Audit result:\n  *** PASS ***\n"
+    fi
+    if [ -z "$l_output2" ]; then
+       echo -e "\n- Audit Result:\n  ** PASS **\n$l_output\n"
+    else
+       echo -e "\n- Audit Result:\n  ** FAIL **\n - Reason(s) for audit failure:\n$l_output2\n"
+       [ -n "$l_output" ] && echo -e "\n- Correctly set:\n$l_output\n"
+    fi
   args:
     executable: /bin/bash
   register: audit_result
   when: gdm_installed | bool
   failed_when: false
   changed_when: false
-  tags: [audit]
-- name: "Store Req 01 details from audit script"
+
+- name: "Req 02 - Store verification details"
   ansible.builtin.set_fact:
-    task_01_name: "Run GDM login banner audit script"
-    task_01_cmd: "bash script (audit CIS 1.8.2)"
-    task_01_rc: "{{ audit_result.rc | default(-1) }}"
-    data_01: "{{ audit_result.stdout | default('') | trim }}"
-    status_01: "{{ ('PASS' if audit_result.rc | default(-1) == 0 else 'FAIL') | trim }}"
-    details_01: "{{ ('Script executed successfully' if audit_result.rc | default(-1) == 0 else 'Script execution failed') | trim }}"
+    task_02_name: "Run GDM login banner audit script"
+    task_02_cmd: "bash script (audit CIS 1.8.2)"
+    task_02_rc: "{{ audit_result.rc | default(-1) }}"
+    data_02: "{{ audit_result.stdout | default('') | trim }}"
+    status_02: "{{ ('PASS' if '** PASS **' in audit_result.stdout | default('') else 'FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'ERROR') | trim }}"
+    details_02: "{{ ('Verification passed' if '** PASS **' in audit_result.stdout | default('') else 'Verification failed' if '** FAIL **' in audit_result.stdout | default('') else 'Unable to determine compliance from script output') | trim }}"
   when: gdm_installed | bool
-  tags: [audit]
-- name: "Set NOT_APPLICABLE when GDM not installed"
+
+- name: "Req 02 - Set SKIP when GDM not installed"
   ansible.builtin.set_fact:
-    task_01_name: "Run GDM login banner audit script"
-    task_01_cmd: "bash script (audit CIS 1.8.2)"
-    task_01_rc: 0
-    data_01: "GDM is not installed - audit not applicable"
-    status_01: "SKIPPED"
-    details_01: "GDM or GDM3 package not found"
-  when: not gdm_installed | bool
-  tags: [audit]
-- name: "Req 02 - Determine compliance status from audit output"
-  ansible.builtin.set_fact:
-    task_02_name: "Parse audit script output for compliance"
-    task_02_cmd: "regex matching on audit output"
+    task_02_name: "Run GDM login banner audit script"
+    task_02_cmd: "bash script (audit CIS 1.8.2)"
     task_02_rc: 0
-    data_02: "{{ audit_result.stdout | default('') | trim if gdm_installed | bool else 'Not applicable' }}"
-    status_02: "{{ ('SKIPPED' if not (gdm_installed | bool) else 'PASS' if '** PASS **' in audit_result.stdout | default('') else 'FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'UNKNOWN') | trim }}"
-    details_02: "{{ ('GDM is not installed' if not (gdm_installed | bool) else 'Compliance check passed' if '** PASS **' in audit_result.stdout | default('') else 'Compliance check failed' if '** FAIL **' in audit_result.stdout | default('') else 'Unable to determine compliance from script output') | trim }}"
-  tags: [audit, report]
-- name: "Req 03 - Store final cis_result variable"
+    data_02: "GDM is not installed - audit not applicable"
+    status_02: "SKIP"
+    details_02: "GDM or GDM3 package not found"
+  when: not gdm_installed | bool
+
+- name: "Req 03 - Store final audit result in cis_result"
   ansible.builtin.set_fact:
-    cis_result: "{{ status_02 | trim }}"
+    cis_result: "{{ status_02 | default('ERROR') | trim }}"
     task_03_name: "Set cis_result variable"
     task_03_cmd: "set_fact from status_02"
     task_03_rc: 0
-    data_03: "{{ status_02 | trim }}"
-    status_03: "{{ status_02 | trim }}"
-    details_03: "Overall compliance stored from status_02"
-  tags: [report]
+    data_03: "{{ status_02 | default('ERROR') | trim }}"
+    status_03: "{{ status_02 | default('ERROR') | trim }}"
+    details_03: "Overall compliance status stored from status_02"
+
 - name: "Generate audit report"
   ansible.builtin.debug:
     msg:
     - "AUDIT REPORT — CIS 1.8.2"
     - "Reference: CIS Benchmark checkpoint 1.8.2"
-    - "REQUIREMENT 01 - {{ req_01 }}:"
-    - "  Task: {{ task_01_name | default('Not recorded') }}"
-    - "  Command: {{ task_01_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_01_rc | default(-1) }}"
-    - "  Data: {{ data_01 | default('') | trim }}"
-    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-    - "  Details: {{ details_01 | default('') | trim }}"
     - ""
     - "REQUIREMENT 02 - {{ req_02 }}:"
     - "  Task: {{ task_02_name | default('Not recorded') }}"
     - "  Command: {{ task_02_cmd | default('N/A') }}"
     - "  Exit code: {{ task_02_rc | default(-1) }}"
     - "  Data: {{ data_02 | default('') | trim }}"
-    - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
     - "  Details: {{ details_02 | default('') | trim }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -164,12 +133,11 @@
     - "  Command: {{ task_03_cmd | default('N/A') }}"
     - "  Exit code: {{ task_03_rc | default(-1) }}"
     - "  Data: {{ data_03 | default('') | trim }}"
-    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
     - "  Details: {{ details_03 | default('') | trim }}"
     - ""
     - "========================================================"
     - "OVERALL COMPLIANCE:"
-    - "  Result: {{ cis_result }}"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
     - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
     - "========================================================"
-  tags: [report]

@@ -3,4 +3,4 @@ req_02: "Check permissions on /etc/passwd are mode 0644 or more restrictive usin
 req_03: "Check owner of /etc/passwd is root (UID 0) using command: `stat -Lc '%u' /etc/passwd`. Expected result: 0."
 req_04: "Check group owner of /etc/passwd is root (GID 0) using command: `stat -Lc '%g' /etc/passwd`. Expected result: 0."
 req_05: "Summarize overall compliance status: all checks passed (permissions 644 or stricter, owner root, group root)."
-req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

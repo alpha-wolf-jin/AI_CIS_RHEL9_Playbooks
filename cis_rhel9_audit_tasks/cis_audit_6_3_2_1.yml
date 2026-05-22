@@ -84,7 +84,7 @@
   ansible.builtin.set_fact:
     cis_result: >-
       {% if status_01 == 'NOT_APPLICABLE' or status_02 == 'NOT_APPLICABLE' or status_02 == 'FAIL' %}
-      SKIPPED
+      SKIP
       {% elif status_01 == 'FAIL' or status_03 == 'FAIL' or status_04 == 'FAIL' %}
       FAIL
       {% else %}

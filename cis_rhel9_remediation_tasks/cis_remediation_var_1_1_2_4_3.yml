@@ -1,9 +1,11 @@
-mount_point: "/var"
-mount_option: "nosuid"
 checkpoint_id: "cis_1_1_2_4_3"
 state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
 state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
-req_01: "Check if a separate partition exists for /var using command: `mount | grep ' /var '`. Expected result: output shows a line with /var partition details."
-req_02: "Apply nosuid mount option to /var partition by editing /etc/fstab and adding nosuid to the fourth field for the /var entry. Expected result: /etc/fstab contains a line like '<device> /var <fstype> defaults,rw,nosuid,nodev,noexec,relatime 0 0'."
-req_03: "Remount /var with the configured options using command: `mount -o remount /var`. Expected result: no error output and /var is remounted with nosuid."
-req_04: "Verify the nosuid option is set on /var partition using command: `mount | grep ' /var ' | grep nosuid`. Expected result: output shows the /var mount line containing 'nosuid'."
+mount_point: "/var"
+mount_option: "nosuid"
+req_01: "Apply prerequisite check: verify that a separate partition exists for /var using command: `mount | grep ' /var '`. Expected result: output contains a line with /var partition."
+req_02: |
+  Apply nosuid mount option to /var partition in /etc/fstab using command: `sed -i 's|^\\([^ ]*[[:space:]]*/var[[:space:]]*[^ ]*[[:space:]]*\\)[^ ]*|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab`. Expected result: the fourth field for /var partition includes nosuid.
+req_03: "Apply remount of /var with updated options using command: `mount -o remount /var`. Expected result: no error output, /var is remounted with nosuid."
+req_04: "Verify nosuid option is active on /var partition using command: `mount | grep ' /var ' | grep -o 'nosuid'`. Expected result: output contains 'nosuid'."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

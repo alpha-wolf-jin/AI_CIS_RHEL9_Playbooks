@@ -1,13 +1,7 @@
-playbook_name: "cis_1.1.2.6.3_nosuid_var_log"
-checkpoint_id: "cis_1_1_2_6_3"
-state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
-state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
-mount_point: "/var/log"
-fstab_path: "/etc/fstab"
-req_01: |
-  Check if a separate partition exists for /var/log using command: `mount | grep -E '\\s/var/log\\s'`. Expected result: output showing /var/log partition details.
-req_02: |
-  Edit the /etc/fstab file and add nosuid to the fourth field (mounting options) for the /var/log partition using command: `sed -i 's|\\(/var/log\\s\\+\\S\\+\\s\\+\\S\\+\\s\\+\\)\\(\\S\\+\\)|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab`. Expected result: the /var/log entry in /etc/fstab now includes nosuid in the options.
-req_03: "Remount /var/log with the configured options using command: `mount -o remount /var/log`. Expected result: no error output, partition remounted successfully."
-req_04: |
-  Verify the nosuid option is set on /var/log partition using command: `mount | grep -E '\\s/var/log\\s' | grep -o 'nosuid'`. Expected result: output contains 'nosuid'.
+playbook_name: "cis_1_1_2_6_3"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Check if a separate partition exists for /var/log using command: `findmnt -kn /var/log`. Expected result: output should contain a mount point for /var/log."
+req_02: "Edit the /etc/fstab file and add nosuid to the fourth field (mounting options) for the /var/log partition. Expected result: the line for /var/log in /etc/fstab includes 'nosuid' among its options."
+req_03: "Remount /var/log with the configured options using command: `mount -o remount /var/log`. Expected result: the /var/log partition is remounted with the nosuid option."
+req_04: "Verify the nosuid option is set on /var/log partition using command: `findmnt -kn /var/log | grep -v nosuid`. Expected result: no output should be returned."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

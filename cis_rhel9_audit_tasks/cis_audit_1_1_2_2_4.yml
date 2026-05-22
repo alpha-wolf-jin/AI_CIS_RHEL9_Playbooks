@@ -42,7 +42,7 @@
     data_02: "{{ result_02.stdout | default('') | trim }}"
     status_02: >-
       {%- if not (dev_shm_partition_exists | default(false) | bool) -%}
-      SKIPPED
+      SKIP
       {%- elif (result_02.stdout | default('') | trim == '') -%}
       PASS
       {%- else -%}
@@ -59,7 +59,7 @@
 
 - name: "Req 03 - Summarize overall compliance and set cis_result"
   ansible.builtin.set_fact:
-    cis_result: "{{ 'SKIPPED' if not (dev_shm_partition_exists | default(false) | bool) else ('PASS' if noexec_present | default(false) | bool else 'FAIL') }}"
+    cis_result: "{{ 'SKIP' if not (dev_shm_partition_exists | default(false) | bool) else ('PASS' if noexec_present | default(false) | bool else 'FAIL') }}"
 
 - name: "Req 04 - Store report variables for requirements 3 and 4"
   ansible.builtin.set_fact:

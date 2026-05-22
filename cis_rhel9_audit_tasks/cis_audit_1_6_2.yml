@@ -57,7 +57,7 @@
     data_02: "{{ result_02.stdout | default('') | trim }}"
     status_02: >-
       {%- if not sshd_installed -%}
-      SKIPPED
+      SKIP
       {%- elif result_02.rc | default(-1) == 1 and (result_02.stdout | default('') | trim) == '' -%}
       PASS
       {%- else -%}
@@ -84,7 +84,7 @@
          ('CRYPTO_POLICY set' if sshd_installed and status_02 == 'FAIL' else
          'Package not installed') }}
     status_03: >-
-      {{ 'SKIPPED' if not sshd_installed else
+      {{ 'SKIP' if not sshd_installed else
          ('PASS' if status_02 == 'PASS' else 'FAIL') }}
     details_03: >-
       {{ 'NOT_APPLICABLE: openssh-server not installed' if not sshd_installed else

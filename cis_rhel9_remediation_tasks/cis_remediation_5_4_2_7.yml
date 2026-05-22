@@ -102,7 +102,7 @@
       task_01_cmd: "/bin/bash /tmp/remediate_shells.sh"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if (playbook_skipped | default(false) | bool) else ('APPLIED' if (result_01.rc | default(-1)) == 0 else 'FAILED') }}"
+      status_01: "{{ 'SKIP' if (playbook_skipped | default(false) | bool) else ('APPLIED' if (result_01.rc | default(-1)) == 0 else 'FAILED') }}"
       details_01: "{{ 'shadow-utils not installed' if (playbook_skipped | default(false) | bool) else ('Script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Script execution failed') }}"
     tags: [execute]
 

@@ -8,176 +8,216 @@
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Check if /etc/dconf/db exists"
+- name: "Snapshot - Check if dconf database directory exists"
   ansible.builtin.stat:
-    path: /etc/dconf/db
-  register: dconf_db_stat
+    path: "/etc/dconf/db/gdm.d"
+  register: _snap_gdm_d
   tags: [snapshot]
-- name: "Snapshot - Backup /etc/dconf/db"
-  shell: "tar czf {{ backup_dir }}/dconf_db.tar.gz -C /etc dconf/db"
-  args:
-    executable: /bin/bash
-  when: dconf_db_stat.stat.exists
+- name: "Snapshot - Backup dconf database directory if exists"
+  ansible.builtin.archive:
+    path: "/etc/dconf/db/gdm.d"
+    dest: "{{ backup_dir }}/gdm.d.tar.gz"
+  when: _snap_gdm_d.stat.exists | default(false)
+  tags: [snapshot]
+- name: "Snapshot - Mark dconf database directory as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/gdm.d.absent"
+  when: not (_snap_gdm_d.stat.exists | default(false))
+  tags: [snapshot]
+- name: "Snapshot - Check if remediation script exists"
+  ansible.builtin.stat:
+    path: "{{ remediate_script }}"
+  register: _snap_remediate_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark remediation script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/remediate_script.absent"
+  when: not _snap_remediate_script_stat.stat.exists
   tags: [snapshot]
 
 - block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+    tags: [execute]
+
   - name: "Gather installed package facts"
     ansible.builtin.package_facts:
       manager: auto
+    failed_when: false
     tags: [execute]
 
-  - name: "Req 1 - Determine if GDM is installed"
+  - name: "Determine if GDM is installed"
     ansible.builtin.set_fact:
       gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
     tags: [execute]
 
-  - name: "Req 1 - Create remediation script"
+  - name: "Req 01 - Copy remediation script to remote"
     ansible.builtin.copy:
-      dest: /tmp/remediate_1_8_9.sh
-      content: |
-        {% raw %}
-        #!/usr/bin/env bash
-        {
-           # Check if GNOME Desktop Manager is installed.  If package isn't installed, recommendation is Not Applicable\n
-           # determine system's package manager
-           l_pkgoutput=""
-           if command -v dpkg-query > /dev/null 2>&1; then
-              l_pq="dpkg-query -W"
-           elif command -v rpm > /dev/null 2>&1; then
-              l_pq="rpm -q"
-           fi
-           # Check if GDM is installed
-           l_pcl="gdm gdm3" # Space separated list of packages to check
-           for l_pn in $l_pcl; do
-              $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="y" && echo -e "\n - Package: \"$l_pn\" exists on the system\n - remediating configuration if needed"
-           done
-           # Check configuration (If applicable)
-           if [ -n "$l_pkgoutput" ]; then
-              # Look for autorun to determine profile in use, needed for remaining tests
-              l_kfd="/etc/dconf/db/$(grep -Psril '^\h*autorun-never\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d" #set directory of key file to be locked
-              if [ -d "$l_kfd" ]; then # If key file directory doesn't exist, options can't be locked
-                 if grep -Priq '^\h*\/org/gnome\/desktop\/media-handling\/autorun-never\b' "$l_kfd"; then
-                    echo " - \"autorun-never\" is locked in \"$(grep -Pril '^\h*\/org/gnome\/desktop\/media-handling\/autorun-never\b' "$l_kfd")\""
-                 else
-                    echo " - creating entry to lock \"autorun-never\""
-                    [ ! -d "$l_kfd"/locks ] && echo "creating directory $l_kfd/locks" && mkdir "$l_kfd"/locks
-                    {
-                       echo -e '\n# Lock desktop media-handling autorun-never setting'
-                       echo '/org/gnome/desktop/media-handling/autorun-never'
-                    } >> "$l_kfd"/locks/00-media-autorun
-                 fi
-              else
-                 echo -e " - \"autorun-never\" is not set so it can not be locked\n - Please follow Recommendation \"Ensure GDM autorun-never is enabled\" and follow this Recommendation again"
-              fi
-              # update dconf database
-              dconf update
-           else
-              echo -e " - GNOME Desktop Manager package is not installed on the system\n  - Recommendation is not applicable"
-           fi
-        }
-        {% endraw %}
+      dest: "{{ remediate_script }}"
       mode: '0700'
+      content: "{{ remediate_script_content }}"
     when: gdm_installed | default(false) | bool
-    failed_when: false
-    tags: [execute]
-
-  - name: "Req 1 - Run remediation script"
-    ansible.builtin.shell: "/bin/bash /tmp/remediate_1_8_9.sh"
-    args:
-      executable: /bin/bash
-    register: remediate_result
-    failed_when: false
-    when: gdm_installed | default(false) | bool
-    tags: [execute]
-
-  - name: "Req 1 - Set remediation status"
-    ansible.builtin.set_fact:
-      task_01_name: "Run remediation script for CIS 1.8.9"
-      task_01_cmd: "/bin/bash /tmp/remediate_1_8_9.sh"
-      task_01_rc: "{{ remediate_result.rc if gdm_installed | default(false) else -1 }}"
-      data_01: "{{ remediate_result.stdout | default('') | trim if gdm_installed | default(false) else 'N/A' }}"
-      status_01: "{{ 'SKIPPED' if not (gdm_installed | default(false)) else ('APPLIED' if remediate_result.rc == 0 else 'FAILED') }}"
-      details_01: "{{ 'GDM not installed - remediation skipped' if not (gdm_installed | default(false)) else ('Script executed successfully' if remediate_result.rc == 0 else 'Script failed with exit code ' ~ remediate_result.rc) }}"
-    tags: [execute]
-
-  - name: "Req 2 - Verify autorun-never lock"
-    ansible.builtin.shell: |
-      set -e
-      PROFILE=$(grep -Psril '^\h*autorun-never\b' /etc/dconf/db/*/ 2>/dev/null | head -1)
-      if [ -z "$PROFILE" ]; then
-        echo "FAILED: autorun-never setting not found"
-        exit 1
-      fi
-      PROFILE_DIR=$(dirname "$PROFILE")
-      LOCK_FILE="$PROFILE_DIR/locks/00-media-autorun"
-      if [ -f "$LOCK_FILE" ] && grep -q '/org/gnome/desktop/media-handling/autorun-never' "$LOCK_FILE"; then
-        echo "PASSED: autorun-never is locked"
-        exit 0
-      else
-        echo "FAILED: autorun-never not locked correctly"
-        exit 1
-      fi
-    args:
-      executable: /bin/bash
-    register: verify_result
     failed_when: false
     changed_when: false
-    when: gdm_installed | default(false) | bool
     tags: [execute]
 
-  - name: "Req 2 - Set verification status"
+  - name: "Req 01 - Execute remediation script for GDM autorun-never"
+    ansible.builtin.shell: /bin/bash "{{ remediate_script }}"
+    args:
+      executable: /bin/bash
+    register: result_01
+    when: gdm_installed | default(false) | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req 01 - Remove temporary remediation script"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    when: gdm_installed | default(false) | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Store requirement 01 details"
     ansible.builtin.set_fact:
-      task_02_name: "Verify autorun-never is locked"
-      task_02_cmd: "grep -Psril ... (dconf lock verification)"
-      task_02_rc: "{{ verify_result.rc if gdm_installed | default(false) and verify_result.rc is defined else -1 }}"
-      data_02: "{{ verify_result.stdout | default('') | trim if (gdm_installed | default(false)) and (verify_result.stdout is defined) else 'N/A' }}"
-      status_02: "{{ 'SKIPPED' if not (gdm_installed | default(false)) else ('APPLIED' if verify_result.rc == 0 else 'FAILED') }}"
-      details_02: "{{ 'GDM not installed - verification skipped' if not (gdm_installed | default(false)) else (verify_result.stdout | default('') | trim if verify_result.rc == 0 else 'Verification failed: ' ~ (verify_result.stderr | default('') | trim)) }}"
+      task_01_name: "Execute remediation script for GDM autorun-never"
+      task_01_cmd: "/bin/bash {{ remediate_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) if gdm_installed | default(false) else -1 }}"
+      data_01: "{{ result_01.stdout | default('') | trim if gdm_installed | default(false) else '' }}"
+      status_01: "{{ 'SKIP' if not (gdm_installed | default(false)) else ('PASS' if '** PASS **' in (result_01.stdout | default('')) else 'FAIL') }}"
+      details_01: "{{ 'GDM not installed; remediation skipped' if not (gdm_installed | default(false)) else ('Remediation script executed successfully: autorun-never locked' if '** PASS **' in (result_01.stdout | default('')) else 'Remediation script failed: autorun-never not locked') }}"
+    tags: [execute]
+
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify remediation via script output"
+      task_02_cmd: "/bin/bash {{ remediate_script }}"
+      task_02_rc: "{{ result_01.rc | default(-1) if gdm_installed | default(false) else -1 }}"
+      data_02: "{{ result_01.stdout | default('') | trim if gdm_installed | default(false) else '' }}"
+      status_02: "{{ 'SKIP' if not (gdm_installed | default(false)) else ('PASS' if '** PASS **' in (result_01.stdout | default('')) else 'FAIL') }}"
+      details_02: "{{ 'GDM not installed; verification skipped' if not (gdm_installed | default(false)) else ('Verification passed: autorun-never is locked' if '** PASS **' in (result_01.stdout | default('')) else 'Verification failed: autorun-never is not locked') }}"
+    tags: [execute]
+
+  - name: "Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store cis_result from status_02"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ status_02 | default('ERROR') | trim }}"
     tags: [execute]
 
   - name: "Generate remediation report"
     ansible.builtin.debug:
       msg:
-      - "========================================================"
-      - "           REMEDIATION REPORT — CIS 1.8.9"
-      - "========================================================"
+      - "REMEDIATION REPORT — CIS 1.8.9"
       - "Reference: CIS Benchmark checkpoint 1.8.9"
       - ""
-      - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('N/A') }}"
+      - "REQUIREMENT 01 - Run the provided remediation script to fix Ensure GDM autorun-never is not overridden:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
       - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('N/A') }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
       - "  Details: {{ details_02 | default('') | trim }}"
       - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
       - "========================================================"
-      - "  OVERALL REMEDIATION:"
-      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ 'System compliant' if status_02 | default('') | trim == 'APPLIED' else 'System not compliant or skipped' }}"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
-  - name: "Restore - Check if backup exists"
+  - name: "Restore - Check if dconf backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/dconf_db.tar.gz"
-    register: restore_backup
+      path: "{{ backup_dir }}/gdm.d.tar.gz"
+    register: _restore_gdm_d
+    failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore /etc/dconf/db from backup"
-    shell: "tar xzf {{ backup_dir }}/dconf_db.tar.gz -C /etc"
+  - name: "Restore - Remove current dconf database directory"
+    ansible.builtin.file:
+      path: "/etc/dconf/db/gdm.d"
+      state: absent
+    when: _restore_gdm_d.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore dconf database directory from backup"
+    ansible.builtin.unarchive:
+      src: "{{ backup_dir }}/gdm.d.tar.gz"
+      dest: "/etc/dconf/db/"
+      remote_src: true
+    when: _restore_gdm_d.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if dconf absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/gdm.d.absent"
+    register: _restore_gdm_d_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete dconf database directory if it was absent before"
+    ansible.builtin.file:
+      path: "/etc/dconf/db/gdm.d"
+      state: absent
+    when: _restore_gdm_d_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Update dconf database"
+    ansible.builtin.shell: dconf update
     args:
       executable: /bin/bash
-    when: restore_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if remediation script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediate_script.absent"
+    register: _restore_remediate_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove remediation script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    when: _restore_remediate_script_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
@@ -185,6 +225,5 @@
     ansible.builtin.file:
       path: "{{ backup_dir }}"
       state: absent
-    when: restore_backup.stat.exists | default(false)
     failed_when: false
     tags: [restore]

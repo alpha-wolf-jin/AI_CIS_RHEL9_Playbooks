@@ -44,7 +44,7 @@
       task_01_cmd: "rpm -q {{ package_name }} || dpkg-query -W {{ package_name }}"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if 'NOT_INSTALLED' in (result_01.stdout | default('')) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if 'NOT_INSTALLED' in (result_01.stdout | default('')) else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
       details_01: "{{ 'Package not installed - all remediation steps skipped' if 'NOT_INSTALLED' in (result_01.stdout | default('')) else ('Package is installed' if result_01.rc | default(-1) == 0 else 'Failed to check package') }}"
       playbook_skipped: "{{ 'NOT_INSTALLED' in (result_01.stdout | default('')) }}"
     tags: [execute]
@@ -67,8 +67,8 @@
       task_02_name: "Set URL in {{ config_file }}"
       task_02_cmd: "lineinfile: regexp=^URL= line=URL={{ url_value }}"
       task_02_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
-      data_02: "{{ 'URL={{ url_value }}' if not (playbook_skipped | default(false)) else 'SKIPPED' }}"
-      status_02: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if result_02 is not failed else 'FAIL') }}"
+      data_02: "{{ 'URL={{ url_value }}' if not (playbook_skipped | default(false)) else 'SKIP' }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('PASS' if result_02 is not failed else 'FAIL') }}"
       details_02: "{{ 'Skipped - package not installed' if (playbook_skipped | default(false)) else ('URL configured' if result_02 is not failed else 'Failed to configure URL') }}"
     tags: [execute]
 
@@ -90,8 +90,8 @@
       task_03_name: "Set ServerKeyFile in {{ config_file }}"
       task_03_cmd: "lineinfile: regexp=^ServerKeyFile= line=ServerKeyFile={{ server_key_file }}"
       task_03_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
-      data_03: "{{ 'ServerKeyFile={{ server_key_file }}' if not (playbook_skipped | default(false)) else 'SKIPPED' }}"
-      status_03: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if result_03 is not failed else 'FAIL') }}"
+      data_03: "{{ 'ServerKeyFile={{ server_key_file }}' if not (playbook_skipped | default(false)) else 'SKIP' }}"
+      status_03: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('PASS' if result_03 is not failed else 'FAIL') }}"
       details_03: "{{ 'Skipped - package not installed' if (playbook_skipped | default(false)) else ('ServerKeyFile configured' if result_03 is not failed else 'Failed to configure ServerKeyFile') }}"
     tags: [execute]
 
@@ -113,8 +113,8 @@
       task_04_name: "Set ServerCertificateFile in {{ config_file }}"
       task_04_cmd: "lineinfile: regexp=^ServerCertificateFile= line=ServerCertificateFile={{ server_cert_file }}"
       task_04_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
-      data_04: "{{ 'ServerCertificateFile={{ server_cert_file }}' if not (playbook_skipped | default(false)) else 'SKIPPED' }}"
-      status_04: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if result_04 is not failed else 'FAIL') }}"
+      data_04: "{{ 'ServerCertificateFile={{ server_cert_file }}' if not (playbook_skipped | default(false)) else 'SKIP' }}"
+      status_04: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('PASS' if result_04 is not failed else 'FAIL') }}"
       details_04: "{{ 'Skipped - package not installed' if (playbook_skipped | default(false)) else ('ServerCertificateFile configured' if result_04 is not failed else 'Failed to configure ServerCertificateFile') }}"
     tags: [execute]
 
@@ -136,8 +136,8 @@
       task_05_name: "Set TrustedCertificateFile in {{ config_file }}"
       task_05_cmd: "lineinfile: regexp=^TrustedCertificateFile= line=TrustedCertificateFile={{ trusted_cert_file }}"
       task_05_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
-      data_05: "{{ 'TrustedCertificateFile={{ trusted_cert_file }}' if not (playbook_skipped | default(false)) else 'SKIPPED' }}"
-      status_05: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if result_05 is not failed else 'FAIL') }}"
+      data_05: "{{ 'TrustedCertificateFile={{ trusted_cert_file }}' if not (playbook_skipped | default(false)) else 'SKIP' }}"
+      status_05: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('PASS' if result_05 is not failed else 'FAIL') }}"
       details_05: "{{ 'Skipped - package not installed' if (playbook_skipped | default(false)) else ('TrustedCertificateFile configured' if result_05 is not failed else 'Failed to configure TrustedCertificateFile') }}"
     tags: [execute]
 
@@ -155,8 +155,8 @@
       task_06_name: "Restart {{ service_name }} service"
       task_06_cmd: "systemctl restart {{ service_name }}"
       task_06_rc: "{{ result_06.rc | default(0) if not (playbook_skipped | default(false)) else -1 }}"
-      data_06: "{{ result_06.state | default('SKIPPED') if not (playbook_skipped | default(false)) else 'SKIPPED' }}"
-      status_06: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if result_06 is not failed else 'FAIL') }}"
+      data_06: "{{ result_06.state | default('SKIP') if not (playbook_skipped | default(false)) else 'SKIP' }}"
+      status_06: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('PASS' if result_06 is not failed else 'FAIL') }}"
       details_06: "{{ 'Skipped - package not installed' if (playbook_skipped | default(false)) else ('Service restarted' if result_06 is not failed else 'Failed to restart service') }}"
     tags: [execute]
 
@@ -178,8 +178,8 @@
       task_07_name: "Verify {{ service_name }} service status and logs"
       task_07_cmd: "systemctl status {{ service_name }} && journalctl -u {{ service_name }} --no-pager | tail -20"
       task_07_rc: "{{ result_07.rc | default(-1) if not (playbook_skipped | default(false)) else -1 }}"
-      data_07: "{{ result_07.stdout | default('SKIPPED') | trim if not (playbook_skipped | default(false)) else 'SKIPPED' }}"
-      status_07: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if result_07.rc | default(-1) == 0 else 'FAIL') }}"
+      data_07: "{{ result_07.stdout | default('SKIP') | trim if not (playbook_skipped | default(false)) else 'SKIP' }}"
+      status_07: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('PASS' if result_07.rc | default(-1) == 0 else 'FAIL') }}"
       details_07: "{{ 'Skipped - package not installed' if (playbook_skipped | default(false)) else ('Service verified' if result_07.rc | default(-1) == 0 else 'Verification failed') }}"
     tags: [execute]
 

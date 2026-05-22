@@ -8,289 +8,250 @@
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Check if /etc/systemd/coredump.conf.d/60-coredump.conf exists"
+- name: "Snapshot - Check if coredump config file exists"
   ansible.builtin.stat:
-    path: /etc/systemd/coredump.conf.d/60-coredump.conf
-  register: _no_space_stat
-  failed_when: false
+    path: "/etc/systemd/coredump.conf.d/60-coredump.conf"
+  register: _snap_conf_stat
   tags: [snapshot]
-- name: "Snapshot - Backup 60-coredump.conf if it exists"
+- name: "Snapshot - Backup coredump config file if exists"
   ansible.builtin.copy:
-    src: /etc/systemd/coredump.conf.d/60-coredump.conf
-    dest: "{{ backup_dir }}/60-coredump.conf.backup"
+    src: "/etc/systemd/coredump.conf.d/60-coredump.conf"
+    dest: "{{ backup_dir }}/60-coredump.conf.present"
     remote_src: true
-    force: false
-  when: _no_space_stat.stat.exists | default(false)
-  failed_when: false
+  when: _snap_conf_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Save existence marker for 60-coredump.conf"
+- name: "Snapshot - Mark coredump config file as absent"
   ansible.builtin.copy:
-    content: "{{ _no_space_stat.stat.exists | default(false) }}"
-    dest: "{{ backup_dir }}/60-coredump.conf.existed"
+    content: "absent"
+    dest: "{{ backup_dir }}/60-coredump.conf.absent"
+  when: not _snap_conf_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Check if /etc/systemd/coredump.conf.d/60- coredump.conf exists"
-  ansible.builtin.stat:
-    path: "/etc/systemd/coredump.conf.d/60- coredump.conf"
-  register: _space_stat
-  failed_when: false
-  tags: [snapshot]
-- name: "Snapshot - Backup 60- coredump.conf if it exists"
+- name: "Snapshot - Mark remediation script as absent"
   ansible.builtin.copy:
-    src: "/etc/systemd/coredump.conf.d/60- coredump.conf"
-    dest: "{{ backup_dir }}/60- coredump.conf.backup"
-    remote_src: true
-    force: false
-  when: _space_stat.stat.exists | default(false)
-  failed_when: false
+    content: "absent"
+    dest: "{{ backup_dir }}/remediation_script.absent"
   tags: [snapshot]
-- name: "Snapshot - Save existence marker for 60- coredump.conf"
+- name: "Snapshot - Mark audit script as absent"
   ansible.builtin.copy:
-    content: "{{ _space_stat.stat.exists | default(false) }}"
-    dest: "{{ backup_dir }}/60- coredump.conf.existed"
+    content: "absent"
+    dest: "{{ backup_dir }}/audit_script.absent"
   tags: [snapshot]
 
 - block:
   - name: "Initialize data variables"
-    set_fact:
-      data_01: "Not collected yet"
-      status_01: "UNKNOWN"
+    ansible.builtin.set_fact:
+      data_01: "Not collected"
+      status_01: "ERROR"
       details_01: "Not evaluated"
       task_01_name: "Not executed"
       task_01_cmd: "N/A"
       task_01_rc: -1
-      data_02: "Not collected yet"
-      status_02: "UNKNOWN"
+      data_02: "Not collected"
+      status_02: "ERROR"
       details_02: "Not evaluated"
       task_02_name: "Not executed"
       task_02_cmd: "N/A"
       task_02_rc: -1
+      data_03: "Not collected"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
     tags: [execute]
 
-  - name: "Check if systemd package is installed"
+  - name: "Gather package facts"
     ansible.builtin.package_facts:
       manager: auto
-    when: ansible_facts.packages is not defined
     failed_when: false
     tags: [execute]
 
-  - name: "Set skip flag if systemd is not installed"
-    set_fact:
-      playbook_skipped: "{{ 'systemd' not in ansible_facts.packages }}"
+  - name: "Check if systemd is installed"
+    ansible.builtin.set_fact:
+      systemd_installed: "{{ 'systemd' in ansible_facts.packages }}"
     tags: [execute]
 
-  - name: "Check if Storage=none already present in coredump.conf.d"
-    shell: grep -rq '^Storage=none' /etc/systemd/coredump.conf.d/
-    args:
-      executable: /bin/bash
-    register: storage_check
-    when: not (playbook_skipped | default(false) | bool)
-    failed_when: false
-    tags: [execute]
-
-  - name: "Set fact whether script execution is needed"
-    set_fact:
-      script_needed: "{{ storage_check.rc | default(1) | int != 0 }}"
-    when: not (playbook_skipped | default(false) | bool)
-    tags: [execute]
-
-  - name: "Req 1 - Copy remediation script to target"
+  - name: "Req 01 - Deploy remediation script"
     ansible.builtin.copy:
-      content: |
-        {% raw %}#!/usr/bin/env bash
-
-        {
-           [ ! -d /etc/systemd/coredump.conf.d/ ] && mkdir /etc/systemd/coredump.conf.d/
-           if grep -Psq -- '^\h*\[Coredump\]' /etc/systemd/coredump.conf.d/60- coredump.conf; then
-              printf '%s\n' "Storage=none" >> /etc/systemd/coredump.conf.d/60- coredump.conf
-           else
-              printf '%s\n' "[Coredump]" "Storage=none" >> /etc/systemd/coredump.conf.d/60-coredump.conf
-           fi
-        }{% endraw %}
-      dest: /tmp/remediate_core_dump.sh
+      dest: "{{ remediation_script }}"
       mode: '0700'
-    when:
-    - not (playbook_skipped | default(false) | bool)
-    - script_needed | default(true) | bool
+      content: "{{ remediation_script_content }}"
+    when: systemd_installed | bool
     failed_when: false
     tags: [execute]
 
-  - name: "Req 1 - Execute remediation script"
-    ansible.builtin.shell: /bin/bash /tmp/remediate_core_dump.sh
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash "{{ remediation_script }}"
     args:
       executable: /bin/bash
     register: result_01
-    when:
-    - not (playbook_skipped | default(false) | bool)
-    - script_needed | default(true) | bool
     failed_when: false
+    changed_when: false
+    when: systemd_installed | bool
     tags: [execute]
 
-  - name: "Req 1 - Remove temporary script"
+  - name: "Req 01 - Remove remediation script"
     ansible.builtin.file:
-      path: /tmp/remediate_core_dump.sh
+      path: "{{ remediation_script }}"
       state: absent
-    when:
-    - not (playbook_skipped | default(false) | bool)
-    - script_needed | default(true) | bool
+    when: systemd_installed | bool
     failed_when: false
     tags: [execute]
 
   - name: "Store requirement 01 details"
-    set_fact:
-      task_01_name: "Req 1 - Execute provided remediation script"
-      task_01_cmd: "/bin/bash /tmp/remediate_core_dump.sh"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute remediation script for CIS 1.5.4"
+      task_01_cmd: "/bin/bash {{ remediation_script }}"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
-      data_01: "{{ (result_01.stdout | default('') ~ ' ' ~ result_01.stderr | default('')) | trim }}"
-      status_01: >-
-        {%- if playbook_skipped | default(false) | bool -%}
-        SKIPPED
-        {%- elif not (script_needed | default(true) | bool) -%}
-        SKIPPED
-        {%- elif result_01.rc | default(-1) == 0 -%}
-        PASS
-        {%- else -%}
-        FAIL
-        {%- endif -%}
-      details_01: >-
-        {%- if playbook_skipped | default(false) | bool -%}
-        Skipped because systemd is not installed
-        {%- elif not (script_needed | default(true) | bool) -%}
-        Storage=none already present, no remedial action needed
-        {%- elif result_01.rc | default(-1) == 0 -%}
-        Script executed successfully
-        {%- else -%}
-        Script failed with exit code {{ result_01.rc | default(-1) }} and stderr: {{ result_01.stderr | default('None') }}
-        {%- endif -%}
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'SKIP' if not systemd_installed else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}"
+      details_01: "{{ 'Systemd not installed - remediation skipped' if not systemd_installed else ('Remediation script executed successfully' if result_01.rc | default(-1) == 0 else 'Remediation script failed') | trim }}"
     tags: [execute]
 
-  - name: "Req 2 - Verify core dump storage is disabled"
-    ansible.builtin.shell: grep -rq '^Storage=none' /etc/systemd/coredump.conf.d/
+  - name: "Req 02 - Deploy audit script"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: systemd_installed | bool
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req 02 - Execute audit script"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
     args:
       executable: /bin/bash
     register: result_02
-    when: not (playbook_skipped | default(false) | bool)
+    failed_when: false
+    changed_when: false
+    when: systemd_installed | bool
+    tags: [execute]
+
+  - name: "Req 02 - Remove audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: systemd_installed | bool
     failed_when: false
     tags: [execute]
 
   - name: "Store requirement 02 details"
-    set_fact:
-      task_02_name: "Req 2 - Verify Storage=none in coredump.conf.d"
-      task_02_cmd: "grep -rq '^Storage=none' /etc/systemd/coredump.conf.d/"
+    ansible.builtin.set_fact:
+      task_02_name: "Execute audit script for CIS 1.5.4"
+      task_02_cmd: "/bin/bash {{ audit_script }}"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: >-
-        {%- if playbook_skipped | default(false) | bool -%}
-        SKIPPED
-        {%- elif result_02.rc | default(-1) == 0 -%}
-        PASS
-        {%- else -%}
-        FAIL
-        {%- endif -%}
-      details_02: >-
-        {%- if playbook_skipped | default(false) | bool -%}
-        Skipped because systemd is not installed
-        {%- elif result_02.rc | default(-1) == 0 -%}
-        Compliant: Storage=none found
-        {%- else -%}
-        Non-compliant: Storage=none not found in any .conf file under /etc/systemd/coredump.conf.d/
-        {%- endif -%}
+      status_02: "{{ 'SKIP' if not systemd_installed else ('PASS' if ('** PASS **' in (result_02.stdout | default(''))) else 'FAIL') | trim }}"
+      details_02: "{{ 'Systemd not installed - audit skipped' if not systemd_installed else ('Core dump storage is set to none' if ('** PASS **' in (result_02.stdout | default(''))) else 'Core dump storage is not set to none or not configured') | trim }}"
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store final remediation result in cis_result"
+      task_03_cmd: "N/A (set_fact)"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "{{ status_02 | default('ERROR') | trim }}"
+      details_03: "cis_result set to overall remediation status"
     tags: [execute]
 
   - name: "Generate remediation report"
-    debug:
+    ansible.builtin.debug:
       msg:
-      - "========================================================"
-      - "        REMEDIATION REPORT — CIS 1.5.4"
+      - "REMEDIATION REPORT — CIS 1.5.4"
       - "Reference: CIS Benchmark checkpoint 1.5.4"
-      - "========================================================"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('Task not recorded') }}"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('Task not recorded') }}"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ status_02 | default('UNKNOWN') | trim }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
       - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
-  - name: "Restore - Check if backup of 60-coredump.conf exists"
+  - name: "Restore - Check if coredump config backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/60-coredump.conf.backup"
-    register: _restore_no_space_backup
+      path: "{{ backup_dir }}/60-coredump.conf.present"
+    register: _restore_present
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Read existence marker for 60-coredump.conf"
-    ansible.builtin.slurp:
-      src: "{{ backup_dir }}/60-coredump.conf.existed"
-    register: _restore_no_space_existed
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Restore 60-coredump.conf if backup exists"
+  - name: "Restore - Restore coredump config from backup"
     ansible.builtin.copy:
-      src: "{{ backup_dir }}/60-coredump.conf.backup"
-      dest: /etc/systemd/coredump.conf.d/60-coredump.conf
+      src: "{{ backup_dir }}/60-coredump.conf.present"
+      dest: "/etc/systemd/coredump.conf.d/60-coredump.conf"
       remote_src: true
-    when: _restore_no_space_backup.stat.exists | default(false)
+    when: _restore_present.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Delete 60-coredump.conf if it was created during remediation"
-    ansible.builtin.file:
-      path: /etc/systemd/coredump.conf.d/60-coredump.conf
-      state: absent
-    when:
-    - _restore_no_space_existed.content is defined
-    - (_restore_no_space_existed.content | b64decode | trim) == 'False'
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Check if backup of 60- coredump.conf exists"
+  - name: "Restore - Check if coredump config absent marker exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/60- coredump.conf.backup"
-    register: _restore_space_backup
+      path: "{{ backup_dir }}/60-coredump.conf.absent"
+    register: _restore_absent
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Read existence marker for 60- coredump.conf"
-    ansible.builtin.slurp:
-      src: "{{ backup_dir }}/60- coredump.conf.existed"
-    register: _restore_space_existed
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Restore 60- coredump.conf if backup exists"
-    ansible.builtin.copy:
-      src: "{{ backup_dir }}/60- coredump.conf.backup"
-      dest: "/etc/systemd/coredump.conf.d/60- coredump.conf"
-      remote_src: true
-    when: _restore_space_backup.stat.exists | default(false)
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Delete 60- coredump.conf if it was created during remediation"
+  - name: "Restore - Delete coredump config if it was absent before"
     ansible.builtin.file:
-      path: "/etc/systemd/coredump.conf.d/60- coredump.conf"
+      path: "/etc/systemd/coredump.conf.d/60-coredump.conf"
       state: absent
-    when:
-    - _restore_space_existed.content is defined
-    - (_restore_space_existed.content | b64decode | trim) == 'False'
+    when: _restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if remediation script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediation_script.absent"
+    register: _restore_remediation_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove remediation script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ remediation_script }}"
+      state: absent
+    when: _restore_remediation_script_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if audit script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/audit_script.absent"
+    register: _restore_audit_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: _restore_audit_script_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 

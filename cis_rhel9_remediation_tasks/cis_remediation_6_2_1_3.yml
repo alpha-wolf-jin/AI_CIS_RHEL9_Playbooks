@@ -44,7 +44,7 @@
       task_01_cmd: "dpkg -l systemd || rpm -q systemd"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if ('not_installed' in (result_01.stdout | default(''))) else ('PASS' if (result_01.rc | default(-1) == 0) else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if ('not_installed' in (result_01.stdout | default(''))) else ('PASS' if (result_01.rc | default(-1) == 0) else 'FAIL') }}"
       details_01: "{{ 'Systemd not installed - all remediation steps skipped' if ('not_installed' in (result_01.stdout | default(''))) else ('Systemd is installed' if (result_01.rc | default(-1) == 0) else 'Failed to verify systemd installation') }}"
       playbook_skipped: "{{ 'not_installed' in (result_01.stdout | default('')) }}"
     tags: [execute]
@@ -65,7 +65,7 @@
       task_02_cmd: "copy {{ journald_conf }} to {{ backup_dir }}/journald.conf.before"
       task_02_rc: "{{ result_02.rc | default(0) if not (playbook_skipped | default(false)) else -1 }}"
       data_02: "{{ 'Backup created' if (result_02.changed | default(false)) else ('File does not exist' if not (playbook_skipped | default(false)) else 'Skipped') }}"
-      status_02: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if (result_02.changed | default(false)) or (result_02 is not skipped) else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('PASS' if (result_02.changed | default(false)) or (result_02 is not skipped) else 'FAIL') }}"
       details_02: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else ('Configuration file backed up' if (result_02.changed | default(false)) else 'No existing config to backup') }}"
     tags: [execute]
 
@@ -89,31 +89,31 @@
       task_03_cmd: "lineinfile: SystemMaxUse=1G"
       task_03_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
       data_03: "{{ 'SystemMaxUse=1G configured' if not (playbook_skipped | default(false)) else 'Skipped' }}"
-      status_03: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else 'APPLIED' }}"
+      status_03: "{{ 'SKIP' if (playbook_skipped | default(false)) else 'APPLIED' }}"
       details_03: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else 'Parameter set in journald.conf' }}"
       task_04_name: "Set SystemKeepFree=500M in journald.conf"
       task_04_cmd: "lineinfile: SystemKeepFree=500M"
       task_04_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
       data_04: "{{ 'SystemKeepFree=500M configured' if not (playbook_skipped | default(false)) else 'Skipped' }}"
-      status_04: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else 'APPLIED' }}"
+      status_04: "{{ 'SKIP' if (playbook_skipped | default(false)) else 'APPLIED' }}"
       details_04: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else 'Parameter set in journald.conf' }}"
       task_05_name: "Set RuntimeMaxUse=200M in journald.conf"
       task_05_cmd: "lineinfile: RuntimeMaxUse=200M"
       task_05_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
       data_05: "{{ 'RuntimeMaxUse=200M configured' if not (playbook_skipped | default(false)) else 'Skipped' }}"
-      status_05: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else 'APPLIED' }}"
+      status_05: "{{ 'SKIP' if (playbook_skipped | default(false)) else 'APPLIED' }}"
       details_05: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else 'Parameter set in journald.conf' }}"
       task_06_name: "Set RuntimeKeepFree=50M in journald.conf"
       task_06_cmd: "lineinfile: RuntimeKeepFree=50M"
       task_06_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
       data_06: "{{ 'RuntimeKeepFree=50M configured' if not (playbook_skipped | default(false)) else 'Skipped' }}"
-      status_06: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else 'APPLIED' }}"
+      status_06: "{{ 'SKIP' if (playbook_skipped | default(false)) else 'APPLIED' }}"
       details_06: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else 'Parameter set in journald.conf' }}"
       task_07_name: "Set MaxFileSec=1month in journald.conf"
       task_07_cmd: "lineinfile: MaxFileSec=1month"
       task_07_rc: "{{ 0 if not (playbook_skipped | default(false)) else -1 }}"
       data_07: "{{ 'MaxFileSec=1month configured' if not (playbook_skipped | default(false)) else 'Skipped' }}"
-      status_07: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else 'APPLIED' }}"
+      status_07: "{{ 'SKIP' if (playbook_skipped | default(false)) else 'APPLIED' }}"
       details_07: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else 'Parameter set in journald.conf' }}"
     tags: [execute]
 
@@ -132,7 +132,7 @@
       task_08_cmd: "systemctl restart systemd-journald"
       task_08_rc: "{{ result_08.rc | default(0) if not (playbook_skipped | default(false)) else -1 }}"
       data_08: "{{ result_08.state | default('N/A') if not (playbook_skipped | default(false)) else 'Skipped' }}"
-      status_08: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('APPLIED' if (result_08.state | default('') == 'started') else 'FAILED') }}"
+      status_08: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('APPLIED' if (result_08.state | default('') == 'started') else 'FAILED') }}"
       details_08: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else ('Service restarted successfully' if (result_08.state | default('') == 'started') else 'Service restart failed') }}"
     tags: [execute]
 
@@ -153,7 +153,7 @@
       task_09_cmd: "grep -E '^(SystemMaxUse|SystemKeepFree|RuntimeMaxUse|RuntimeKeepFree|MaxFileSec)=' /etc/systemd/journald.conf"
       task_09_rc: "{{ result_09.rc | default(-1) if not (playbook_skipped | default(false)) else -1 }}"
       data_09: "{{ result_09.stdout | default('') | trim if not (playbook_skipped | default(false)) else 'Skipped' }}"
-      status_09: "{{ 'SKIPPED' if (playbook_skipped | default(false)) else ('APPLIED' if ('VERIFY_FAILED' not in (result_09.stdout | default('VERIFY_FAILED'))) else 'FAILED') }}"
+      status_09: "{{ 'SKIP' if (playbook_skipped | default(false)) else ('APPLIED' if ('VERIFY_FAILED' not in (result_09.stdout | default('VERIFY_FAILED'))) else 'FAILED') }}"
       details_09: "{{ 'Skipped - systemd not installed' if (playbook_skipped | default(false)) else ('Configuration verified successfully' if ('VERIFY_FAILED' not in (result_09.stdout | default('VERIFY_FAILED'))) else 'Verification failed - expected parameters not found') }}"
     tags: [execute]
 

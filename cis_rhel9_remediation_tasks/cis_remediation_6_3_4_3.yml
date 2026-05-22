@@ -81,7 +81,7 @@
         find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' {{ auditd_conf }} | xargs))\" -type f ! -user root -exec chown root {} +
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL') }}"
       details_02: "{{ 'Skipped - auditd.conf not found' if (result_01.rc | default(-1)) != 0 else ('Ownership changed successfully' if (result_02.rc | default(-1)) == 0 else 'Failed to change ownership') }}"
     tags: [execute]
 
@@ -103,7 +103,7 @@
         find \"$(dirname $(awk -F \"=\" '/^\\s*log_file/ {print $2}' {{ auditd_conf }} | xargs))\" -type f ! -user root
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_03.stdout | default('') | trim) == '' else 'FAIL') }}"
       details_03: "{{ 'Skipped - auditd.conf not found' if (result_01.rc | default(-1)) != 0 else ('All files owned by root' if (result_03.stdout | default('') | trim) == '' else 'Files found with non-root owner: ' + (result_03.stdout | default('') | trim)) }}"
     tags: [execute]
 

@@ -1,6 +1,6 @@
-playbook_name: "cis_1_6_1_remediation"
+playbook_name: "cis_remediation_1_6_1"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-crypto_policy: "DEFAULT"
 req_01: "Apply the system-wide crypto policy to a secure level (e.g., DEFAULT) using command: `update-crypto-policies --set DEFAULT`. Expected result: The system-wide crypto policy is set to DEFAULT, disabling legacy algorithms and protocols."
 req_02: "Activate the updated system-wide crypto policy using command: `update-crypto-policies`. Expected result: The new crypto policy is applied and active system-wide."
 req_03: "Verify the current system-wide crypto policy using command: `update-crypto-policies --show`. Expected result: The output displays the current policy (e.g., DEFAULT), confirming it is not set to LEGACY."
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

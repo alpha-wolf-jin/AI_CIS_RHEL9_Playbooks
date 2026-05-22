@@ -220,7 +220,7 @@
       - "  Command: lineinfile + sed + authselect apply-changes"
       - "  Exit code: {{ result_01_pam.rc | default(-1) }}"
       - "  Data: {{ result_01_pam.stdout | default('') | trim }}"
-      - "  Status: {{ 'SKIPPED' if playbook_skipped | default(false) else 'APPLIED' }}"
+      - "  Status: {{ 'SKIP' if playbook_skipped | default(false) else 'APPLIED' }}"
       - "  Details: {{ 'Skipped - pam_pwquality not installed' if playbook_skipped | default(false) else 'Remediation script executed' }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"

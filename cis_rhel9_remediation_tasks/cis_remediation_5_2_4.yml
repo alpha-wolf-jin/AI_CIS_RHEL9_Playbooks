@@ -107,7 +107,7 @@
       task_02_cmd: "lineinfile: path=/etc/sudoers regexp=NOPASSWD state=absent"
       task_02_rc: "{{ 0 if result_02 is not skipped else -1 }}"
       data_02: "{{ 'NOPASSWD lines removed' if result_02.changed | default(false) else 'No NOPASSWD lines found' }}"
-      status_02: "{{ 'SKIPPED' if result_02 is skipped else 'PASS' }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else 'PASS' }}"
       details_02: "{{ 'Sudo not installed' if result_02 is skipped else 'NOPASSWD entries removed from /etc/sudoers' }}"
     when: "not playbook_skipped | default(false)"
     tags: [execute]
@@ -117,8 +117,8 @@
       task_02_name: "Remove NOPASSWD tags from /etc/sudoers"
       task_02_cmd: "lineinfile: path=/etc/sudoers regexp=NOPASSWD state=absent"
       task_02_rc: -1
-      data_02: "SKIPPED"
-      status_02: "SKIPPED"
+      data_02: "SKIP"
+      status_02: "SKIP"
       details_02: "Sudo not installed"
     when: "playbook_skipped | default(false)"
     tags: [execute]
@@ -143,7 +143,7 @@
         find /etc/sudoers.d/ -type f -exec sed -i '/NOPASSWD/d' {} \\;
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ 'NOPASSWD lines removed from sudoers.d files' if result_03.rc | default(-1) == 0 else 'Failed' }}"
-      status_03: "{{ 'SKIPPED' if result_03 is skipped else 'PASS' }}"
+      status_03: "{{ 'SKIP' if result_03 is skipped else 'PASS' }}"
       details_03: "{{ 'Sudo not installed' if result_03 is skipped else 'NOPASSWD entries removed from /etc/sudoers.d/' }}"
     when: "not playbook_skipped | default(false)"
     tags: [execute]
@@ -154,8 +154,8 @@
       task_03_cmd: |
         find /etc/sudoers.d/ -type f -exec sed -i '/NOPASSWD/d' {} \\;
       task_03_rc: -1
-      data_03: "SKIPPED"
-      status_03: "SKIPPED"
+      data_03: "SKIP"
+      status_03: "SKIP"
       details_03: "Sudo not installed"
     when: "playbook_skipped | default(false)"
     tags: [execute]
@@ -176,7 +176,7 @@
       task_04_cmd: "grep -r 'NOPASSWD' /etc/sudoers /etc/sudoers.d/"
       task_04_rc: "{{ result_04.rc | default(-1) }}"
       data_04: "{{ result_04.stdout | default('') | trim }}"
-      status_04: "{{ 'SKIPPED' if result_04 is skipped else ('PASS' if (result_04.stdout | default('') | trim) == 'CLEAN' else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if result_04 is skipped else ('PASS' if (result_04.stdout | default('') | trim) == 'CLEAN' else 'FAIL') }}"
       details_04: "{{ 'Sudo not installed' if result_04 is skipped else ('No NOPASSWD entries found' if (result_04.stdout | default('') | trim) == 'CLEAN' else 'NOPASSWD entries still present') }}"
     when: "not playbook_skipped | default(false)"
     tags: [execute]
@@ -186,8 +186,8 @@
       task_04_name: "Verify no NOPASSWD tags remain"
       task_04_cmd: "grep -r 'NOPASSWD' /etc/sudoers /etc/sudoers.d/"
       task_04_rc: -1
-      data_04: "SKIPPED"
-      status_04: "SKIPPED"
+      data_04: "SKIP"
+      status_04: "SKIP"
       details_04: "Sudo not installed"
     when: "playbook_skipped | default(false)"
     tags: [execute]

@@ -1,9 +1,13 @@
 playbook_name: "cis_1_8_7_remediation"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-script_content: |
+req_01: "Run the provided remediation script to fix Ensure GDM disabling automatic mounting of removable media is not overridden. Run the following script to lock disable automatic mounting of media for all GNOME users"
+req_02: "VERIFY: Run audit check to confirm Ensure GDM disabling automatic mounting of removable media is not overridden is properly configured. Expected result: System is compliant"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate remediation report' using debug msg"
+remediate_script: "/tmp/cis_1_8_7_remediate.sh"
+remediate_script_content: |
   {% raw %}
   #!/usr/bin/env bash
-
   {
      # Check if GNOME Desktop Manager is installed.  If package isn't installed, recommendation is Not Applicable
      # determine system's package manager
@@ -26,7 +30,7 @@ script_content: |
         l_kfd2="/etc/dconf/db/$(grep -Psril '^\h*automount-open\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d" #set directory of key file to be locked
         if [ -d "$l_kfd" ]; then # If key file directory doesn't exist, options can't be locked
            if grep -Priq '^\h*\/org/gnome\/desktop\/media-handling\/automount\b' "$l_kfd"; then
-              echo " - \"automount\" is locked in \"$(grep -Pril '^\h*\/org/gnome\/desktop\/media- handling\/automount\b' "$l_kfd")\""
+              echo " - \"automount\" is locked in \"$(grep -Pril '^\h*\/org/gnome\/desktop\/media-handling\/automount\b' "$l_kfd")\""
            else
               echo " - creating entry to lock \"automount\""
               [ ! -d "$l_kfd"/locks ] && echo "creating directory $l_kfd/locks" && mkdir "$l_kfd"/locks

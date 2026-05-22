@@ -86,8 +86,8 @@
         rpm -q pam | grep -E '^pam-1\\.([0-4]\\.|[0-4][^0-9]|5\\.0\\.|5\\.1\\.0|5\\.1\\.1[0-8])'
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if ('pam' not in ansible_facts.packages) else ('PASS' if (result_01.stdout | default('') | trim) == '' else 'FAIL') }}"
-      details_01: "{{ 'SKIPPED: pam package is not installed' if ('pam' not in ansible_facts.packages) else ('PASS: pam version is at least pam-1.5.1-19' if (result_01.stdout | default('') | trim) == '' else 'FAIL: pam version is less than pam-1.5.1-19 - upgrade needed') }}"
+      status_01: "{{ 'SKIP' if ('pam' not in ansible_facts.packages) else ('PASS' if (result_01.stdout | default('') | trim) == '' else 'FAIL') }}"
+      details_01: "{{ 'SKIP: pam package is not installed' if ('pam' not in ansible_facts.packages) else ('PASS: pam version is at least pam-1.5.1-19' if (result_01.stdout | default('') | trim) == '' else 'FAIL: pam version is less than pam-1.5.1-19 - upgrade needed') }}"
     tags: [execute]
 
   - name: "Req 02 - Upgrade pam to latest version"
@@ -107,8 +107,8 @@
       task_02_cmd: "dnf upgrade pam"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.results | default([]) | selectattr('name', 'equalto', 'pam') | map(attribute='version') | first | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if (result_02.skipped | default(false)) else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
-      details_02: "{{ 'SKIPPED: pam not installed or already at target version' if (result_02.skipped | default(false)) else ('PASS: pam upgraded successfully' if result_02.rc | default(-1) == 0 else 'FAIL: upgrade failed') }}"
+      status_02: "{{ 'SKIP' if (result_02.skipped | default(false)) else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
+      details_02: "{{ 'SKIP: pam not installed or already at target version' if (result_02.skipped | default(false)) else ('PASS: pam upgraded successfully' if result_02.rc | default(-1) == 0 else 'FAIL: upgrade failed') }}"
     tags: [execute]
 
   - name: "Req 03 - Verify pam version is at least pam-1.5.1-19"
@@ -129,8 +129,8 @@
         rpm -q pam | grep -E '^pam-1\\.5\\.1-19' || rpm -q pam | grep -E '^pam-1\\.([5-9]\\.|[6-9])'
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if ('pam' not in ansible_facts.packages) else ('PASS' if (result_03.stdout | default('') | trim) != 'version_not_met' else 'FAIL') }}"
-      details_03: "{{ 'SKIPPED: pam package is not installed' if ('pam' not in ansible_facts.packages) else ('PASS: pam version meets or exceeds pam-1.5.1-19' if (result_03.stdout | default('') | trim) != 'version_not_met' else 'FAIL: pam version is still below pam-1.5.1-19') }}"
+      status_03: "{{ 'SKIP' if ('pam' not in ansible_facts.packages) else ('PASS' if (result_03.stdout | default('') | trim) != 'version_not_met' else 'FAIL') }}"
+      details_03: "{{ 'SKIP: pam package is not installed' if ('pam' not in ansible_facts.packages) else ('PASS: pam version meets or exceeds pam-1.5.1-19' if (result_03.stdout | default('') | trim) != 'version_not_met' else 'FAIL: pam version is still below pam-1.5.1-19') }}"
     tags: [execute]
 
   - name: "Store final remediation result in cis_result"

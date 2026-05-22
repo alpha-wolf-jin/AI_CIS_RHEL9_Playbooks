@@ -71,7 +71,7 @@
       data_01: "{{ audit_result.stdout | default('') | trim if files_exist | bool else '' }}"
       status_01: >-
         {% if not files_exist | bool %}
-          SKIPPED
+          SKIP
         {% elif (audit_result.stdout | default('') | trim | length) > 0 %}
           FAIL
         {% elif audit_result.rc | default(-1) == 0 %}

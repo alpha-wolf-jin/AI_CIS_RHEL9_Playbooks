@@ -1,17 +1,18 @@
-checkpoint_id: "cis_1_8_3"
-state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
-state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
-profile_file: "/etc/dconf/profile/gdm"
-db_dir: "/etc/dconf/db/gdm.d"
-script_content: |
+playbook_name: "cis_1_8_3_gdm_disable_user_list"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Run the provided remediation script to fix Ensure GDM disable-user-list option is enabled"
+req_02: "VERIFY: Run audit check to confirm Ensure GDM disable-user-list option is enabled is properly configured. Expected result: System is compliant"
+req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate remediation report' using debug msg with EXACTLY this format: REMEDIATION REPORT — CIS 1.8.3..."
+remediate_script: "/tmp/cis_remediate_1_8_3.sh"
+remediate_script_content: |
   {% raw %}
   #!/usr/bin/env bash
-
   {
      l_gdmprofile="gdm"
      if [ ! -f "/etc/dconf/profile/$l_gdmprofile" ]; then
         echo "Creating profile \"$l_gdmprofile\""
-        echo -e "user-db:user\nsystem-db:$l_gdmprofile\nfile- db:/usr/share/$l_gdmprofile/greeter-dconf-defaults" > /etc/dconf/profile/$l_gdmprofile
+        echo -e "user-db:user\nsystem-db:$l_gdmprofile\nfile-db:/usr/share/$l_gdmprofile/greeter-dconf-defaults" > /etc/dconf/profile/$l_gdmprofile
      fi
      if [ ! -d "/etc/dconf/db/$l_gdmprofile.d/" ]; then
         echo "Creating dconf database directory \"/etc/dconf/db/$l_gdmprofile.d/\""
@@ -20,11 +21,56 @@ script_content: |
      if ! grep -Piq '^\h*disable-user-list\h*=\h*true\b' /etc/dconf/db/$l_gdmprofile.d/*; then
         echo "creating gdm keyfile for machine-wide settings"
         if ! grep -Piq -- '^\h*\[org\/gnome\/login-screen\]' /etc/dconf/db/$l_gdmprofile.d/*; then
-           echo -e "\n[org/gnome/login-screen]\n# Do not show the user list\ndisable-user-list=true" >> /etc/dconf/db/$l_gdmprofile.d/00-login- screen
+           echo -e "\n[org/gnome/login-screen]\n# Do not show the user list\ndisable-user-list=true" >> /etc/dconf/db/$l_gdmprofile.d/00-login-screen
         else
-           sed -ri '/^\s*\[org\/gnome\/login-screen\]/ a\# Do not show the user list\ndisable-user-list=true' $(grep -Pil -- '^\h*\[org\/gnome\/login- screen\]' /etc/dconf/db/$l_gdmprofile.d/*)
+           sed -ri '/^\s*\[org\/gnome\/login-screen\]/ a\# Do not show the user list\ndisable-user-list=true' $(grep -Pil -- '^\h*\[org\/gnome\/login-screen\]' /etc/dconf/db/$l_gdmprofile.d/*)
         fi
      fi
      dconf update
+  }
+  {% endraw %}
+audit_script: "/tmp/audit_gdm_1_8_3_disable_user_list.sh"
+audit_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     l_pkgoutput=""
+     if command -v dpkg-query > /dev/null 2>&1; then
+        l_pq="dpkg-query -W"
+     elif command -v rpm > /dev/null 2>&1; then
+        l_pq="rpm -q"
+     fi
+     l_pcl="gdm gdm3"
+     for l_pn in $l_pcl; do
+        $l_pq "$l_pn" > /dev/null 2>&1 && l_pkgoutput="$l_pkgoutput\n - Package: \"$l_pn\" exists on the system\n - checking configuration"
+     done
+     if [ -n "$l_pkgoutput" ]; then
+        output="" output2=""
+        l_gdmfile="$(grep -Pril '^\h*disable-user-list\h*=\h*true\b' /etc/dconf/db)"
+        if [ -n "$l_gdmfile" ]; then
+           output="$output\n - The \"disable-user-list\" option is enabled in \"$l_gdmfile\""
+           l_gdmprofile="$(awk -F\/ '{split($(NF-1),a,".");print a[1]}' <<< "$l_gdmfile")"
+           if grep -Pq "^\h*system-db:$l_gdmprofile" /etc/dconf/profile/"$l_gdmprofile"; then
+              output="$output\n - The \"$l_gdmprofile\" exists"
+           else
+              output2="$output2\n - The \"$l_gdmprofile\" doesn't exist"
+           fi
+           if [ -f "/etc/dconf/db/$l_gdmprofile" ]; then
+              output="$output\n - The \"$l_gdmprofile\" profile exists in the dconf database"
+           else
+              output2="$output2\n - The \"$l_gdmprofile\" profile doesn't exist in the dconf database"
+           fi
+        else
+           output2="$output2\n - The \"disable-user-list\" option is not enabled"
+        fi
+        if [ -z "$output2" ]; then
+           echo -e "$l_pkgoutput\n- Audit result:\n   *** PASS: ***\n$output\n"
+        else
+           echo -e "$l_pkgoutput\n- Audit Result:\n   *** FAIL: ***\n$output2\n"
+           [ -n "$output" ] && echo -e "$output\n"
+        fi
+     else
+        echo -e "\n\n - GNOME Desktop Manager isn't installed\n - Recommendation is Not Applicable\n- Audit result:\n  *** PASS ***\n"
+     fi
   }
   {% endraw %}

@@ -1,6 +1,8 @@
-playbook_name: "cis_1_1_2_4_2"
+playbook_name: "cis_1_1_2_4_2_remediation"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
 req_01: "Check if /var is a separate partition using command: `mount | grep ' /var '`. Expected result: output showing /var partition details."
-req_02: "Edit /etc/fstab to add nodev to the mounting options for /var partition using command: `replace` module with backrefs to append ',nodev' to the options field. Expected result: nodev option added to /var entry in /etc/fstab."
-req_03: "Remount /var with updated options using command: `mount -o remount /var`. Expected result: no error output."
-req_04: "Verify nodev option is set on /var partition using command: `mount | grep ' /var ' | grep nodev`. Expected result: output showing nodev in mount options."
+req_02: |
+  Edit /etc/fstab to add nodev to the mounting options for /var partition using command: `sed -i 's|^\\([^ ]*[[:space:]]*/var[[:space:]]*[^ ]*[[:space:]]*[^ ]*\\)[[:space:]]*[^ ]*|\\1 defaults,rw,nosuid,nodev,noexec,relatime 0 0|' /etc/fstab`. Expected result: /etc/fstab updated with nodev option for /var.
+req_03: "Remount /var with the configured options using command: `mount -o remount /var`. Expected result: /var remounted with nodev option."
+req_04: "Verify nodev option is set on /var partition using command: `mount | grep ' /var ' | grep nodev`. Expected result: output showing /var mounted with nodev option."
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

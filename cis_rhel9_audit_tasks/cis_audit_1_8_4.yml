@@ -27,13 +27,13 @@
     task_01_cmd: "/bin/bash with audit script via stdin"
     task_01_rc: "{{ -1 if not gdm_installed else audit_result.rc }}"
     data_01: "{{ 'Not executed (GDM not installed)' if not gdm_installed else (audit_result.stdout | default('No output')) }}"
-    status_01: "{{ 'SKIPPED' if not gdm_installed else ('PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'UNKNOWN')) }}"
+    status_01: "{{ 'SKIP' if not gdm_installed else ('PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'UNKNOWN')) }}"
     details_01: "{{ 'GNOME Desktop Manager not installed, audit not applicable' if not gdm_installed else ('Audit script reported PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('Audit script reported FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'Audit result indeterminate')) }}"
     task_02_name: "Parse audit output for compliance"
     task_02_cmd: "set_fact evaluating stdout for PASS/FAIL"
     task_02_rc: 0
     data_02: "{{ 'PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'N/A') }}"
-    status_02: "{{ 'SKIPPED' if not gdm_installed else ('PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'UNKNOWN')) }}"
+    status_02: "{{ 'SKIP' if not gdm_installed else ('PASS' if ('** PASS **' in (audit_result.stdout | default(''))) else ('FAIL' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'UNKNOWN')) }}"
     details_02: "{{ 'GNOME Desktop Manager not installed, compliance check not applicable' if not gdm_installed else ('Compliance PASS based on audit output' if ('** PASS **' in (audit_result.stdout | default(''))) else ('Compliance FAIL based on audit output' if ('** FAIL **' in (audit_result.stdout | default(''))) else 'Unable to determine compliance')) }}"
 
 - name: "Req 2 - Set overall compliance result"

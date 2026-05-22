@@ -96,7 +96,7 @@
       task_01_cmd: |
         lineinfile: path={{ sshd_config_file }} regexp='^#?LogLevel\\s+' line='LogLevel {{ loglevel_value }}'
       task_01_rc: "{{ result_loglevel.rc | default(0) if not playbook_skipped | bool else 0 }}"
-      data_01: "{{ 'SKIPPED: sshd not installed' if playbook_skipped | bool else ('LogLevel set to ' + loglevel_value) }}"
+      data_01: "{{ 'SKIP: sshd not installed' if playbook_skipped | bool else ('LogLevel set to ' + loglevel_value) }}"
       status_01: "{{ 'SKIP' if playbook_skipped | bool else ('PASS' if result_loglevel.rc | default(0) == 0 else 'FAIL') }}"
       details_01: "{{ 'sshd package not installed - remediation skipped' if playbook_skipped | bool else ('LogLevel configured successfully' if result_loglevel.rc | default(0) == 0 else 'Failed to set LogLevel') }}"
     tags: [execute]
@@ -116,7 +116,7 @@
       task_02_name: "Verify LogLevel configuration using sshd -T"
       task_02_cmd: "sshd -T 2>/dev/null | grep -i '^loglevel '"
       task_02_rc: "{{ result_verify.rc | default(-1) if not playbook_skipped | bool else 0 }}"
-      data_02: "{{ 'SKIPPED: sshd not installed' if playbook_skipped | bool else (result_verify.stdout | default('') | trim) }}"
+      data_02: "{{ 'SKIP: sshd not installed' if playbook_skipped | bool else (result_verify.stdout | default('') | trim) }}"
       status_02: "{{ 'SKIP' if playbook_skipped | bool else ('PASS' if (result_verify.stdout | default('') | trim | lower == 'loglevel ' + loglevel_value | lower) else 'FAIL') }}"
       details_02: "{{ 'sshd package not installed - verification skipped' if playbook_skipped | bool else ('LogLevel is correctly set to ' + loglevel_value if (result_verify.stdout | default('') | trim | lower == 'loglevel ' + loglevel_value | lower) else 'LogLevel mismatch or verification failed') }}"
     tags: [execute]

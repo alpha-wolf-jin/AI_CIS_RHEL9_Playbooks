@@ -1,8 +1,12 @@
-playbook_name: "remediate_cis_1_1_2_5_4"
+playbook_name: "cis_1_1_2_5_4"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-config_file: "/etc/fstab"
 mount_point: "/var/tmp"
 mount_option: "noexec"
-req_01: "Apply noexec mount option to /var/tmp partition by editing /etc/fstab: add noexec to the fourth field for /var/tmp. Expected result: /var/tmp entry in /etc/fstab includes noexec in options."
-req_02: "Remount /var/tmp with updated options using command: `mount -o remount /var/tmp`. Expected result: /var/tmp is remounted with noexec option."
-req_03: "Verify noexec option is active on /var/tmp using command: `mount | grep /var/tmp`. Expected result: output shows noexec in the mount options for /var/tmp."
+fstab_file: "/etc/fstab"
+req_01: |
+  Check if /var/tmp is a separate partition using command: `mount | grep -E '\\s/var/tmp\\s'`. Expected result: output shows a separate partition for /var/tmp.
+req_02: "Edit /etc/fstab to add noexec to the mounting options for /var/tmp partition. Expected result: the fourth field for /var/tmp includes noexec."
+req_03: "Remount /var/tmp with the configured options using command: `mount -o remount /var/tmp`. Expected result: /var/tmp is remounted with noexec option."
+req_04: |
+  Verify noexec option is set on /var/tmp using command: `mount | grep -E '\\s/var/tmp\\s' | grep noexec`. Expected result: output confirms noexec is present.
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

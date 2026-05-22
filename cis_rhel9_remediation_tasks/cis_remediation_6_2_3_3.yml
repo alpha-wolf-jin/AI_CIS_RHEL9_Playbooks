@@ -146,8 +146,8 @@
       task_02_name: "Verify ForwardToSyslog is set to yes in journald config"
       task_02_cmd: "N/A"
       task_02_rc: -1
-      data_02: "SKIPPED"
-      status_02: "SKIPPED"
+      data_02: "SKIP"
+      status_02: "SKIP"
       details_02: "rsyslog package is not installed"
     when: not (rsyslog_installed | bool)
     tags: [execute]
@@ -168,7 +168,7 @@
       - "  Command: /bin/bash {{ remediate_script }} ; systemctl restart systemd-journald"
       - "  Exit code: {{ _script_result.rc | default(-1) if _script_result is defined else -1 }}"
       - "  Data: {{ _script_result.stdout | default('Script executed') if _script_result is defined else 'Not executed' }}"
-      - "  Status: {{ 'PASS' if (rsyslog_installed | bool) and (_already_set_check.stdout | default('') == 'OK' or _script_result.rc | default(-1) == 0) else 'SKIPPED' if not (rsyslog_installed | bool) else 'FAIL' }}"
+      - "  Status: {{ 'PASS' if (rsyslog_installed | bool) and (_already_set_check.stdout | default('') == 'OK' or _script_result.rc | default(-1) == 0) else 'SKIP' if not (rsyslog_installed | bool) else 'FAIL' }}"
       - "  Details: {{ 'Already configured' if _already_set_check.stdout | default('') == 'OK' else 'Configuration applied' if (_script_result is defined and _script_result.rc | default(-1) == 0) else 'rsyslog not installed' }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"

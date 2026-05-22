@@ -89,7 +89,7 @@
       task_01_cmd: "augenrules --load"
       task_01_rc: "{{ result_01_load.rc | default(-1) }}"
       data_01: "{{ result_01_load.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not (auditd_installed | default(false)) else ('APPLIED' if (result_01_load.rc | default(-1)) == 0 else 'FAILED') }}"
+      status_01: "{{ 'SKIP' if not (auditd_installed | default(false)) else ('APPLIED' if (result_01_load.rc | default(-1)) == 0 else 'FAILED') }}"
       details_01: "{{ 'auditd not installed' if not (auditd_installed | default(false)) else ('Rules loaded successfully' if (result_01_load.rc | default(-1)) == 0 else 'Failed to load rules') }}"
     tags: [execute]
 
@@ -99,7 +99,7 @@
       task_02_cmd: "auditctl -l | grep -E 'adjtimex|settimeofday|clock_settime|/etc/localtime'"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (auditd_installed | default(false)) else ('PASS' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if not (auditd_installed | default(false)) else ('PASS' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'FAIL') }}"
       details_02: "{{ 'auditd not installed' if not (auditd_installed | default(false)) else ('Rules verified active' if 'VERIFY_FAILED' not in (result_02.stdout | default('')) else 'Verification failed - rules not found') }}"
     tags: [execute]
 

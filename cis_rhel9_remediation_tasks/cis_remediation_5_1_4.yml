@@ -268,14 +268,14 @@
 
   - name: "Set overall status based on verification"
     ansible.builtin.set_fact:
-      overall_status: "{{ status_05 | default('SKIPPED') }}"
+      overall_status: "{{ status_05 | default('SKIP') }}"
       overall_details: "{{ details_05 | default('SSH server not installed or verification skipped') }}"
     tags: [execute]
 
 # Requirement 6: store cis_result
   - name: "Req 6 - Store final remediation result in cis_result"
     ansible.builtin.set_fact:
-      cis_result: "{{ overall_status | default('SKIPPED') | trim }}"
+      cis_result: "{{ overall_status | default('SKIP') | trim }}"
     tags: [execute]
 
 # Requirement 7: report
@@ -290,7 +290,7 @@
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_01 | default('SKIP') | trim }}"
       - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
@@ -298,7 +298,7 @@
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_02 | default('SKIP') | trim }}"
       - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - ""
       - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -306,7 +306,7 @@
       - "  Command: {{ task_03_cmd | default('N/A') }}"
       - "  Exit code: {{ task_03_rc | default(-1) }}"
       - "  Data: {{ data_03 | default('') | trim }}"
-      - "  Status: {{ status_03 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_03 | default('SKIP') | trim }}"
       - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
       - ""
       - "REQUIREMENT 04 - {{ req_04 }}:"
@@ -314,7 +314,7 @@
       - "  Command: {{ task_04_cmd | default('N/A') }}"
       - "  Exit code: {{ task_04_rc | default(-1) }}"
       - "  Data: {{ data_04 | default('') | trim }}"
-      - "  Status: {{ status_04 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_04 | default('SKIP') | trim }}"
       - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
       - ""
       - "REQUIREMENT 05 - {{ req_05 }}:"
@@ -322,7 +322,7 @@
       - "  Command: {{ task_05_cmd | default('N/A') }}"
       - "  Exit code: {{ task_05_rc | default(-1) }}"
       - "  Data: {{ data_05 | default('') | trim }}"
-      - "  Status: {{ status_05 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_05 | default('SKIP') | trim }}"
       - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
       - ""
       - "OVERALL REMEDIATION:"

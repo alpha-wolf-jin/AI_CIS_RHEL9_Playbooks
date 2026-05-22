@@ -2,161 +2,159 @@
 - name: Initialize meta data variables
   include_vars: cis_audit_var_1_7_2.yml
 
-- name: "Snapshot - Create backup directory"
-  ansible.builtin.file:
-    path: "{{ backup_dir }}"
-    state: directory
-    mode: '0755'
-  tags: [snapshot]
-- name: "Snapshot - Create marker for temporary script"
-  ansible.builtin.file:
-    path: "{{ marker_file }}"
-    state: touch
-  tags: [snapshot]
+- name: "Initialize data variables"
+  ansible.builtin.set_fact:
+    data_01: "Not collected yet"
+    status_01: "ERROR"
+    details_01: "Not evaluated"
+    data_02: "Not collected yet"
+    status_02: "ERROR"
+    details_02: "Not evaluated"
+    data_03: "Not collected yet"
+    status_03: "ERROR"
+    details_03: "Not evaluated"
+    data_04: "Not collected yet"
+    status_04: "ERROR"
+    details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
 
-- block:
-  - name: "Initialize data variables"
-    ansible.builtin.set_fact:
-      status_01: "UNKNOWN"
-      details_01: "Not evaluated"
-      data_01: "Not collected yet"
-      task_01_name: "Not executed"
-      task_01_rc: -1
-      status_02: "UNKNOWN"
-      details_02: "Not evaluated"
-      data_02: "Not collected yet"
-      task_02_name: "Not executed"
-      task_02_rc: -1
-    tags: [execute]
+- name: "Req 01 - Check if /etc/issue file exists"
+  ansible.builtin.stat:
+    path: /etc/issue
+  register: result_01
+  failed_when: false
 
-  - name: "Req 01 - Check if /etc/issue file exists and is readable"
-    ansible.builtin.stat:
-      path: /etc/issue
-    register: issue_stat
-    failed_when: false
-    tags: [execute]
+- name: "Store requirement 01 details"
+  ansible.builtin.set_fact:
+    task_01_name: "Check if /etc/issue file exists"
+    task_01_cmd: "stat /etc/issue"
+    task_01_rc: "{{ 0 if result_01.stat.exists | default(false) else 1 }}"
+    data_01: "{{ 'File exists' if result_01.stat.exists | default(false) else 'File does not exist' }}"
+    status_01: "{{ 'PASS' if result_01.stat.exists | default(false) else 'FAIL' }}"
+    details_01: "{{ 'File /etc/issue exists' if result_01.stat.exists | default(false) else 'File /etc/issue does not exist' }}"
 
-  - name: "Req 01 - Read contents of /etc/issue file"
-    ansible.builtin.shell: cat /etc/issue
-    args:
-      executable: /bin/bash
-    register: issue_content
-    failed_when: false
-    changed_when: false
-    when: issue_stat.stat.exists | default(false)
-    tags: [execute]
+- name: "Req 02 - Check contents of /etc/issue match site policy"
+  ansible.builtin.slurp:
+    src: /etc/issue
+  register: _issue_content
+  when: result_01.stat.exists | default(false)
+  failed_when: false
 
-  - name: "Req 01 - Set compliance status for file existence and content"
-    ansible.builtin.set_fact:
-      task_01_name: "Cat /etc/issue to verify content"
-      task_01_rc: "{{ issue_content.rc | default(-1) }}"
-      data_01: "{{ (issue_content.stdout | default('') | trim) if issue_stat.stat.exists | default(false) else 'File does not exist' }}"
-      status_01: >-
-        {% set banner = expected_banner | default('') | trim %}
-        {% if banner == '' %}
-        UNKNOWN
-        {% elif issue_stat.stat.exists | default(false) and (issue_content.stdout | default('') | trim) == banner %}
-        PASS
-        {% else %}
-        FAIL
-        {% endif %}
-      details_01: >-
-        {% set banner = expected_banner | default('') | trim %}
-        {% if banner == '' %}
-        Expected banner not defined; unable to verify against site policy
-        {% elif issue_stat.stat.exists | default(false) and (issue_content.stdout | default('') | trim) == banner %}
-        File exists and matches site policy
-        {% else %}
-        File missing, empty, or does not match policy
-        {% endif %}
-    tags: [execute]
+- name: "Store requirement 02 details"
+  ansible.builtin.set_fact:
+    task_02_name: "Check contents of /etc/issue match site policy"
+    task_02_cmd: "cat /etc/issue"
+    task_02_rc: "{{ 0 if (_issue_content.content | default('') | b64decode | trim) == expected_banner else 1 }}"
+    data_02: "{{ _issue_content.content | default('') | b64decode | trim }}"
+    status_02: "{{ 'PASS' if (_issue_content.content | default('') | b64decode | trim) == expected_banner else 'FAIL' }}"
+    details_02: "{{ 'Contents match expected banner' if (_issue_content.content | default('') | b64decode | trim) == expected_banner else 'Contents do not match expected banner' }}"
+  when: result_01.stat.exists | default(false)
 
-  - name: "Req 02 - Copy grep script to remote"
-    ansible.builtin.copy:
-      dest: "{{ audit_script_02 }}"
-      mode: '0700'
-      content: "{{ audit_script_02_content }}"
-    changed_when: false
-    tags: [execute]
+- name: "Req 03 - Check /etc/issue does not contain OS release information"
+  ansible.builtin.shell: |
+    grep -E -i '(\\v|\\r|\\m|\\s|[Ll]inux|[Uu]buntu|[Dd]ebian|[Rr]ed [Hh]at|[Cc]ent[Oo][Ss])' /etc/issue
+  args:
+    executable: /bin/bash
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when: result_01.stat.exists | default(false)
 
-  - name: "Req 02 - Execute grep script"
-    ansible.builtin.shell: /bin/bash "{{ audit_script_02 }}"
-    args:
-      executable: /bin/bash
-    register: os_info_grep
-    failed_when: false
-    changed_when: false
-    tags: [execute]
+- name: "Store requirement 03 details"
+  ansible.builtin.set_fact:
+    task_03_name: "Check /etc/issue does not contain OS release information"
+    task_03_cmd: |
+      grep -E -i '(\\\\v|\\\\r|\\\\m|\\\\s|[Ll]inux|[Uu]buntu|[Dd]ebian|[Rr]ed [Hh]at|[Cc]ent[Oo][Ss])' /etc/issue
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if (result_03.rc | default(-1)) != 0 else 'FAIL' }}"
+    details_03: "{{ 'No disallowed OS information found' if (result_03.rc | default(-1)) != 0 else 'Disallowed OS information found' }}"
+  when: result_01.stat.exists | default(false)
 
-  - name: "Req 02 - Set compliance status for OS information check"
-    ansible.builtin.set_fact:
-      task_02_name: "Grep for OS details in /etc/issue"
-      task_02_cmd: "{{ req_02_command }}"
-      task_02_rc: "{{ os_info_grep.rc | default(-1) }}"
-      data_02: "{{ os_info_grep.stdout | default('') | trim }}"
-      status_02: "{{ ('PASS' if (os_info_grep.rc | default(1) != 0 or os_info_grep.stdout | default('') | trim == '') else 'FAIL') | trim }}"
-      details_02: "{{ ('No OS information detected' if (os_info_grep.rc | default(1) != 0 or os_info_grep.stdout | default('') | trim == '') else 'OS information found: ' + (os_info_grep.stdout | default(''))) | trim }}"
-    tags: [execute]
+- name: "Req 04 - Summarize overall compliance"
+  ansible.builtin.set_fact:
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "{{ 'PASS' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS' and status_03 | trim == 'PASS') else ('SKIP' if status_01 | trim == 'FAIL' else 'FAIL') }}"
+    status_04: "{{ 'PASS' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS' and status_03 | trim == 'PASS') else ('SKIP' if status_01 | trim == 'FAIL' else 'FAIL') }}"
+    details_04: "{{ 'All checks passed' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS' and status_03 | trim == 'PASS') else ('File /etc/issue does not exist - audit skipped' if status_01 | trim == 'FAIL' else 'One or more checks failed') }}"
 
-  - name: "Store overall compliance result in cis_result"
-    ansible.builtin.set_fact:
-      cis_result: "{{ ('PASS' if status_01 | trim == 'PASS' and status_02 | trim == 'PASS' else 'FAIL') | trim }}"
-    tags: [execute]
+- name: "Req 05 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    task_05_name: "Store final audit result in cis_result"
+    task_05_cmd: "N/A"
+    task_05_rc: 0
+    data_05: "{{ status_04 | default('ERROR') | trim }}"
+    status_05: "{{ status_04 | default('ERROR') | trim }}"
+    details_05: "{{ details_04 | default('Not evaluated') | trim }}"
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
 
-  - name: "Generate audit report"
-    ansible.builtin.debug:
-      msg:
-      - "AUDIT REPORT — CIS 1.7.2"
-      - "Reference: CIS Benchmark checkpoint 1.7.2"
-      - ""
-      - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('Not recorded') }}"
-      - "  Command: cat /etc/issue"
-      - "  Exit code: {{ task_01_rc | default(-1) }}"
-      - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_01 | default('') | trim }}"
-      - ""
-      - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('Not recorded') }}"
-      - "  Command: {{ task_02_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_02_rc | default(-1) }}"
-      - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('') | trim }}"
-      - ""
-      - "REQUIREMENT 03 - {{ req_03 }}:"
-      - "  Task: Overall compliance evaluation"
-      - "  Command: N/A"
-      - "  Exit code: {{ 0 if (status_01 == 'PASS' and status_02 == 'PASS') else 1 }}"
-      - "  Data: Not collected"
-      - "  Status: {{ 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS') else 'FAIL' | trim }}"
-      - "  Details: {{ 'Compliant' if (status_01 == 'PASS' and status_02 == 'PASS') else 'Not compliant' | trim }}"
-      - ""
-      - "========================================================"
-      - "OVERALL COMPLIANCE:"
-      - "  Result: {{ cis_result }}"
-      - "  Details: {{ 'Compliant' if cis_result == 'PASS' else 'Not compliant' }}"
-      - "========================================================"
-    tags: [execute]
-
-  always:
-  - name: "Restore - Check if temporary script was created"
-    ansible.builtin.stat:
-      path: "{{ marker_file }}"
-    register: marker_check
-    tags: [restore]
-
-  - name: "Restore - Remove temporary grep script"
-    ansible.builtin.file:
-      path: "{{ audit_script_02 }}"
-      state: absent
-    when: marker_check.stat.exists | default(false)
-    tags: [restore]
-
-  - name: "Restore - Remove marker file"
-    ansible.builtin.file:
-      path: "{{ marker_file }}"
-      state: absent
-    when: marker_check.stat.exists | default(false)
-    tags: [restore]
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.7.2"
+    - "Reference: CIS Benchmark checkpoint 1.7.2"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+    - "========================================================"

@@ -67,7 +67,7 @@
   ansible.builtin.set_fact:
     data_01: |
       On-disk check output:\n{{ on_disk_result.stdout | default('N/A') | trim }}\n\nRunning check output:\n{{ running_result.stdout | default('N/A') | trim }}
-    status_01: "{{ 'PASS' if (audit_applicable | default(false)) and (on_disk_result.rc | default(-1) == 0) and (running_result.rc | default(-1) == 0) else 'SKIPPED' }}"
+    status_01: "{{ 'PASS' if (audit_applicable | default(false)) and (on_disk_result.rc | default(-1) == 0) and (running_result.rc | default(-1) == 0) else 'SKIP' }}"
     details_01: "{{ 'Audit procedure executed.' if audit_applicable | default(false) else 'auditd package not installed.' }}"
     task_01_name: "Run audit procedure (on-disk and running rules checks)"
     task_01_cmd: "Shell commands per CIS procedure"

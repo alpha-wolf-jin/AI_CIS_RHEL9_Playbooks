@@ -1,4 +1,4 @@
 req_01: "Check if /tmp is a separate partition using command: `findmnt -kn /tmp`. Expected result: output shows /tmp is mounted (e.g., /tmp tmpfs tmpfs rw,nosuid,nodev,noexec)."
 req_02: "Check if systemd will mount /tmp at boot using command: `systemctl is-enabled tmp.mount`. Expected result: output is 'generated' (not masked or disabled)."
 req_03: "Summarize overall compliance: if both checks pass, /tmp is a separate partition and systemd is configured to mount it at boot; otherwise, non-compliant."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

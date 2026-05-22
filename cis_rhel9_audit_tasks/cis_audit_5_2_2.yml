@@ -42,7 +42,7 @@
   ansible.builtin.set_fact:
     _status_04_raw: >-
       {%- if not (sudo_installed | default(false)) -%}
-      SKIPPED
+      SKIP
       {%- elif (result_02 is defined and result_02.stdout | default('') | trim | length > 0) and
              (result_03 is defined and result_03.stdout | default('') | trim | length == 0) -%}
       PASS
@@ -69,8 +69,8 @@
     cis_result: "{{ status_04 | default('UNKNOWN') | trim }}"
     task_05_name: "Set cis_result fact"
     task_05_cmd: "N/A"
-    data_05: "{{ ('Compliant' if status_04 | trim == 'PASS' else ('Not applicable' if status_04 | trim == 'SKIPPED' else 'Non-compliant')) }}"
-    status_05: "{{ 'PASS' if (status_04 | default('') | trim) in ['PASS','FAIL','SKIPPED'] else 'ERROR' }}"
+    data_05: "{{ ('Compliant' if status_04 | trim == 'PASS' else ('Not applicable' if status_04 | trim == 'SKIP' else 'Non-compliant')) }}"
+    status_05: "{{ 'PASS' if (status_04 | default('') | trim) in ['PASS','FAIL','SKIP'] else 'ERROR' }}"
     details_05: "Variable cis_result stored successfully with value {{ status_04 | default('UNKNOWN') | trim }}"
 
 - name: "Generate audit report"
@@ -83,7 +83,7 @@
     - "  Command: which sudo"
     - "  Exit code: {{ result_01.rc if result_01 is defined else -1 }}"
     - "  Data: {{ (result_01.stdout if result_01 is defined else '') | trim }}"
-    - "  Status: {{ 'PASS' if (result_01 is defined and result_01.rc == 0 and (result_01.stdout | default('') | trim | length > 0)) else ('SKIPPED' if not (sudo_installed | default(false)) else 'FAIL') }}"
+    - "  Status: {{ 'PASS' if (result_01 is defined and result_01.rc == 0 and (result_01.stdout | default('') | trim | length > 0)) else ('SKIP' if not (sudo_installed | default(false)) else 'FAIL') }}"
     - "  Details: {{ 'sudo binary found' if (result_01 is defined and result_01.rc == 0 and (result_01.stdout | default('') | trim | length > 0)) else ('sudo not installed' if not (sudo_installed | default(false)) else 'Failed to find sudo binary') }}"
     - ""
     - "REQUIREMENT 02 - {{ req_02 }}:"
@@ -91,7 +91,7 @@
     - "  Command: grep -rPi -- '^\\h*Defaults\\h+([^#\\n\\r]+,\\h*)?use_pty\\b' /etc/sudoers*"
     - "  Exit code: {{ result_02.rc if result_02 is defined else -1 }}"
     - "  Data: {{ (result_02.stdout if result_02 is defined else '') | trim }}"
-    - "  Status: {{ 'PASS' if (result_02 is defined and (result_02.stdout | default('') | trim | length > 0) and result_02.rc == 0) else ('SKIPPED' if not (sudo_installed | default(false)) else 'FAIL') }}"
+    - "  Status: {{ 'PASS' if (result_02 is defined and (result_02.stdout | default('') | trim | length > 0) and result_02.rc == 0) else ('SKIP' if not (sudo_installed | default(false)) else 'FAIL') }}"
     - "  Details: {{ 'use_pty is set' if (result_02 is defined and (result_02.stdout | default('') | trim | length > 0) and result_02.rc == 0) else ('sudo not installed' if not (sudo_installed | default(false)) else 'use_pty is NOT set') }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
@@ -99,14 +99,14 @@
     - "  Command: grep -rPi -- '^\\h*Defaults\\h+([^#\\n\\r]+,\\h*)?!use_pty\\b' /etc/sudoers*"
     - "  Exit code: {{ result_03.rc if result_03 is defined else -1 }}"
     - "  Data: {{ (result_03.stdout if result_03 is defined else '') | trim }}"
-    - "  Status: {{ 'PASS' if (result_03 is defined and (result_03.stdout | default('') | trim | length == 0)) else ('SKIPPED' if not (sudo_installed | default(false)) else 'FAIL') }}"
+    - "  Status: {{ 'PASS' if (result_03 is defined and (result_03.stdout | default('') | trim | length == 0)) else ('SKIP' if not (sudo_installed | default(false)) else 'FAIL') }}"
     - "  Details: {{ '!use_pty is not set' if (result_03 is defined and (result_03.stdout | default('') | trim | length == 0)) else ('sudo not installed' if not (sudo_installed | default(false)) else '!use_pty is set') }}"
     - ""
     - "REQUIREMENT 04 - {{ req_04 }}:"
     - "  Task: Overall compliance summary"
     - "  Command: N/A"
     - "  Exit code: 0"
-    - "  Data: {{ 'Compliant' if status_04 | trim == 'PASS' else ('Not applicable' if status_04 | trim == 'SKIPPED' else 'Non-compliant') }}"
+    - "  Data: {{ 'Compliant' if status_04 | trim == 'PASS' else ('Not applicable' if status_04 | trim == 'SKIP' else 'Non-compliant') }}"
     - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
     - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
     - ""

@@ -59,7 +59,7 @@
     task_02_cmd: "grep -r gpgkey /etc/yum.repos.d/* /etc/dnf/dnf.conf"
     task_02_rc: "{{ result_02.rc | default(-1) if rpm_installed | bool else -1 }}"
     data_02: "{{ result_02.stdout | default('') | trim if rpm_installed | bool else '' }}"
-    status_02: "{{ 'PASS' if rpm_installed | bool and (result_02.stdout | default('') | trim) | length > 0 else ('SKIPPED' if not rpm_installed | bool else 'FAIL') }}"
+    status_02: "{{ 'PASS' if rpm_installed | bool and (result_02.stdout | default('') | trim) | length > 0 else ('SKIP' if not rpm_installed | bool else 'FAIL') }}"
     details_02: "{{ 'GPG key URLs found' if rpm_installed | bool and (result_02.stdout | default('') | trim) | length > 0 else ('Skipped because RPM not installed' if not rpm_installed | bool else 'No GPG key URLs found or error') }}"
 
 - name: "Req 03 - List installed GPG keys with details"
@@ -88,7 +88,7 @@
       for RPM_PACKAGE in $(rpm -q gpg-pubkey); do echo \"RPM: ${RPM_PACKAGE}\"; RPM_SUMMARY=$(rpm -q --queryformat \"%{SUMMARY}\" \"${RPM_PACKAGE}\"); RPM_PACKAGER=$(rpm -q --queryformat \"%{PACKAGER}\" \"${RPM_PACKAGE}\"); RPM_DATE=$(date +%Y-%m-%d -d \"1970-1-1+$((0x$(rpm -q --queryformat \"%{RELEASE}\" \"${RPM_PACKAGE}\") ))sec\"); RPM_KEY_ID=$(rpm -q --queryformat \"%{VERSION}\" \"${RPM_PACKAGE}\"); echo \"Packager: ${RPM_PACKAGER} Summary: ${RPM_SUMMARY} Creation date: ${RPM_DATE} Key ID: ${RPM_KEY_ID}\"; done
     task_03_rc: "{{ result_03.rc | default(-1) if rpm_installed | bool else -1 }}"
     data_03: "{{ result_03.stdout | default('') | trim if rpm_installed | bool else '' }}"
-    status_03: "{{ 'PASS' if rpm_installed | bool and (result_03.stdout | default('') | trim) | length > 0 else ('SKIPPED' if not rpm_installed | bool else 'FAIL') }}"
+    status_03: "{{ 'PASS' if rpm_installed | bool and (result_03.stdout | default('') | trim) | length > 0 else ('SKIP' if not rpm_installed | bool else 'FAIL') }}"
     details_03: "{{ 'Installed GPG keys listed' if rpm_installed | bool and (result_03.stdout | default('') | trim) | length > 0 else ('Skipped because RPM not installed' if not rpm_installed | bool else 'No installed GPG keys found or error') }}"
 
 - name: "Req 04 - Check locally available GPG key files"
@@ -112,12 +112,12 @@
       for PACKAGE in $(find /etc/pki/rpm-gpg/ -type f -exec rpm -qf {} \\; | sort -u); do rpm -q --queryformat \"%{NAME}-%{VERSION} %{PACKAGER} %{SUMMARY}\\n\" \"${PACKAGE}\"; done
     task_04_rc: "{{ result_04.rc | default(-1) if rpm_installed | bool else -1 }}"
     data_04: "{{ result_04.stdout | default('') | trim if rpm_installed | bool else '' }}"
-    status_04: "{{ 'PASS' if rpm_installed | bool and (result_04.stdout | default('') | trim) | length > 0 else ('SKIPPED' if not rpm_installed | bool else 'FAIL') }}"
+    status_04: "{{ 'PASS' if rpm_installed | bool and (result_04.stdout | default('') | trim) | length > 0 else ('SKIP' if not rpm_installed | bool else 'FAIL') }}"
     details_04: "{{ 'Local GPG keys found' if rpm_installed | bool and (result_04.stdout | default('') | trim) | length > 0 else ('Skipped because RPM not installed' if not rpm_installed | bool else 'No local GPG keys found or error') }}"
 
 - name: "Req 05 - Set GPG compliance status"
   ansible.builtin.set_fact:
-    status_05: "{{ 'SKIPPED' if not rpm_installed | bool else 'PASS' if (status_02 | default('FAIL') == 'PASS') and (status_03 | default('FAIL') == 'PASS') and (status_04 | default('FAIL') == 'PASS') else 'FAIL' }}"
+    status_05: "{{ 'SKIP' if not rpm_installed | bool else 'PASS' if (status_02 | default('FAIL') == 'PASS') and (status_03 | default('FAIL') == 'PASS') and (status_04 | default('FAIL') == 'PASS') else 'FAIL' }}"
 
 - name: "Req 05 - Store requirement 05 details"
   ansible.builtin.set_fact:

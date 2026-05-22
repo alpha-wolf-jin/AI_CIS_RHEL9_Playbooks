@@ -165,7 +165,7 @@
       task_01_cmd: "Deploy and execute /tmp/cis_6_3_3_9_rules.sh, augenrules --load"
       task_01_rc: "{{ _rules_script.rc | default(-1) }}"
       data_01: "{{ _rules_script.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not (auditd_ready | default(false)) else ('APPLIED' if (_rules_script.rc | default(-1)) == 0 else 'FAILED') }}"
+      status_01: "{{ 'SKIP' if not (auditd_ready | default(false)) else ('APPLIED' if (_rules_script.rc | default(-1)) == 0 else 'FAILED') }}"
       details_01: "{{ 'auditd not installed or not running' if not (auditd_ready | default(false)) else ('Rules applied successfully' if (_rules_script.rc | default(-1)) == 0 else 'Failed to apply rules: ' + (_rules_script.stderr | default('Unknown error') | trim)) }}"
     tags: [execute]
 
@@ -175,19 +175,19 @@
       task_02_cmd: "auditctl -l | grep -E 'perm_mod'"
       task_02_rc: "{{ _verify_result.rc | default(-1) }}"
       data_02: "{{ _verify_result.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (auditd_ready | default(false)) else ('APPLIED' if 'VERIFY_FAILED' not in (_verify_result.stdout | default('VERIFY_FAILED')) else 'FAILED') }}"
+      status_02: "{{ 'SKIP' if not (auditd_ready | default(false)) else ('APPLIED' if 'VERIFY_FAILED' not in (_verify_result.stdout | default('VERIFY_FAILED')) else 'FAILED') }}"
       details_02: "{{ 'auditd not installed or not running' if not (auditd_ready | default(false)) else ('perm_mod rules are active' if 'VERIFY_FAILED' not in (_verify_result.stdout | default('VERIFY_FAILED')) else 'perm_mod rules not found in active audit rules') }}"
     tags: [execute]
 
   - name: "Req 03 - Store final remediation result in cis_result"
     ansible.builtin.set_fact:
-      cis_result: "{{ {'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIPPED': 'SKIP', 'ERROR': 'ERROR'}[status_02 | default('ERROR')] | default('ERROR') }}"
+      cis_result: "{{ {'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIP': 'SKIP', 'ERROR': 'ERROR'}[status_02 | default('ERROR')] | default('ERROR') }}"
       task_03_name: "Map internal status to canonical result"
       task_03_cmd: "cis_result = mapping from status_02"
       task_03_rc: 0
       data_03: "{{ status_02 | default('UNKNOWN') }}"
-      status_03: "{{ {'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIPPED': 'SKIP', 'ERROR': 'ERROR'}[status_02 | default('ERROR')] | default('ERROR') }}"
-      details_03: "{{ 'Internal status ' + (status_02 | default('UNKNOWN')) + ' mapped to canonical result ' + ({'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIPPED': 'SKIP', 'ERROR': 'ERROR'}[status_02 | default('ERROR')] | default('ERROR')) }}"
+      status_03: "{{ {'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIP': 'SKIP', 'ERROR': 'ERROR'}[status_02 | default('ERROR')] | default('ERROR') }}"
+      details_03: "{{ 'Internal status ' + (status_02 | default('UNKNOWN')) + ' mapped to canonical result ' + ({'APPLIED': 'PASS', 'FAILED': 'FAIL', 'SKIP': 'SKIP', 'ERROR': 'ERROR'}[status_02 | default('ERROR')] | default('ERROR')) }}"
     tags: [execute]
 
   - name: "Generate remediation report"

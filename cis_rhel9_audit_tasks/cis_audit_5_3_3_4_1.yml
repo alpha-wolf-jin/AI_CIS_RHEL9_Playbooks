@@ -57,7 +57,7 @@
     data_01: "{{ result_01.stdout | default('') | trim }}"
     status_01: >-
       {%- if not (pam_installed | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif result_01.rc | default(-1) == 0 -%}
         PASS
       {%- else -%}
@@ -90,7 +90,7 @@
     data_02: "{{ result_02.stdout | default('') | trim }}"
     status_02: >-
       {%- if not (pam_installed | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif result_02.rc | default(-1) == 1 -%}
         PASS
       {%- elif result_02.rc | default(-1) == 0 -%}
@@ -115,7 +115,7 @@
     task_03_cmd: "N/A (derived from previous checks)"
     task_03_rc: 0
     data_03: >-
-      {%- if status_01 == 'SKIPPED' -%}
+      {%- if status_01 == 'SKIP' -%}
         Not applicable (package not installed)
       {%- elif status_02 == 'FAIL' -%}
         nullok argument present in pam_unix.so configuration
@@ -125,16 +125,16 @@
         Compliance check completed
       {%- endif -%}
     status_03: >-
-      {%- if status_01 == 'SKIPPED' -%}
-        SKIPPED
+      {%- if status_01 == 'SKIP' -%}
+        SKIP
       {%- elif status_02 == 'FAIL' -%}
         FAIL
       {%- else -%}
         PASS
       {%- endif -%}
     details_03: >-
-      {%- if status_01 == 'SKIPPED' -%}
-        SKIPPED: PAM not installed
+      {%- if status_01 == 'SKIP' -%}
+        SKIP: PAM not installed
       {%- elif status_02 == 'FAIL' -%}
         FAIL: nullok found in PAM configuration
       {%- elif status_01 == 'PASS' and status_02 == 'PASS' -%}

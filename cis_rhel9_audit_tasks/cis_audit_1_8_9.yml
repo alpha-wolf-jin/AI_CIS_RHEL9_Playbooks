@@ -2,138 +2,147 @@
 - name: Initialize meta data variables
   include_vars: cis_audit_var_1_8_9.yml
 
-- name: "Check if GDM packages are installed"
-  ansible.builtin.package_facts:
-    manager: auto
-  failed_when: false
+- name: "Snapshot - Create backup directory"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+  tags: [snapshot]
+- name: "Snapshot - Check if audit script exists"
+  ansible.builtin.stat:
+    path: "{{ audit_script }}"
+  register: _sg_audit_script_stat
+  tags: [snapshot]
+- name: "Snapshot - Mark audit script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/audit_script.absent"
+  when: not _sg_audit_script_stat.stat.exists
+  tags: [snapshot]
 
-- name: "Set GDM installed fact"
-  ansible.builtin.set_fact:
-    gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
-    playbook_skipped: "{{ not ('gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages) }}"
+- block:
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+    tags: [execute]
 
-# ------ Requirement 1: Run the audit script (inline, read-only) ------
-- name: "Req 01 - Execute audit script (inline)"
-  ansible.builtin.shell:
-    cmd: /bin/bash
-    stdin: "{{ audit_script_content }}"
-  args:
-    executable: /bin/bash
-  register: audit_result
-  failed_when: false
-  changed_when: false
-  when: gdm_installed | default(false) | bool
+  - name: "Gather installed package facts"
+    ansible.builtin.package_facts:
+      manager: auto
+    failed_when: false
+    tags: [execute]
 
-# ------ Requirement 2: Determine compliance status ------
-- name: "Req 02 - Set compliance status (GDM not installed)"
-  ansible.builtin.set_fact:
-    compliance_status: "SKIPPED"
-    compliance_details: "GDM not installed; recommendation not applicable"
-  when: not (gdm_installed | default(false))
+  - name: "Determine if GDM is installed"
+    ansible.builtin.set_fact:
+      gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
+    tags: [execute]
 
-- name: "Req 02 - Set compliance status from audit output (GDM installed)"
-  ansible.builtin.set_fact:
-    compliance_status: >-
-      {%- if '** PASS **' in audit_result.stdout | default('') -%}
-        PASS
-      {%- elif '** FAIL **' in audit_result.stdout | default('') -%}
-        FAIL
-      {%- else -%}
-        UNKNOWN
-      {%- endif -%}
-    compliance_details: >-
-      {%- if '** PASS **' in audit_result.stdout | default('') -%}
-        Audit script passed: autorun-never is locked and cannot be overridden
-      {%- elif '** FAIL **' in audit_result.stdout | default('') -%}
-        Audit script failed: autorun-never is not locked
-      {%- else -%}
-        Unable to determine compliance from audit output
-      {%- endif -%}
-  when: gdm_installed | default(false) | bool
+  - name: "Req 02 - Copy audit script to remote"
+    ansible.builtin.copy:
+      dest: "{{ audit_script }}"
+      mode: '0700'
+      content: "{{ audit_script_content }}"
+    when: gdm_installed | default(false) | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
 
-# ------ Store details for report ------
-- name: "Set requirement 01 report details (script executed)"
-  ansible.builtin.set_fact:
-    task_01_name: "Execute audit script for GDM autorun-never"
-    task_01_cmd: "/bin/bash (inline)"
-    task_01_rc: "{{ audit_result.rc | default(-1) }}"
-    data_01: "{{ audit_result.stdout | default('') | trim }}"
-    status_01: >-
-      {%- if audit_result.rc | default(-1) == 0 -%}
-        PASS
-      {%- else -%}
-        FAIL
-      {%- endif -%}
-    details_01: >-
-      {%- if audit_result.rc | default(-1) == 0 -%}
-        Audit script executed successfully
-      {%- else -%}
-        Audit script failed with exit code {{ audit_result.rc | default(-1) }}
-      {%- endif -%}
-  when: gdm_installed | default(false) | bool
+  - name: "Req 02 - Execute audit script for GDM autorun-never"
+    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
+    args:
+      executable: /bin/bash
+    register: result_02
+    when: gdm_installed | default(false) | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
 
-- name: "Set requirement 01 report details (script skipped)"
-  ansible.builtin.set_fact:
-    task_01_name: "Execute audit script for GDM autorun-never"
-    task_01_cmd: "N/A (GDM not installed)"
-    task_01_rc: -1
-    data_01: ""
-    status_01: "SKIPPED"
-    details_01: "GDM not installed; audit script skipped"
-  when: not (gdm_installed | default(false))
+  - name: "Req 02 - Remove temporary audit script"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: gdm_installed | default(false) | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
 
-- name: "Set requirement 02 report fields"
-  ansible.builtin.set_fact:
-    task_02_name: "Verify compliance from audit script output"
-    task_02_cmd: "Parse audit script output for PASS/FAIL"
-    task_02_rc: -1
-    data_02: "{{ compliance_status | default('UNKNOWN') }}"
-    details_02: "{{ compliance_details | default('') }}"
+  - name: "Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Execute audit script for GDM autorun-never"
+      task_02_cmd: "/bin/bash {{ audit_script }}"
+      task_02_rc: "{{ result_02.rc | default(-1) if gdm_installed | default(false) else -1 }}"
+      data_02: "{{ result_02.stdout | default('') | trim if gdm_installed | default(false) else '' }}"
+      status_02: "{{ 'SKIP' if not (gdm_installed | default(false)) else ('PASS' if '** PASS **' in result_02.stdout | default('') else 'FAIL') }}"
+      details_02: "{{ 'GDM not installed; audit skipped' if not (gdm_installed | default(false)) else ('Audit passed: autorun-never is locked' if '** PASS **' in result_02.stdout | default('') else 'Audit failed: autorun-never is not locked') }}"
+    tags: [execute]
 
-# ------ Requirement 3: Store final audit result in cis_result ------
-- name: "Req 03 - Store final audit result in cis_result"
-  ansible.builtin.set_fact:
-    cis_result: "{{ compliance_status | default('UNKNOWN') }}"
-    task_03_name: "Store cis_result from compliance_status"
-    task_03_cmd: "set_fact"
-    task_03_rc: 0
-    data_03: "{{ compliance_status | default('UNKNOWN') }}"
-    status_03: "PASS"
-    details_03: "cis_result set to {{ compliance_status | default('UNKNOWN') }}"
+  - name: "Store final audit result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+      task_03_name: "Store cis_result from status_02"
+      task_03_cmd: "set_fact"
+      task_03_rc: 0
+      data_03: "{{ status_02 | default('ERROR') | trim }}"
+      status_03: "PASS"
+      details_03: "cis_result set to {{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
 
-# ------ Final audit report ------
-- name: "Generate audit report"
-  debug:
-    msg:
-    - "AUDIT REPORT — CIS 1.8.9"
-    - "Reference: CIS Benchmark checkpoint 1.8.9"
-    - ""
-    - "REQUIREMENT 01 - {{ req_01 }}:"
-    - "  Task: {{ task_01_name | default('Not recorded') }}"
-    - "  Command: {{ task_01_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_01_rc | default(-1) }}"
-    - "  Data: {{ data_01 | default('') | trim }}"
-    - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-    - "  Details: {{ details_01 | default('') | trim }}"
-    - ""
-    - "REQUIREMENT 02 - {{ req_02 }}:"
-    - "  Task: {{ task_02_name | default('Not recorded') }}"
-    - "  Command: {{ task_02_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_02_rc | default(-1) }}"
-    - "  Data: {{ data_02 | default('') | trim }}"
-    - "  Status: {{ compliance_status | default('UNKNOWN') | trim }}"
-    - "  Details: {{ details_02 | default('') | trim }}"
-    - ""
-    - "REQUIREMENT 03 - {{ req_03 }}:"
-    - "  Task: {{ task_03_name | default('Not recorded') }}"
-    - "  Command: {{ task_03_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_03_rc | default(-1) }}"
-    - "  Data: {{ data_03 | default('') | trim }}"
-    - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
-    - "  Details: {{ details_03 | default('') | trim }}"
-    - ""
-    - "========================================================"
-    - "OVERALL COMPLIANCE:"
-    - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
-    - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
-    - "========================================================"
+  - name: "Generate audit report"
+    ansible.builtin.debug:
+      msg:
+      - "AUDIT REPORT — CIS 1.8.9"
+      - "Reference: CIS Benchmark checkpoint 1.8.9"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL COMPLIANCE:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Check if audit script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/audit_script.absent"
+    register: _restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove audit script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ audit_script }}"
+      state: absent
+    when: _restore_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove backup directory"
+    ansible.builtin.file:
+      path: "{{ backup_dir }}"
+      state: absent
+    failed_when: false
+    tags: [restore]

@@ -77,7 +77,7 @@
     ansible.builtin.set_fact:
       task_02_rc: "{{ 0 if result_02 is not skipped else -1 }}"
       data_02: "{{ audit_tools | join(', ') }}"
-      status_02: "{{ 'SKIPPED' if result_02 is skipped else ('FAIL' if (result_02.results | default([]) | selectattr('failed') | list | length) > 0 else 'PASS') }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else ('FAIL' if (result_02.results | default([]) | selectattr('failed') | list | length) > 0 else 'PASS') }}"
       details_02: >-
         {{ 'Skipped - prerequisite check failed' if result_02 is skipped
            else ('Group and others write permissions removed from all audit tools' if 

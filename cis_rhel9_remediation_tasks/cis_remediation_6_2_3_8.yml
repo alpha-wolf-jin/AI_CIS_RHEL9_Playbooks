@@ -49,7 +49,7 @@
       task_01_cmd: "which rsyslogd && which logrotate"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if playbook_skipped | bool else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if playbook_skipped | bool else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') }}"
       details_01: "{{ 'Prerequisite packages not installed' if playbook_skipped | bool else ('Binaries found' if result_01.rc | default(-1) == 0 else 'Binaries not found') }}"
     tags: [execute]
 
@@ -71,7 +71,7 @@
       task_02_cmd: "copy content to {{ logrotate_config_file }}"
       task_02_rc: "{{ 0 if result_02 is not skipped else -1 }}"
       data_02: "{{ logrotate_config_file }} created"
-      status_02: "{{ 'SKIPPED' if playbook_skipped | bool else ('PASS' if result_02 is not failed else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if playbook_skipped | bool else ('PASS' if result_02 is not failed else 'FAIL') }}"
       details_02: "{{ 'Prerequisite packages not installed' if playbook_skipped | bool else ('Configuration file created' if result_02 is not failed else 'Failed to create configuration file') }}"
     tags: [execute]
 
@@ -91,7 +91,7 @@
       task_03_cmd: "logrotate -d {{ logrotate_config_file }} 2>&1 | grep -i error || echo 'No errors found'"
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'SKIPPED' if playbook_skipped | bool else ('PASS' if 'No errors found' in (result_03.stdout | default('')) else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if playbook_skipped | bool else ('PASS' if 'No errors found' in (result_03.stdout | default('')) else 'FAIL') }}"
       details_03: "{{ 'Prerequisite packages not installed' if playbook_skipped | bool else ('Configuration valid' if 'No errors found' in (result_03.stdout | default('')) else 'Errors found in configuration') }}"
     tags: [execute]
 

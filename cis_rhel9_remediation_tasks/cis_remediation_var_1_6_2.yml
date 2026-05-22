@@ -1,8 +1,8 @@
-backup_dir: "/var/log/ai-playbooks-backup/cis_1_6_2"
-config_file: "/etc/sysconfig/sshd"
-backup_file: "{{ backup_dir }}/sshd.bak"
-req_01_text: |
-  1. Apply comment out CRYPTO_POLICY line in /etc/sysconfig/sshd using command: `sed -ri \"s/^\\s*(CRYPTO_POLICY\\s*=.*)$/# \\1/\" /etc/sysconfig/sshd`. Expected result: Any line starting with CRYPTO_POLICY= is commented out with a leading #.
-req_02_text: "2. Apply reload sshd service using command: `systemctl reload sshd`. Expected result: sshd reloads its configuration without restarting active sessions."
-req_03_text: |
-  3. Verify CRYPTO_POLICY is commented out using command: `grep -E ''^\\s*CRYPTO_POLICY'' /etc/sysconfig/sshd`. Expected result: No uncommented CRYPTO_POLICY line is present.
+playbook_name: "cis_1_6_2"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: |
+  Apply comment out CRYPTO_POLICY line in /etc/sysconfig/sshd using command: `sed -ri \"s/^\\s*(CRYPTO_POLICY\\s*=.*)$/# \\1/\" /etc/sysconfig/sshd`. Expected result: Any line starting with CRYPTO_POLICY= is commented out with a leading #.
+req_02: "Apply reload sshd service using command: `systemctl reload sshd`. Expected result: sshd reloads its configuration without restarting active sessions."
+req_03: |
+  Verify CRYPTO_POLICY is commented out using command: `grep -E '^\\s*CRYPTO_POLICY' /etc/sysconfig/sshd`. Expected result: No uncommented CRYPTO_POLICY line is present.
+req_04: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

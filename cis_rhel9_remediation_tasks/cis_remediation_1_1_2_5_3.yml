@@ -52,7 +52,7 @@
 
 # Requirement 1 – check partition existence
   - name: "Req 1 - Check if a separate partition exists for /var/tmp"
-    ansible.builtin.shell: "mount | grep /var/tmp"
+    ansible.builtin.shell: "mount | grep -E '\\s/var/tmp\\s'"
     args:
       executable: /bin/bash
     register: result_01
@@ -68,7 +68,8 @@
   - name: "Store requirement 01 details"
     ansible.builtin.set_fact:
       task_01_name: "Check partition for /var/tmp"
-      task_01_cmd: "mount | grep /var/tmp"
+      task_01_cmd: |
+        mount | grep -E '\\s/var/tmp\\s'
       task_01_rc: "{{ result_01.rc }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
       status_01: "{{ 'PASS' if (result_01.rc == 0 and (result_01.stdout | default('') | trim | length > 0)) else 'FAIL' }}"
@@ -78,22 +79,22 @@
 # Skip subsequent requirements if no partition
   - name: "Skip requirements 2-4 if no /var/tmp partition"
     ansible.builtin.set_fact:
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "No /var/tmp partition exists"
       data_02: "Skipped"
-      task_02_name: "Add nosuid to /var/tmp in fstab (SKIPPED)"
+      task_02_name: "Add nosuid to /var/tmp in fstab (SKIP)"
       task_02_cmd: "N/A"
       task_02_rc: -1
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "No /var/tmp partition exists"
       data_03: "Skipped"
-      task_03_name: "Remount /var/tmp (SKIPPED)"
+      task_03_name: "Remount /var/tmp (SKIP)"
       task_03_cmd: "N/A"
       task_03_rc: -1
-      status_04: "SKIPPED"
+      status_04: "SKIP"
       details_04: "No /var/tmp partition exists"
       data_04: "Skipped"
-      task_04_name: "Verify nosuid on /var/tmp (SKIPPED)"
+      task_04_name: "Verify nosuid on /var/tmp (SKIP)"
       task_04_cmd: "N/A"
       task_04_rc: -1
     when: not partition_exists
@@ -162,7 +163,7 @@
 
 # Requirement 4 – verify
   - name: "Req 4 - Verify nosuid option on /var/tmp"
-    ansible.builtin.shell: "mount | grep /var/tmp | grep nosuid"
+    ansible.builtin.shell: "mount | grep -E '\\s/var/tmp\\s' | grep -o 'nosuid'"
     args:
       executable: /bin/bash
     register: verify_result
@@ -174,12 +175,19 @@
   - name: "Store requirement 04 details"
     ansible.builtin.set_fact:
       task_04_name: "Verify nosuid on /var/tmp"
-      task_04_cmd: "mount | grep /var/tmp | grep nosuid"
+      task_04_cmd: |
+        mount | grep -E '\\s/var/tmp\\s' | grep -o 'nosuid'
       task_04_rc: "{{ verify_result.rc }}"
       data_04: "{{ verify_result.stdout | default('') | trim }}"
       status_04: "{{ 'VERIFIED' if verify_result.rc == 0 else 'FAIL' }}"
       details_04: "{{ 'nosuid option is set' if verify_result.rc == 0 else 'nosuid option not found' }}"
     when: partition_exists
+    tags: [execute]
+
+# Requirement 5 – set cis_result
+  - name: "Set overall remediation result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
     tags: [execute]
 
 # Final report
@@ -222,7 +230,7 @@
       - "  Details: {{ details_04 }}"
       - ""
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ status_04 }}"
+      - "  Result: {{ cis_result }}"
     tags: [execute]
 
   always:

@@ -16,4 +16,4 @@ req_08: |
 req_09: |
   Check for obsolete legacy format InputTCPServerRun in /etc/rsyslog.d/*.conf using command: `grep -Psi -- '^\\h*\\$InputTCPServerRun\\b' /etc/rsyslog.d/*.conf`. Expected result: nothing should be returned.
 req_10: "Summarize overall compliance: if all above checks return no output, the system is compliant; otherwise, it is non-compliant."
-req_11: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_11: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

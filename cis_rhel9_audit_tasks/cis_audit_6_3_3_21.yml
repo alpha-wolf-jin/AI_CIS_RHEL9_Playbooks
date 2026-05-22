@@ -55,31 +55,31 @@
     task_02_cmd: "which augenrules"
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ result_02.stdout | default('') | trim }}"
-    status_02: "{{ 'SKIPPED' if result_01.rc | default(-1) != 0 else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
+    status_02: "{{ 'SKIP' if result_01.rc | default(-1) != 0 else ('PASS' if result_02.rc | default(-1) == 0 else 'FAIL') }}"
     details_02: "{{ 'NOT_APPLICABLE: auditd missing' if result_01.rc | default(-1) != 0 else ('Binary found: ' + result_02.stdout | default('') | trim if result_02.rc | default(-1) == 0 else 'augenrules not found') }}"
 
     task_03_name: "Req 03 - Check rules.d directory"
     task_03_cmd: "ls -d /etc/audit/rules.d"
     task_03_rc: "{{ result_03.rc | default(-1) }}"
     data_03: "{{ result_03.stdout | default('') | trim }}"
-    status_03: "{{ 'SKIPPED' if result_01.rc | default(-1) != 0 else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') }}"
+    status_03: "{{ 'SKIP' if result_01.rc | default(-1) != 0 else ('PASS' if result_03.rc | default(-1) == 0 else 'FAIL') }}"
     details_03: "{{ 'NOT_APPLICABLE: auditd missing' if result_01.rc | default(-1) != 0 else ('Directory exists' if result_03.rc | default(-1) == 0 else 'Directory does not exist or inaccessible') }}"
 
     task_04_name: "Req 04 - Check audit.rules file"
     task_04_cmd: "ls -l /etc/audit/audit.rules"
     task_04_rc: "{{ result_04.rc | default(-1) }}"
     data_04: "{{ result_04.stdout | default('') | trim }}"
-    status_04: "{{ 'SKIPPED' if result_01.rc | default(-1) != 0 else ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL') }}"
+    status_04: "{{ 'SKIP' if result_01.rc | default(-1) != 0 else ('PASS' if result_04.rc | default(-1) == 0 else 'FAIL') }}"
     details_04: "{{ 'NOT_APPLICABLE: auditd missing' if result_01.rc | default(-1) != 0 else ('File exists' if result_04.rc | default(-1) == 0 else 'File does not exist or inaccessible') }}"
 
     task_05_name: "Req 05 - Check merged rules"
     task_05_cmd: "augenrules --check"
     task_05_rc: "{{ result_05.rc | default(-1) }}"
     data_05: "{{ result_05.stdout | default('') | trim }}"
-    status_05: "{{ 'SKIPPED' if result_01.rc | default(-1) != 0 else ('PASS' if ('No change' in result_05.stdout | default('')) else 'FAIL') }}"
+    status_05: "{{ 'SKIP' if result_01.rc | default(-1) != 0 else ('PASS' if ('No change' in result_05.stdout | default('')) else 'FAIL') }}"
     details_05: "{{ 'NOT_APPLICABLE: auditd missing' if result_01.rc | default(-1) != 0 else ('Rules are merged (No change)' if ('No change' in result_05.stdout | default('')) else 'Drift detected') }}"
 
-    cis_result: "{{ 'SKIPPED' if result_01.rc | default(-1) != 0 else ('PASS' if (result_02.rc | default(-1) == 0 and result_03.rc | default(-1) == 0 and result_04.rc | default(-1) == 0 and ('No change' in result_05.stdout | default(''))) else 'FAIL') }}"
+    cis_result: "{{ 'SKIP' if result_01.rc | default(-1) != 0 else ('PASS' if (result_02.rc | default(-1) == 0 and result_03.rc | default(-1) == 0 and result_04.rc | default(-1) == 0 and ('No change' in result_05.stdout | default(''))) else 'FAIL') }}"
 
 - name: "Generate audit report"
   ansible.builtin.debug:

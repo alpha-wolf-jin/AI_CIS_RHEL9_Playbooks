@@ -65,7 +65,7 @@
   - name: "Req 01 - Set skip fact if openssh-server not installed"
     ansible.builtin.set_fact:
       playbook_skipped: "{{ 'openssh-server' not in ansible_facts.packages }}"
-      status_01: "{{ 'SKIPPED' if 'openssh-server' not in ansible_facts.packages else 'APPLIED' }}"
+      status_01: "{{ 'SKIP' if 'openssh-server' not in ansible_facts.packages else 'APPLIED' }}"
       details_01: "{{ 'openssh-server is installed' if 'openssh-server' in ansible_facts.packages else 'openssh-server not installed - skipping remediation' }}"
       data_01: "{{ 'openssh-server found' if 'openssh-server' in ansible_facts.packages else 'openssh-server not found' }}"
       task_01_name: "Check openssh-server installation"
@@ -89,7 +89,7 @@
       task_02_cmd: "lineinfile regexp=^GSSAPIAuthentication state=absent"
       task_02_rc: "{{ 0 if not playbook_skipped else -1 }}"
       data_02: "{{ 'lineinfile changed=' ~ (result_02.changed | default(false) | string) if not playbook_skipped else 'Skipped' }}"
-      status_02: "{{ 'APPLIED' if not playbook_skipped else 'SKIPPED' }}"
+      status_02: "{{ 'APPLIED' if not playbook_skipped else 'SKIP' }}"
       details_02: "{{ 'All existing GSSAPIAuthentication lines removed' if not playbook_skipped else 'Skipped - openssh-server not installed' }}"
     when: "not playbook_skipped | default(false)"
     tags: [execute]
@@ -110,7 +110,7 @@
       task_03_cmd: "lineinfile line='GSSAPIAuthentication no' insertbefore='^Include|^Match'"
       task_03_rc: "{{ 0 if not playbook_skipped else -1 }}"
       data_03: "{{ 'lineinfile changed=' ~ (result_03.changed | default(false) | string) if not playbook_skipped else 'Skipped' }}"
-      status_03: "{{ 'APPLIED' if not playbook_skipped else 'SKIPPED' }}"
+      status_03: "{{ 'APPLIED' if not playbook_skipped else 'SKIP' }}"
       details_03: "{{ 'Line inserted before Include/Match' if not playbook_skipped else 'Skipped - openssh-server not installed' }}"
     when: "not playbook_skipped | default(false)"
     tags: [execute]
@@ -130,7 +130,7 @@
       task_04_cmd: "systemctl restart sshd"
       task_04_rc: "{{ 0 if result_04 is not skipped else -1 }}"
       data_04: "{{ 'sshd restarted' if result_04 is not skipped and result_04.state | default('') == 'started' else 'Skipped' }}"
-      status_04: "{{ 'APPLIED' if result_04 is not skipped and result_04.state | default('') == 'started' else 'FAILED' if result_04 is not skipped else 'SKIPPED' }}"
+      status_04: "{{ 'APPLIED' if result_04 is not skipped and result_04.state | default('') == 'started' else 'FAILED' if result_04 is not skipped else 'SKIP' }}"
       details_04: "{{ 'Service restarted successfully' if result_04 is not skipped and result_04.state | default('') == 'started' else 'Service restart failed' if result_04 is not skipped else 'Skipped - openssh-server not installed' }}"
     when: "not playbook_skipped | default(false)"
     tags: [execute]
@@ -151,7 +151,7 @@
       task_05_cmd: "sshd -T | grep -i gssapiauthentication"
       task_05_rc: "{{ result_05.rc | default(-1) }}"
       data_05: "{{ result_05.stdout | default('') | trim }}"
-      status_05: "{{ 'APPLIED' if (result_05.stdout | default('') | trim | lower) == 'gssapiauthentication no' else 'FAILED' if result_05 is not skipped else 'SKIPPED' }}"
+      status_05: "{{ 'APPLIED' if (result_05.stdout | default('') | trim | lower) == 'gssapiauthentication no' else 'FAILED' if result_05 is not skipped else 'SKIP' }}"
       details_05: "{{ 'Verification passed - GSSAPIAuthentication is no' if (result_05.stdout | default('') | trim | lower) == 'gssapiauthentication no' else 'Verification failed - unexpected output: ' ~ (result_05.stdout | default('') | trim) if result_05 is not skipped else 'Skipped - openssh-server not installed' }}"
     when: "not playbook_skipped | default(false)"
     tags: [execute]
@@ -162,7 +162,7 @@
       cis_result: >-
         {%- if status_05 == 'APPLIED' -%}PASS
         {%- elif status_05 == 'FAILED' -%}FAIL
-        {%- elif status_05 == 'SKIPPED' -%}SKIP
+        {%- elif status_05 == 'SKIP' -%}SKIP
         {%- else -%}ERROR
         {%- endif -%}
     tags: [execute]

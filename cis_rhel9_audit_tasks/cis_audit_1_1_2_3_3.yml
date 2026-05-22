@@ -64,7 +64,7 @@
     task_02_rc: "{{ result_02.rc | default(-1) }}"
     data_02: "{{ (result_02.stdout | default('') | trim) if home_mount_exists else 'N/A' }}"
     status_02: >-
-      {{ ('SKIPPED' if not home_mount_exists
+      {{ ('SKIP' if not home_mount_exists
           else ('PASS' if (result_02.stdout | default('') | trim) == ''
           else 'FAIL')) | trim }}
     details_02: >-
@@ -83,7 +83,7 @@
           else ('Compliant (nosuid is set)' if (result_02.stdout | default('') | trim) == ''
           else 'Non-compliant (nosuid not set)')) | trim }}
     status_03: >-
-      {{ ('SKIPPED' if not home_mount_exists
+      {{ ('SKIP' if not home_mount_exists
           else ('PASS' if (result_02.stdout | default('') | trim) == ''
           else 'FAIL')) | trim }}
     details_03: >-

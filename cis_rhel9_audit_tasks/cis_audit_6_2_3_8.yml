@@ -84,7 +84,7 @@
       task_01_cmd: "N/A"
       task_01_rc: -1
       data_01: "NOT_APPLICABLE"
-      status_01: "SKIPPED"
+      status_01: "SKIP"
       details_01: "rsyslog is not installed, audit not applicable"
     when: not rsyslog_installed | bool
     tags: [execute]

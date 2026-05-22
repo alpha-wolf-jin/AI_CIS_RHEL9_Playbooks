@@ -201,7 +201,7 @@
           echo "PASS: no bare nullok in system-auth"
         fi
       else
-        echo "SKIPPED: no custom authselect profile"
+        echo "SKIP: no custom authselect profile"
       fi
     args:
       executable: /bin/bash
@@ -221,7 +221,7 @@
           echo "PASS: no bare nullok in password-auth"
         fi
       else
-        echo "SKIPPED: no custom authselect profile"
+        echo "SKIP: no custom authselect profile"
       fi
     args:
       executable: /bin/bash

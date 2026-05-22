@@ -1,6 +1,11 @@
-playbook_name: "cis_1_1_2_7_2"
+playbook_name: "cis_remediation_1_1_2_7_2"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-req_01: "Check if a separate partition exists for /var/log/audit by inspecting /etc/fstab and running: `mount | grep /var/log/audit`. Expected result: a line showing the partition is mounted."
-req_02: "Edit /etc/fstab to add nodev to the mounting options for the /var/log/audit partition. Expected result: the fourth field for the /var/log/audit entry includes nodev (e.g., defaults,rw,nosuid,nodev,noexec,relatime)."
-req_03: "Remount /var/log/audit with the configured options using command: `mount -o remount /var/log/audit`. Expected result: the partition is remounted successfully with nodev option."
-req_04: "Verify the nodev option is set on /var/log/audit using command: `mount | grep /var/log/audit | grep nodev`. Expected result: the output contains 'nodev'."
+mount_point: "/var/log/audit"
+mount_option: "nodev"
+req_01: |
+  Apply prerequisite check: ensure /var/log/audit is a separate partition using command: `mount | grep -E '\\s/var/log/audit\\s'`. Expected result: output contains a line with /var/log/audit.
+req_02: |
+  Apply nodev mount option to /var/log/audit in /etc/fstab using command: `sed -i 's|\\(\\s/var/log/audit\\s\\+\\S\\+\\s\\+\\)\\S\\+|\\1defaults,rw,nosuid,nodev,noexec,relatime|' /etc/fstab`. Expected result: the fourth field for /var/log/audit partition includes nodev.
+req_03: "Apply remount of /var/log/audit with updated options using command: `mount -o remount /var/log/audit`. Expected result: no error output."
+req_04: |
+  Verify nodev option is active on /var/log/audit using command: `mount | grep -E '\\s/var/log/audit\\s' | grep -o 'nodev'`. Expected result: output contains 'nodev'.

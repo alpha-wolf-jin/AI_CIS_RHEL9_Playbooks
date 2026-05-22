@@ -113,7 +113,7 @@
       task_01_cmd: "lineinfile + shell script for PAM remediation"
       task_01_rc: "{{ pam_remediation_result.rc | default(0) }}"
       data_01: "{{ pam_remediation_result.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if (pam_remediation_result.rc | default(0)) == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if playbook_skipped else ('PASS' if (pam_remediation_result.rc | default(0)) == 0 else 'FAIL') }}"
       details_01: "{{ 'Prerequisites not met - authselect not installed' if playbook_skipped else ('Completed successfully' if (pam_remediation_result.rc | default(0)) == 0 else 'Failed to execute remediation script') }}"
 
   - name: "Req 02 - Verify even_deny_root is present in faillock.conf"
@@ -189,7 +189,7 @@
       task_02_cmd: "grep checks on faillock.conf and PAM files"
       task_02_rc: "{{ 0 if (verify_even_deny.stdout | default('') | trim == 'FOUND') and (verify_root_unlock.stdout | default('') | trim in ['NOT_PRESENT_COMPLIANT', 'COMPLIANT_VALUE=60']) and (verify_pam_even_deny.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') and (verify_pam_root_unlock.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') else 1 }}"
       data_02: "even_deny_root={{ verify_even_deny.stdout | default('') | trim }}, root_unlock_time={{ verify_root_unlock.stdout | default('') | trim }}, pam_even_deny={{ verify_pam_even_deny.stdout | default('') | trim }}, pam_root_unlock={{ verify_pam_root_unlock.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if (verify_even_deny.stdout | default('') | trim == 'FOUND') and (verify_root_unlock.stdout | default('') | trim in ['NOT_PRESENT_COMPLIANT', 'COMPLIANT_VALUE=60']) and (verify_pam_even_deny.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') and (verify_pam_root_unlock.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if playbook_skipped else ('PASS' if (verify_even_deny.stdout | default('') | trim == 'FOUND') and (verify_root_unlock.stdout | default('') | trim in ['NOT_PRESENT_COMPLIANT', 'COMPLIANT_VALUE=60']) and (verify_pam_even_deny.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') and (verify_pam_root_unlock.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') else 'FAIL') }}"
       details_02: "{{ 'Prerequisites not met - authselect not installed' if playbook_skipped else ('All checks passed' if (verify_even_deny.stdout | default('') | trim == 'FOUND') and (verify_root_unlock.stdout | default('') | trim in ['NOT_PRESENT_COMPLIANT', 'COMPLIANT_VALUE=60']) and (verify_pam_even_deny.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') and (verify_pam_root_unlock.stdout | default('') | trim == 'NOT_FOUND_IN_PAM') else 'One or more checks failed') }}"
 
   - name: "Set final remediation result variable (cis_result)"

@@ -134,7 +134,7 @@
       task_02_cmd: "dnf install -y aide"
       task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
       data_02: "{{ 'AIDE installed' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else (result_02.msg | default('Skipped - dnf not available') | trim) }}"
-      status_02: "{{ 'PASS' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else ('SKIPPED' if result_02 is not defined or result_02.skipped | default(false) else 'FAIL') }}"
+      status_02: "{{ 'PASS' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else ('SKIP' if result_02 is not defined or result_02.skipped | default(false) else 'FAIL') }}"
       details_02: "{{ 'AIDE installed successfully' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else ('Skipped because dnf is not available' if result_02 is not defined or result_02.skipped | default(false) else 'Failed to install AIDE') }}"
     tags: [execute]
 
@@ -154,7 +154,7 @@
       task_03_cmd: "stat /etc/aide.conf"
       task_03_rc: "{{ result_03_config.rc | default(0) if result_03_config is defined else -1 }}"
       data_03: "{{ 'Config file present' if (result_03_config is defined and result_03_config.stat.exists) else 'Config file missing – manual configuration required' }}"
-      status_03: "{{ 'PASS' if (result_03_config is defined and result_03_config.stat.exists) else 'SKIPPED' }}"
+      status_03: "{{ 'PASS' if (result_03_config is defined and result_03_config.stat.exists) else 'SKIP' }}"
       details_03: "{{ 'AIDE configuration is set (/etc/aide.conf exists)' if (result_03_config is defined and result_03_config.stat.exists) else 'Manual configuration step – /etc/aide.conf not found' }}"
     tags: [execute]
 
@@ -174,7 +174,7 @@
       task_04_cmd: "aide --init"
       task_04_rc: "{{ result_04.rc | default(-1) if result_04 is defined else -1 }}"
       data_04: "{{ 'Database initialized' if (result_04 is defined and (result_04.rc | default(-1)) == 0) else (result_04.stderr | default('Skipped') | trim) }}"
-      status_04: "{{ 'PASS' if (result_04 is defined and (result_04.rc | default(-1)) == 0) else ('SKIPPED' if result_04 is not defined or result_04.skipped | default(false) else 'FAIL') }}"
+      status_04: "{{ 'PASS' if (result_04 is defined and (result_04.rc | default(-1)) == 0) else ('SKIP' if result_04 is not defined or result_04.skipped | default(false) else 'FAIL') }}"
       details_04: "{{ 'AIDE database initialized successfully' if (result_04 is defined and (result_04.rc | default(-1)) == 0) else ('Skipped because AIDE is not installed' if result_04 is not defined or result_04.skipped | default(false) else 'Failed to initialize AIDE database') }}"
     tags: [execute]
 
@@ -194,7 +194,7 @@
       task_05_cmd: "mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz"
       task_05_rc: "{{ result_05.rc | default(-1) if result_05 is defined else -1 }}"
       data_05: "{{ 'Database moved' if (result_05 is defined and (result_05.rc | default(-1)) == 0) else (result_05.stderr | default('Skipped') | trim) }}"
-      status_05: "{{ 'PASS' if (result_05 is defined and (result_05.rc | default(-1)) == 0) else ('SKIPPED' if result_05 is not defined or result_05.skipped | default(false) else 'FAIL') }}"
+      status_05: "{{ 'PASS' if (result_05 is defined and (result_05.rc | default(-1)) == 0) else ('SKIP' if result_05 is not defined or result_05.skipped | default(false) else 'FAIL') }}"
       details_05: "{{ 'AIDE database moved to active location' if (result_05 is defined and (result_05.rc | default(-1)) == 0) else ('Skipped because database initialization failed' if result_05 is not defined or result_05.skipped | default(false) else 'Failed to move AIDE database') }}"
     tags: [execute]
 

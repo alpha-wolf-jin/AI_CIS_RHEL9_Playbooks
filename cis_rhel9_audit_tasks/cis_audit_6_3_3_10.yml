@@ -48,7 +48,7 @@
     task_01_name: "Run on-disk audit procedure"
     task_01_cmd: "awk-based check in {{ audit_rules_dir }}/*.rules"
     task_01_rc: "{{ on_disk_audit.rc | default(-1) if on_disk_audit is defined else -1 }}"
-    status_01: "{{ ('SKIPPED' if not (audit_applicable | default(false)) else ('SKIPPED' if not (audit_rules_dir_stat.stat.exists | default(false)) else ('PASS' if on_disk_audit is defined and on_disk_audit.rc | default(-1) | int == 0 else 'FAIL'))) | trim }}"
+    status_01: "{{ ('SKIP' if not (audit_applicable | default(false)) else ('SKIP' if not (audit_rules_dir_stat.stat.exists | default(false)) else ('PASS' if on_disk_audit is defined and on_disk_audit.rc | default(-1) | int == 0 else 'FAIL'))) | trim }}"
     details_01: >-
       {%- if not (audit_applicable | default(false)) -%}
         Audit package not installed
@@ -64,7 +64,7 @@
   ansible.builtin.set_fact:
     status_02: >-
       {%- if not (audit_applicable | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif on_disk_audit is defined and (expected_line_b64 in on_disk_audit.stdout | default('') and expected_line_b32 in on_disk_audit.stdout | default('')) -%}
         PASS
       {%- else -%}

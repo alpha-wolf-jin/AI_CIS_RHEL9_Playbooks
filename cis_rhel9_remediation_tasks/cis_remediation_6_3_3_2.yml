@@ -102,7 +102,7 @@
       task_01_cmd: "printf rules >> {{ audit_rules_file }}; augenrules --load"
       task_01_rc: "{{ result_01_load.rc | default(-1) }}"
       data_01: "{{ result_01_load.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if not (auditd_installed | default(false) | bool) else ('PASS' if (result_01_load.rc | default(-1) == 0) else 'FAIL') | trim }}"
+      status_01: "{{ 'SKIP' if not (auditd_installed | default(false) | bool) else ('PASS' if (result_01_load.rc | default(-1) == 0) else 'FAIL') | trim }}"
       details_01: "{{ 'auditd package not installed - remediation skipped' if not (auditd_installed | default(false) | bool) else ('Rules created and loaded successfully' if (result_01_load.rc | default(-1) == 0) else 'Failed to create or load audit rules') | trim }}"
     tags: [execute]
 
@@ -122,13 +122,13 @@
       task_02_cmd: "auditctl -l | grep -i 'user_emulation'"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (auditd_installed | default(false) | bool) else ('PASS' if ('user_emulation' in (result_02.stdout | default(''))) else 'FAIL') | trim }}"
+      status_02: "{{ 'SKIP' if not (auditd_installed | default(false) | bool) else ('PASS' if ('user_emulation' in (result_02.stdout | default(''))) else 'FAIL') | trim }}"
       details_02: "{{ 'auditd package not installed - verification skipped' if not (auditd_installed | default(false) | bool) else ('Audit rules for user emulation are active' if ('user_emulation' in (result_02.stdout | default(''))) else 'Audit rules for user emulation NOT found in active rules') | trim }}"
     tags: [execute]
 
   - name: "Req 03 - Set cis_result fact"
     ansible.builtin.set_fact:
-      cis_result: "{{ 'PASS' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS') else ('SKIPPED' if (status_01 | trim == 'SKIPPED' and status_02 | trim == 'SKIPPED') else 'FAIL') | trim }}"
+      cis_result: "{{ 'PASS' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS') else ('SKIP' if (status_01 | trim == 'SKIP' and status_02 | trim == 'SKIP') else 'FAIL') | trim }}"
     tags: [execute]
 
   - name: "Store requirement 03 details"
@@ -184,7 +184,7 @@
       - "========================================================"
       - "OVERALL REMEDIATION:"
       - "  Result: {{ cis_result | default('ERROR') | trim }}"
-      - "  Details: {{ 'All requirements passed' if cis_result | trim == 'PASS' else ('Remediation skipped - auditd not installed' if cis_result | trim == 'SKIPPED' else 'One or more requirements failed or skipped') | trim }}"
+      - "  Details: {{ 'All requirements passed' if cis_result | trim == 'PASS' else ('Remediation skipped - auditd not installed' if cis_result | trim == 'SKIP' else 'One or more requirements failed or skipped') | trim }}"
       - "========================================================"
     tags: [execute]
 

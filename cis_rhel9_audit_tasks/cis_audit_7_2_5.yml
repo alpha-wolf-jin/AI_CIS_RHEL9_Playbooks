@@ -62,7 +62,7 @@
       task_00_cmd: "stat /etc/group"
       task_00_rc: "{{ result_00.stat.exists | ternary(0, 1) }}"
       data_00: "{{ result_00.stat.exists | ternary('Present', 'Missing') }}"
-      status_00: "{{ (result_00.stat.exists | default(false)) | ternary('PASS','SKIPPED') | trim }}"
+      status_00: "{{ (result_00.stat.exists | default(false)) | ternary('PASS','SKIP') | trim }}"
       details_00: "{{ (result_00.stat.exists | default(false)) | ternary('/etc/group file found','Required file /etc/group is missing, check not applicable') | trim }}"
 
   - name: "Set applicability flag"
@@ -95,7 +95,7 @@
       data_01: "{{ result_01.stdout | default('') | trim if system_applicable | default(false) else 'Not applicable' }}"
       status_01: >-
         {%- if not (system_applicable | default(false)) -%}
-          SKIPPED
+          SKIP
         {%- elif (result_01.rc | default(-1) | int) == 0 -%}
           PASS
         {%- else -%}
@@ -113,19 +113,19 @@
 
   - name: "Set defaults for skipped requirements if not applicable"
     set_fact:
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "Not applicable – prerequisite check failed"
       data_02: "Not collected"
       task_02_name: "Req 02 - Verify compliance status for duplicate GIDs"
       task_02_cmd: "N/A"
       task_02_rc: -1
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "cis_result derived from skipped compliance status"
-      data_03: "SKIPPED"
+      data_03: "SKIP"
       task_03_name: "Req 03 - Store final cis_result"
       task_03_cmd: "N/A (set_fact)"
       task_03_rc: 0
-      cis_result: "SKIPPED"
+      cis_result: "SKIP"
     when: not (system_applicable | default(false) | bool)
 
   - block:

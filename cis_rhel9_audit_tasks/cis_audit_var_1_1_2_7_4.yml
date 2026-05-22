@@ -1,5 +1,5 @@
 mount_point: "/var/log/audit"
-req_01: "Check if /var/log/audit is a separate partition using command: `findmnt -kn /var/log/audit`. Expected result: output should contain a mount point entry for /var/log/audit."
+req_01: "Check if a separate partition exists for /var/log/audit using command: `findmnt -kn /var/log/audit`. Expected result: output containing mount information (non-empty)."
 req_02: "Check if the noexec option is set on /var/log/audit partition using command: `findmnt -kn /var/log/audit | grep -v noexec`. Expected result: no output (empty)."
-req_03: "Summarize overall compliance: if both checks pass, the requirement is compliant; otherwise, non-compliant."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_03: "Summarize overall compliance: PASS if both checks pass, SKIP if the partition does not exist (first check returns empty), FAIL if the partition exists but noexec is not set."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

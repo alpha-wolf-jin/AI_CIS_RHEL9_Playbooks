@@ -89,7 +89,7 @@
     task_02_cmd: "N/A"
     task_02_rc: 0
     data_02: ""
-    status_02: "SKIPPED"
+    status_02: "SKIP"
     details_02: "auditd not installed, check skipped"
   when: "not auditd_installed | bool"
 
@@ -129,7 +129,7 @@
     task_03_cmd: "N/A"
     task_03_rc: 0
     data_03: ""
-    status_03: "SKIPPED"
+    status_03: "SKIP"
     details_03: "auditd not installed, check skipped"
   when: "not auditd_installed | bool"
 
@@ -137,7 +137,7 @@
   set_fact:
     status_04: >-
       {%- if not (auditd_installed | bool) -%}
-        SKIPPED
+        SKIP
       {%- elif status_02 == 'PASS' and status_03 == 'PASS' -%}
         PASS
       {%- else -%}

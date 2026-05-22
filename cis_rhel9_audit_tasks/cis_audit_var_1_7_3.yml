@@ -1,16 +1,7 @@
-banner_file: "/etc/issue.net"
-site_policy_banner: "Authorized uses only. All activity may be monitored and reported."
-req_01: "Check if the /etc/issue.net file exists and is readable using command: `cat /etc/issue.net`. Expected result: The file contents should match the site policy."
-req_02: |
-  Check that the /etc/issue.net file does not contain operating system release information (\\v, \\r, \\m, \\s) or the system ID using command: `grep -E -i \"(\\\\v|\\\\r|\\\\m|\\\\s|$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/\"//g'))\" /etc/issue.net`. Expected result: No output (empty result).
-req_03: "Summarize overall compliance status: The remote login warning banner is properly configured if the file exists with site-policy content and no OS release information is present."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
-playbook_name: "cis_audit_1_7_3"
-backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-audit_script: "/tmp/check_issue_net_os_info.sh"
-audit_script_content: |
-  {% raw %}
-  #!/usr/bin/env bash
-  distro_id=$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/"//g')
-  grep -E -i "(\\\\v|\\\\r|\\\\m|\\\\s|${distro_id})" /etc/issue.net
-  {% endraw %}
+req_01: "Check if the /etc/issue.net file exists using command: `test -f /etc/issue.net`. Expected result: file exists."
+req_02: "Check the contents of /etc/issue.net using command: `cat /etc/issue.net`. Expected result: contents match site policy."
+req_03: |
+  Check that /etc/issue.net does not contain system information escape sequences (\\v, \\r, \\m, \\s) or the OS ID using command: `grep -E -i \"(\\\\v|\\\\r|\\\\m|\\\\s|$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/\"//g'))\" /etc/issue.net`. Expected result: no results returned.
+req_04: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/issue.net does not exist, FAIL if the file exists but is misconfigured."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+expected_banner: "Authorized users only. All activity may be monitored and reported."

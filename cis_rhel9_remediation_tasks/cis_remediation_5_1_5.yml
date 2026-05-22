@@ -76,7 +76,7 @@
       task_01_cmd: "rpm -q crypto-policies"
       task_01_rc: "{{ result_01.rc | default(-1) if result_01 is not skipped else '-1' }}"
       data_01: "{{ result_01.stdout | default('') | trim if result_01 is not skipped else 'N/A' }}"
-      status_01: "{{ 'SKIPPED' if result_01 is skipped else ('PASS' if result_01.rc == 0 else 'FAIL') }}"
+      status_01: "{{ 'SKIP' if result_01 is skipped else ('PASS' if result_01.rc == 0 else 'FAIL') }}"
       details_01: "{{ 'Skipped - sshd not installed' if result_01 is skipped else ('Package installed' if result_01.rc == 0 else 'Package not installed') }}"
     failed_when: false
     tags: [execute]
@@ -114,7 +114,7 @@
       task_02_cmd: "copy module (inline content)"
       task_02_rc: "{{ result_02.rc | default(0) if result_02 is not skipped else '-1' }}"
       data_02: "{{ result_02.dest | default('') if result_02 is not skipped else 'N/A' }}"
-      status_02: "{{ 'SKIPPED' if result_02 is skipped else ('PASS' if result_02 is not changed and result_02 is not failed else 'APPLIED') }}"
+      status_02: "{{ 'SKIP' if result_02 is skipped else ('PASS' if result_02 is not changed and result_02 is not failed else 'APPLIED') }}"
       details_02: "{{ 'Skipped - prerequisites not met' if result_02 is skipped else ('File already correct' if result_02 is not changed else 'File created/updated') }}"
     failed_when: false
     tags: [execute]
@@ -215,7 +215,7 @@
       task_03_rc: "{{ result_03.rc | default(-1) if result_03 is not skipped else '-1' }}"
       data_03: >-
         {{ (result_03.stdout | default('') | trim) + ' ' + (result_03.stderr | default('') | trim) if result_03 is not skipped else 'N/A' }}
-      status_03: "{{ 'SKIPPED' if result_03 is skipped else ('PASS' if result_03.rc == 0 else 'FAIL') }}"
+      status_03: "{{ 'SKIP' if result_03 is skipped else ('PASS' if result_03.rc == 0 else 'FAIL') }}"
       details_03: >-
         {{ 'Skipped - prerequisites not met' if result_03 is skipped else
            ('Policy updated successfully' if result_03.rc == 0 else
@@ -239,7 +239,7 @@
       task_04_cmd: "systemctl reload-or-restart sshd"
       task_04_rc: "{{ result_04.rc | default(-1) if result_04 is not skipped else '-1' }}"
       data_04: "{{ result_04.stdout | default('') | trim if result_04 is not skipped else 'N/A' }}"
-      status_04: "{{ 'SKIPPED' if result_04 is skipped else ('PASS' if result_04.rc == 0 else 'FAIL') }}"
+      status_04: "{{ 'SKIP' if result_04 is skipped else ('PASS' if result_04.rc == 0 else 'FAIL') }}"
       details_04: "{{ 'Skipped - prerequisites not met' if result_04 is skipped else ('Service reloaded/restarted' if result_04.rc == 0 else 'Failed to reload service') }}"
     failed_when: false
     tags: [execute]
@@ -272,7 +272,7 @@
       task_05_cmd: "sshd -T | grep -i kexalgorithms (weak algorithm check)"
       task_05_rc: "{{ result_05.rc | default(-1) if result_05 is not skipped else '-1' }}"
       data_05: "{{ result_05.stdout | default('') | trim if result_05 is not skipped else 'N/A' }}"
-      status_05: "{{ 'SKIPPED' if result_05 is skipped else ('PASS' if result_05.rc == 0 and result_05.stdout | default('') | trim != '' else 'FAIL') }}"
+      status_05: "{{ 'SKIP' if result_05 is skipped else ('PASS' if result_05.rc == 0 and result_05.stdout | default('') | trim != '' else 'FAIL') }}"
       details_05: "{{ 'Skipped - prerequisites not met' if result_05 is skipped else ('KexAlgorithms verified (no weak algorithms)' if result_05.rc == 0 else 'Verification failed: weak algorithms or missing KexAlgorithms') }}"
     failed_when: false
     tags: [execute]
@@ -280,8 +280,8 @@
 # --- Aggregate overall remediation status (cis_result) ---
   - name: "Set overall remediation status and cis_result"
     ansible.builtin.set_fact:
-      cis_result: "{{ 'FAIL' if 'FAIL' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else ('SKIPPED' if 'SKIPPED' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else 'PASS') }}"
-      overall_details: "{{ 'One or more requirements failed.' if 'FAIL' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else ('One or more requirements skipped.' if 'SKIPPED' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else 'All requirements passed successfully.') }}"
+      cis_result: "{{ 'FAIL' if 'FAIL' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else ('SKIP' if 'SKIP' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else 'PASS') }}"
+      overall_details: "{{ 'One or more requirements failed.' if 'FAIL' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else ('One or more requirements skipped.' if 'SKIP' in [status_01 | default(''), status_02 | default(''), status_03 | default(''), status_04 | default(''), status_05 | default('')] else 'All requirements passed successfully.') }}"
     failed_when: false
     tags: [execute]
 

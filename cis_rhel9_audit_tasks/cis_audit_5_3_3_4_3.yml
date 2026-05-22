@@ -69,7 +69,7 @@
       grep -P -- '^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?(sha512|yescrypt)\b' /etc/pam.d/password-auth /etc/pam.d/system-auth
     task_01_rc: -1
     data_01: ""
-    status_01: "SKIPPED"
+    status_01: "SKIP"
     details_01: "PAM is not installed; check skipped."
   when: not pam_installed | bool
 
@@ -89,7 +89,7 @@
     task_03_rc: 0
     data_03: "Overall compliance evaluation"
     status_03: >-
-      {{ 'SKIPPED' if not pam_installed | bool
+      {{ 'SKIP' if not pam_installed | bool
          else ('PASS' if status_01 | trim == 'PASS' and status_02 | trim == 'PASS' else 'FAIL') }}
     details_03: >-
       {{ 'PAM is not installed; audit not applicable.' if not pam_installed | bool

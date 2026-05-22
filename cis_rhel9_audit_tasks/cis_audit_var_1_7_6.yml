@@ -3,4 +3,4 @@ req_02: "Check that access permissions on /etc/issue.net are 644 or more restric
 req_03: "Check that Uid of /etc/issue.net is 0/root using command: `stat -Lc '%u' /etc/issue.net`. Expected result: 0."
 req_04: "Check that Gid of /etc/issue.net is 0/root using command: `stat -Lc '%g' /etc/issue.net`. Expected result: 0."
 req_05: "Summarize overall compliance status: all checks passed (file exists, permissions 644 or more restrictive, Uid 0, Gid 0). Expected result: compliant if all conditions met, otherwise non-compliant."
-req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

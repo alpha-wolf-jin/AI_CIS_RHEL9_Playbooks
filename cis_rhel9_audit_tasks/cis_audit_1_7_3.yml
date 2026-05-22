@@ -2,173 +2,181 @@
 - name: Initialize meta data variables
   include_vars: cis_audit_var_1_7_3.yml
 
-- name: "Snapshot - Create backup directory"
-  ansible.builtin.file:
-    path: "{{ backup_dir }}"
-    state: directory
-    mode: '0700'
-
-
 - name: "Initialize data variables"
   set_fact:
     data_01: "Not collected yet"
-    status_01: "UNKNOWN"
+    status_01: "ERROR"
     details_01: "Not evaluated"
     data_02: "Not collected yet"
-    status_02: "UNKNOWN"
+    status_02: "ERROR"
     details_02: "Not evaluated"
     data_03: "Not collected yet"
-    status_03: "UNKNOWN"
+    status_03: "ERROR"
     details_03: "Not evaluated"
     data_04: "Not collected yet"
-    status_04: "UNKNOWN"
+    status_04: "ERROR"
     details_04: "Not evaluated"
+    data_05: "Not collected yet"
+    status_05: "ERROR"
+    details_05: "Not evaluated"
     task_01_name: "Not executed"
     task_01_cmd: "N/A"
     task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
 
-- block:
-  - name: "Req 01 - Check if /etc/issue.net exists and is readable"
-    ansible.builtin.shell: cat {{ banner_file }}
-    args:
-      executable: /bin/bash
-    register: result_01
-    failed_when: false
-    changed_when: false
+- name: "Req 01 - Check if /etc/issue.net exists"
+  ansible.builtin.stat:
+    path: /etc/issue.net
+  register: result_01
+  failed_when: false
 
-  - name: "Store requirement 01 details"
-    set_fact:
-      task_01_name: "Check if /etc/issue.net exists and is readable"
-      task_01_cmd: "cat {{ banner_file }}"
-      task_01_rc: "{{ result_01.rc | default(-1) }}"
-      data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: >-
-        {%- if site_policy_banner | trim == '' -%}
-          SKIPPED
-        {%- elif result_01.rc | default(-1) == 0 and (result_01.stdout | default('') | trim) == (site_policy_banner | trim) -%}
-          PASS
-        {%- else -%}
-          FAIL
-        {%- endif -%}
-      details_01: >-
-        {%- if site_policy_banner | trim == '' -%}
-          Site policy not defined – cannot verify content
-        {%- elif result_01.rc | default(-1) != 0 -%}
-          File does not exist or is not readable
-        {%- elif (result_01.stdout | default('') | trim) == (site_policy_banner | trim) -%}
-          File exists and matches site policy
-        {%- else -%}
-          File exists but does not match site policy
-        {%- endif -%}
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check if /etc/issue.net exists"
+    task_01_cmd: "stat /etc/issue.net"
+    task_01_rc: "{{ 0 if result_01.stat.exists | default(false) else 1 }}"
+    data_01: "{{ 'File exists' if result_01.stat.exists | default(false) else 'File does not exist' }}"
+    status_01: "{{ 'PASS' if result_01.stat.exists | default(false) else 'FAIL' }}"
+    details_01: "{{ 'File /etc/issue.net exists' if result_01.stat.exists | default(false) else 'File /etc/issue.net does not exist' }}"
 
-  - name: "Copy OS info check script to remote"
-    ansible.builtin.copy:
-      dest: "{{ audit_script }}"
-      mode: '0700'
-      content: "{{ audit_script_content }}"
-    changed_when: false
+- name: "Req 02 - Read contents of /etc/issue.net"
+  ansible.builtin.slurp:
+    src: /etc/issue.net
+  register: result_02
+  when: "result_01.stat.exists | default(false)"
+  failed_when: false
 
-  - name: "Create cleanup marker"
-    ansible.builtin.copy:
-      dest: "{{ backup_dir }}/cleanup_temp_script"
-      content: ""
-      mode: '0600'
-    changed_when: false
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Read contents of /etc/issue.net"
+    task_02_cmd: "slurp /etc/issue.net"
+    task_02_rc: "{{ 0 if result_02.content is defined else -1 }}"
+    data_02: "{{ (result_02.content | default('') | b64decode | trim) if result_02.content is defined else 'File not read' }}"
+    status_02: "{{ 'PASS' if (result_02.content | default('') | b64decode | trim) == expected_banner else 'FAIL' }}"
+    details_02: "{{ 'Contents match expected banner' if (result_02.content | default('') | b64decode | trim) == expected_banner else 'Contents do not match expected banner' }}"
+  when: "result_01.stat.exists | default(false)"
 
-  - name: "Req 02 - Execute OS release information check"
-    ansible.builtin.shell: /bin/bash "{{ audit_script }}"
-    args:
-      executable: /bin/bash
-    register: result_02
-    failed_when: false
-    changed_when: false
+- name: "Req 02 - Set SKIP when file does not exist"
+  set_fact:
+    task_02_name: "Read contents of /etc/issue.net"
+    task_02_cmd: "slurp /etc/issue.net"
+    task_02_rc: -1
+    data_02: "File does not exist"
+    status_02: "SKIP"
+    details_02: "Skipped because /etc/issue.net does not exist"
+  when: "not (result_01.stat.exists | default(false))"
 
-  - name: "Store requirement 02 details"
-    set_fact:
-      task_02_name: "Check for OS release information in /etc/issue.net"
-      task_02_cmd: "grep -E -i for OS release info on /etc/issue.net"
-      task_02_rc: "{{ result_02.rc | default(-1) }}"
-      data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL' }}"
-      details_02: "{{ 'No OS release information found' if (result_02.stdout | default('') | trim) == '' else 'OS release information present' }}"
+- name: "Req 03 - Check for escape sequences and OS ID in /etc/issue.net"
+  ansible.builtin.shell: |
+    distro_id=$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/"//g')
+    grep -q -E "(\\\\v|\\\\r|\\\\m|\\\\s|${distro_id})" /etc/issue.net
+  args:
+    executable: /bin/bash
+  register: result_03
+  when: "result_01.stat.exists | default(false)"
+  failed_when: false
+  changed_when: false
 
-  - name: "Req 03 - Summarize overall compliance status"
-    set_fact:
-      task_03_name: "Summarize overall compliance status"
-      task_03_cmd: "set_fact"
-      task_03_rc: 0
-      data_03: "{{ 'SKIPPED' if status_01 == 'SKIPPED' else ('PASS' if status_01 == 'PASS' and status_02 == 'PASS' else 'FAIL') }}"
-      status_03: "{{ 'SKIPPED' if status_01 == 'SKIPPED' else ('PASS' if status_01 == 'PASS' and status_02 == 'PASS' else 'FAIL') }}"
-      details_03: "{{ 'Site policy not defined – overall compliance cannot be determined' if status_01 == 'SKIPPED' else ('Banner is properly configured' if status_01 == 'PASS' and status_02 == 'PASS' else 'Banner is NOT properly configured') }}"
-      cis_result: "{{ 'SKIPPED' if status_01 == 'SKIPPED' else ('PASS' if status_01 == 'PASS' and status_02 == 'PASS' else 'FAIL') }}"
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check for escape sequences and OS ID"
+    task_03_cmd: |
+      grep -q -E \"(\\\\v|\\\\r|\\\\m|\\\\s|$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/\"//g'))\" /etc/issue.net
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if (result_03.rc | default(-1)) != 0 else 'FAIL' }}"
+    details_03: "{{ 'No escape sequences or OS ID found' if (result_03.rc | default(-1)) != 0 else 'Escape sequences or OS ID found: ' + (result_03.stdout | default('') | trim) }}"
+  when: "result_01.stat.exists | default(false)"
 
-  - name: "Req 04 - Store final audit result in cis_result"
-    set_fact:
-      task_04_name: "Store final audit result in cis_result"
-      task_04_cmd: "set_fact"
-      task_04_rc: 0
-      data_04: "{{ cis_result }}"
-      status_04: "PASS"
-      details_04: "cis_result stored as {{ cis_result }}"
+- name: "Req 03 - Set SKIP when file does not exist"
+  set_fact:
+    task_03_name: "Check for escape sequences and OS ID"
+    task_03_cmd: |
+      grep -q -E \"(\\\\v|\\\\r|\\\\m|\\\\s|$(grep '^ID=' /etc/os-release | cut -d= -f2 | sed -e 's/\"//g'))\" /etc/issue.net
+    task_03_rc: -1
+    data_03: "File does not exist"
+    status_03: "SKIP"
+    details_03: "Skipped because /etc/issue.net does not exist"
+  when: "not (result_01.stat.exists | default(false))"
 
-  - name: "Generate audit report"
-    debug:
-      msg:
-      - "AUDIT REPORT — CIS 1.7.3"
-      - "Reference: CIS Benchmark checkpoint 1.7.3"
-      - "REQUIREMENT 01 - {{ req_01 }}:"
-      - "  Task: {{ task_01_name | default('Not recorded') }}"
-      - "  Command: {{ task_01_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_01_rc | default(-1) }}"
-      - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_01 | default('') | trim }}"
-      - ""
-      - "REQUIREMENT 02 - {{ req_02 }}:"
-      - "  Task: {{ task_02_name | default('Not recorded') }}"
-      - "  Command: {{ task_02_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_02_rc | default(-1) }}"
-      - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('') | trim }}"
-      - ""
-      - "REQUIREMENT 03 - {{ req_03 }}:"
-      - "  Task: {{ task_03_name | default('Not recorded') }}"
-      - "  Command: {{ task_03_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_03_rc | default(-1) }}"
-      - "  Data: {{ data_03 | default('') | trim }}"
-      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_03 | default('') | trim }}"
-      - ""
-      - "REQUIREMENT 04 - {{ req_04 }}:"
-      - "  Task: {{ task_04_name | default('Not recorded') }}"
-      - "  Command: {{ task_04_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_04_rc | default(-1) }}"
-      - "  Data: {{ data_04 | default('') | trim }}"
-      - "  Status: {{ status_04 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_04 | default('') | trim }}"
-      - ""
-      - "========================================================"
-      - "OVERALL COMPLIANCE:"
-      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
-      - "========================================================"
+- name: "Req 04 - Summarize overall compliance"
+  set_fact:
+    task_04_name: "Summarize overall compliance"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "{{ 'PASS' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS' and status_03 | trim == 'PASS') else ('SKIP' if not (result_01.stat.exists | default(false)) else 'FAIL') }}"
+    status_04: "{{ 'PASS' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS' and status_03 | trim == 'PASS') else ('SKIP' if not (result_01.stat.exists | default(false)) else 'FAIL') }}"
+    details_04: "{{ 'All checks passed' if (status_01 | trim == 'PASS' and status_02 | trim == 'PASS' and status_03 | trim == 'PASS') else ('File does not exist - audit skipped' if not (result_01.stat.exists | default(false)) else 'File exists but is misconfigured') }}"
 
-  always:
-  - name: "Restore - Check if cleanup marker exists"
-    ansible.builtin.stat:
-      path: "{{ backup_dir }}/cleanup_temp_script"
-    register: cleanup_marker
-    failed_when: false
+- name: "Req 05 - Store final audit result in cis_result"
+  set_fact:
+    cis_result: "{{ status_04 | default('ERROR') | trim }}"
+    task_05_name: "Store final audit result"
+    task_05_cmd: "set_fact cis_result"
+    task_05_rc: 0
+    data_05: "{{ status_04 | default('ERROR') | trim }}"
+    status_05: "{{ status_04 | default('ERROR') | trim }}"
+    details_05: "{{ details_04 | default('Not evaluated') | trim }}"
 
-  - name: "Restore - Remove temporary script"
-    ansible.builtin.file:
-      path: "{{ audit_script }}"
-      state: absent
-    when: "cleanup_marker.stat.exists | default(false) | bool"
-    failed_when: false
-
-  - name: "Restore - Remove cleanup marker"
-    ansible.builtin.file:
-      path: "{{ backup_dir }}/cleanup_temp_script"
-      state: absent
-    failed_when: false
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.7.3"
+    - "Reference: CIS Benchmark checkpoint 1.7.3"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
+    - "========================================================"

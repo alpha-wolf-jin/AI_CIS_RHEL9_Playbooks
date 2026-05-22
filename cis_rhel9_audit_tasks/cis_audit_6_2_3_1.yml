@@ -111,7 +111,7 @@
     status_03: >-
       {{ 'PASS' if (status_01 | default('UNKNOWN') | trim) == 'PASS' and (status_02 | default('UNKNOWN') | trim) == 'PASS'
          else 'FAIL' if (status_01 | default('UNKNOWN') | trim) == 'PASS' and (status_02 | default('UNKNOWN') | trim) != 'PASS'
-         else 'SKIPPED' }}
+         else 'SKIP' }}
     details_03: >-
       {{ 'Both checks passed' if (status_01 | default('UNKNOWN') | trim) == 'PASS' and (status_02 | default('UNKNOWN') | trim) == 'PASS'
          else 'Service active but package not compliant' if (status_01 | default('UNKNOWN') | trim) == 'PASS'

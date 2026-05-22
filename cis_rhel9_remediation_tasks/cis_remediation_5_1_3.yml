@@ -88,7 +88,7 @@
       task_01_cmd: "/bin/bash /tmp/remediate_ssh_keys.sh"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'APPLIED' if (ssh_installed | default(false)) and (result_01.rc | default(-1) == 0) else 'SKIPPED' if not (ssh_installed | default(false)) else 'FAILED' }}"
+      status_01: "{{ 'APPLIED' if (ssh_installed | default(false)) and (result_01.rc | default(-1) == 0) else 'SKIP' if not (ssh_installed | default(false)) else 'FAILED' }}"
       details_01: "{{ 'Script executed successfully' if (ssh_installed | default(false)) and (result_01.rc | default(-1) == 0) else 'Skipped because openssh-server not installed' if not (ssh_installed | default(false)) else 'Script failed' }}"
     tags: [execute]
 
@@ -98,7 +98,7 @@
       task_02_cmd: "/bin/bash /tmp/remediate_ssh_keys.sh"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'PASS' if (ssh_installed | default(false)) and (result_02.rc | default(-1) == 0) and ('No access changes required' in result_02.stdout | default('')) else 'FAIL' if (ssh_installed | default(false)) else 'SKIPPED' }}"
+      status_02: "{{ 'PASS' if (ssh_installed | default(false)) and (result_02.rc | default(-1) == 0) and ('No access changes required' in result_02.stdout | default('')) else 'FAIL' if (ssh_installed | default(false)) else 'SKIP' }}"
       details_02: "{{ 'Verification passed - no changes needed' if (ssh_installed | default(false)) and (result_02.rc | default(-1) == 0) and ('No access changes required' in result_02.stdout | default('')) else 'Verification failed - changes still required' if (ssh_installed | default(false)) else 'Skipped because openssh-server not installed' }}"
     tags: [execute]
 

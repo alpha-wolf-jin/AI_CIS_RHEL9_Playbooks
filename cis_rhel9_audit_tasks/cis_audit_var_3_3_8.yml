@@ -1,6 +1,6 @@
 req_01: "Run the provided audit script to verify Ensure source routed packets are not accepted."
 req_02: "VERIFY: Summarise compliance status for Ensure source routed packets are not accepted. Expected result: PASS if compliant, FAIL otherwise"
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 req_04: "Generate audit report"
 audit_script: "/tmp/cis_3_3_8_audit.sh"
 marker_file: "/tmp/cis_3_3_8_audit_pre_marker"

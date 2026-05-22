@@ -43,7 +43,7 @@
     task_01_cmd: "dpkg -l | grep -i {{ package_name }} || rpm -q {{ package_name }}"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
     data_01: "{{ result_01.stdout | default('') | trim }}"
-    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'SKIPPED' }}"
+    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'SKIP' }}"
     details_01: "{{ ('Package ' + package_name + ' is installed') if result_01.rc | default(-1) == 0 else ('Package ' + package_name + ' not found – authentication checks not applicable') }}"
 
 - name: "Req 02 - Check authentication configuration in {{ config_file }}"
@@ -62,7 +62,7 @@
     task_02_rc: "{{ result_02.rc | default(-1) if result_01.rc | default(1) == 0 else -1 }}"
     data_02: "{{ result_02.stdout | default('') | trim if result_01.rc | default(1) == 0 else '' }}"
     status_02: >-
-      {{ 'SKIPPED' if result_01.rc | default(1) != 0
+      {{ 'SKIP' if result_01.rc | default(1) != 0
          else ('PASS' if result_02.rc | default(1) == 0 and (result_02.stdout | default('') | trim) != ''
                else 'FAIL') }}
     details_02: >-
@@ -73,7 +73,7 @@
 - name: "Req 03 - Summarize overall compliance"
   set_fact:
     status_03: >-
-      {{ 'SKIPPED' if status_01 == 'SKIPPED' or status_02 == 'SKIPPED'
+      {{ 'SKIP' if status_01 == 'SKIP' or status_02 == 'SKIP'
          else ('PASS' if status_01 == 'PASS' and status_02 == 'PASS'
                else 'FAIL') }}
     details_03: >-

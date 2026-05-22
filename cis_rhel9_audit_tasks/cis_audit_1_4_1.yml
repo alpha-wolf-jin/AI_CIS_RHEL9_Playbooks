@@ -79,7 +79,7 @@
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
       status_01: >-
-        {{ 'SKIPPED' if not (grub2_installed | default(false) | bool)
+        {{ 'SKIP' if not (grub2_installed | default(false) | bool)
            else ('PASS' if result_01.rc | default(-1) == 0 else 'FAIL') | trim }}
       details_01: >-
         {{ ('Skipped: grub2-tools package not installed' if not (grub2_installed | default(false) | bool)
@@ -92,13 +92,13 @@
       task_02_rc: "{{ task_01_rc }}"
       data_02: "{{ data_01 }}"
       status_02: >-
-        {{ 'SKIPPED' if status_01 == 'SKIPPED'
+        {{ 'SKIP' if status_01 == 'SKIP'
            else ('PASS' if (data_01 | default('') | trim) | length > 0 and 'GRUB2_PASSWORD=' in data_01 else 'FAIL') | trim }}
 
   - name: "Req 02 - Set compliance details"
     ansible.builtin.set_fact:
       details_02: >-
-        {{ ('Skipped: grub2-tools not installed' if status_01 == 'SKIPPED'
+        {{ ('Skipped: grub2-tools not installed' if status_01 == 'SKIP'
            else ('Compliant: bootloader password is set' if (data_01 | default('') | trim | length > 0) and ('GRUB2_PASSWORD=' in (data_01 | default('') | trim)) else 'Non-compliant: bootloader password not set')) | trim }}
 
   - name: "Req 03 - Store final audit result in cis_result"

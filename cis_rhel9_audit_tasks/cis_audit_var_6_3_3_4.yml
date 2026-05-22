@@ -12,7 +12,7 @@ req_10: "Check running audit rules for clock_settime syscall (32-bit) using comm
 req_11: |
   Check running audit rule for /etc/localtime using command: `auditctl -l | awk '/^ *-w/ &&/\\/etc\\/localtime/ &&/ +-p *wa/ &&(/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'`. Expected result: output includes `-w /etc/localtime -p wa -k time-change`.
 req_12: "Summarize overall compliance status: all on-disk and running audit rules for date/time modification events (adjtimex, settimeofday, clock_settime, /etc/localtime) must match the expected rules with key 'time-change'."
-req_13: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_13: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 
 expected_02: "-a always,exit -F arch=b64 -S adjtimex,settimeofday -k time-change"
 expected_03: "-a always,exit -F arch=b32 -S adjtimex,settimeofday -k time-change"

@@ -48,7 +48,7 @@
     task_01_rc: "{{ pam_result.rc | default(-1) }}"
     data_01: "{{ pam_result.stdout | default('') | trim }}"
     status_01: "{{ 'SKIP' if not (pam_installed | bool) else 'PASS' | trim }}"
-    details_01: "{{ 'PAM is not installed – requirement SKIPPED' if not (pam_installed | bool) else 'PAM is installed' | trim }}"
+    details_01: "{{ 'PAM is not installed – requirement SKIP' if not (pam_installed | bool) else 'PAM is installed' | trim }}"
 
 - name: "Extract PAM version string (only if installed)"
   when: pam_installed
@@ -67,7 +67,7 @@
          else 'PASS' if (_extracted_version | length > 0 and _extracted_version is version('1.5.1-19', '>='))
          else 'FAIL' | trim }}
     details_02: >-
-      {{ 'PAM not installed – version check SKIPPED'
+      {{ 'PAM not installed – version check SKIP'
          if not (pam_installed | bool)
          else 'Version ' + _extracted_version + ' meets requirement (>= pam-1.5.1-19)'
          if (_extracted_version | length > 0 and _extracted_version is version('1.5.1-19', '>='))
@@ -86,7 +86,7 @@
          else 'PASS' if (status_01 == 'PASS' and status_02 == 'PASS')
          else 'FAIL' | trim }}
     details_03: >-
-      {{ 'PAM not installed – overall result SKIPPED'
+      {{ 'PAM not installed – overall result SKIP'
          if not (pam_installed | bool)
          else 'All checks passed'
          if (status_01 == 'PASS' and status_02 == 'PASS')

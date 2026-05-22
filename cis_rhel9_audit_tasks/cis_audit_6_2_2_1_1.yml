@@ -29,7 +29,7 @@
     status_01: "{{ 'NOT_APPLICABLE' if not audit_applicable else ('PASS' if result_01.rc == 0 else 'FAIL') }}"
     details_01: "{{ 'Journald not active, audit not applicable' if not audit_applicable else ('Service active' if result_01.rc == 0 else 'Service inactive') }}"
     data_02: "{{ result_02.stdout | default('') | trim if (result_02 is defined and audit_applicable) else 'N/A' }}"
-    status_02: "{{ 'NOT_APPLICABLE' if not audit_applicable else (('PASS' if result_02.rc == 0 else 'FAIL') if result_02 is defined else 'SKIPPED') }}"
+    status_02: "{{ 'NOT_APPLICABLE' if not audit_applicable else (('PASS' if result_02.rc == 0 else 'FAIL') if result_02 is defined else 'SKIP') }}"
     details_02: "{{ 'Audit not applicable' if not audit_applicable else (('Package installed' if result_02.rc == 0 else 'Package not installed') if result_02 is defined else 'Not checked') }}"
     status_03: "{{ 'NOT_APPLICABLE' if not audit_applicable else ('PASS' if result_01.rc == 0 and (result_02 is defined and result_02.rc == 0) else 'FAIL') }}"
     details_03: "{{ 'Audit not applicable, journald not active' if not audit_applicable else ('Both requirements met' if result_01.rc == 0 and (result_02 is defined and result_02.rc == 0) else 'One or more requirements not met') }}"

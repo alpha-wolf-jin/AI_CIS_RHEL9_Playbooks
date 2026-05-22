@@ -101,8 +101,8 @@
       task_01_name: "Apply audit rules for successful file system mounts"
       task_01_cmd: "printf rules to /etc/audit/rules.d/50-mounts.rules and augenrules --load"
       task_01_rc: "{{ result_01.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
-      data_01: "{{ result_01.stdout | default('SKIPPED - auditd not installed') | trim if auditd_installed | default(false) | bool else 'SKIPPED - auditd not installed' }}"
-      status_01: "{{ 'APPLIED' if (auditd_installed | default(false) | bool) and (result_01.rc | default(-1) == 0) else ('SKIPPED' if not (auditd_installed | default(false) | bool) else 'FAILED') }}"
+      data_01: "{{ result_01.stdout | default('SKIP - auditd not installed') | trim if auditd_installed | default(false) | bool else 'SKIP - auditd not installed' }}"
+      status_01: "{{ 'APPLIED' if (auditd_installed | default(false) | bool) and (result_01.rc | default(-1) == 0) else ('SKIP' if not (auditd_installed | default(false) | bool) else 'FAILED') }}"
       details_01: "{{ 'Audit rules written and loaded successfully' if (auditd_installed | default(false) | bool) and (result_01.rc | default(-1) == 0) else ('auditd package not installed - remediation skipped' if not (auditd_installed | default(false) | bool) else 'Failed to apply audit rules: ' + result_01.stderr | default('unknown error') | trim) }}"
     tags: [execute]
 
@@ -111,8 +111,8 @@
       task_02_name: "Verify successful file system mounts audit rule is active"
       task_02_cmd: "auditctl -l | grep -E 'always,exit.*mount.*key=mounts'"
       task_02_rc: "{{ result_02.rc | default(-1) if auditd_installed | default(false) | bool else -1 }}"
-      data_02: "{{ result_02.stdout | default('SKIPPED - auditd not installed') | trim if auditd_installed | default(false) | bool else 'SKIPPED - auditd not installed' }}"
-      status_02: "{{ 'APPLIED' if (auditd_installed | default(false) | bool) and (result_02.rc | default(-1) == 0) and ('VERIFY_FAILED' not in result_02.stdout | default('')) else ('SKIPPED' if not (auditd_installed | default(false) | bool) else 'FAILED') }}"
+      data_02: "{{ result_02.stdout | default('SKIP - auditd not installed') | trim if auditd_installed | default(false) | bool else 'SKIP - auditd not installed' }}"
+      status_02: "{{ 'APPLIED' if (auditd_installed | default(false) | bool) and (result_02.rc | default(-1) == 0) and ('VERIFY_FAILED' not in result_02.stdout | default('')) else ('SKIP' if not (auditd_installed | default(false) | bool) else 'FAILED') }}"
       details_02: "{{ 'Audit rule for mounts is active' if (auditd_installed | default(false) | bool) and (result_02.rc | default(-1) == 0) and ('VERIFY_FAILED' not in result_02.stdout | default('')) else ('auditd package not installed - verification skipped' if not (auditd_installed | default(false) | bool) else 'Audit rule not found or verification failed') }}"
     tags: [execute]
 
@@ -121,7 +121,7 @@
       cis_result: >-
         {%- if status_02 == 'APPLIED' -%}PASS
         {%- elif status_02 == 'FAILED' -%}FAIL
-        {%- elif status_02 == 'SKIPPED' -%}SKIP
+        {%- elif status_02 == 'SKIP' -%}SKIP
         {%- else -%}ERROR
         {%- endif -%}
     tags: [execute]

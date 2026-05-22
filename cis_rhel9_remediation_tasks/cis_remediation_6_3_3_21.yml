@@ -126,7 +126,7 @@
       task_01_cmd: "augenrules --load"
       task_01_rc: "{{ result_01.rc | default(-1) }}"
       data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'SKIPPED' if playbook_skipped else ('APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED') }}"
+      status_01: "{{ 'SKIP' if playbook_skipped else ('APPLIED' if result_01.rc | default(-1) == 0 else 'FAILED') }}"
       details_01: "{{ 'auditd not installed' if playbook_skipped else ('Rules merged and loaded successfully' if result_01.rc | default(-1) == 0 else 'Failed to merge and load rules') }}"
     tags: [execute]
 
@@ -149,7 +149,7 @@
       task_02_cmd: "augenrules --check"
       task_02_rc: "{{ result_02.rc | default(-1) }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if playbook_skipped else ('APPLIED' if 'MISMATCH' not in result_02.stdout | default('') else 'FAILED') }}"
+      status_02: "{{ 'SKIP' if playbook_skipped else ('APPLIED' if 'MISMATCH' not in result_02.stdout | default('') else 'FAILED') }}"
       details_02: "{{ 'auditd not installed' if playbook_skipped else ('Running and on-disk configuration match' if 'MISMATCH' not in result_02.stdout | default('') else 'Running and on-disk configuration do not match') }}"
     tags: [execute]
 

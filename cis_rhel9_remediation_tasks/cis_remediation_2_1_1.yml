@@ -105,7 +105,7 @@
       task_01_cmd: "systemctl stop autofs.service"
       task_01_rc: "{{ stop_result.rc | default(-1) if autofs_installed else -1 }}"
       data_01: "{{ stop_result.stdout | default('') | trim if autofs_installed else 'Skipped: package not installed' }}"
-      status_01: "{{ 'APPLIED' if autofs_installed and not stop_result.failed else ('SKIPPED' if not autofs_installed else 'FAILED') }}"
+      status_01: "{{ 'APPLIED' if autofs_installed and not stop_result.failed else ('SKIP' if not autofs_installed else 'FAILED') }}"
       details_01: "{{ 'Service stopped' if autofs_installed and stop_result.changed else ('Already stopped' if autofs_installed else 'Not applicable') }}"
     tags: [execute]
 
@@ -115,7 +115,7 @@
       task_02_cmd: "dnf remove autofs"
       task_02_rc: "{{ remove_result.rc | default(-1) if autofs_installed else -1 }}"
       data_02: "{{ remove_result.stdout | default('') | trim if autofs_installed else 'Skipped: package not installed' }}"
-      status_02: "{{ 'APPLIED' if autofs_installed and remove_result is not skipped and remove_result.rc == 0 else ('SKIPPED' if not autofs_installed else 'FAILED') }}"
+      status_02: "{{ 'APPLIED' if autofs_installed and remove_result is not skipped and remove_result.rc == 0 else ('SKIP' if not autofs_installed else 'FAILED') }}"
       details_02: "{{ 'Package removed' if autofs_installed and remove_result.rc == 0 else ('Removal failed or skipped' if autofs_installed else 'Not applicable') }}"
     tags: [execute]
 
@@ -125,7 +125,7 @@
       task_03_cmd: "systemctl mask autofs.service"
       task_03_rc: "{{ mask_result.rc | default(-1) if (autofs_installed and remove_result.rc | default(0) != 0) else -1 }}"
       data_03: "{{ mask_result.stdout | default('') | trim if (autofs_installed and remove_result.rc | default(0) != 0) else ('Skipped: package removed successfully' if autofs_installed else 'Skipped: package not installed') }}"
-      status_03: "{{ 'APPLIED' if autofs_installed and remove_result.rc | default(0) != 0 and mask_result is not skipped and not mask_result.failed else ('SKIPPED' if not autofs_installed or (autofs_installed and remove_result.rc | default(0) == 0) else 'FAILED') }}"
+      status_03: "{{ 'APPLIED' if autofs_installed and remove_result.rc | default(0) != 0 and mask_result is not skipped and not mask_result.failed else ('SKIP' if not autofs_installed or (autofs_installed and remove_result.rc | default(0) == 0) else 'FAILED') }}"
       details_03: "{{ 'Service masked' if (autofs_installed and remove_result.rc | default(0) != 0 and mask_result is not skipped and mask_result.changed) else ('Already masked' if (autofs_installed and remove_result.rc | default(0) != 0 and mask_result is not skipped and not mask_result.changed) else ('Not needed' if autofs_installed else 'Not applicable')) }}"
     tags: [execute]
 
@@ -135,7 +135,7 @@
       task_04_cmd: "systemctl is-active autofs.service"
       task_04_rc: "{{ verify_result.rc | default(-1) if autofs_installed else -1 }}"
       data_04: "{{ verify_result.stdout | default('') | trim if autofs_installed else 'Skipped: package not installed' }}"
-      status_04: "{{ 'APPLIED' if autofs_installed and (verify_result.stdout | default('') | lower == 'inactive' or verify_result.rc | default(0) != 0) else ('SKIPPED' if not autofs_installed else 'FAILED') }}"
+      status_04: "{{ 'APPLIED' if autofs_installed and (verify_result.stdout | default('') | lower == 'inactive' or verify_result.rc | default(0) != 0) else ('SKIP' if not autofs_installed else 'FAILED') }}"
       details_04: "{{ 'Service is inactive (dead) and masked or not found' if autofs_installed and (verify_result.stdout | default('') | lower == 'inactive' or verify_result.rc | default(0) != 0) else ('Service is still active' if autofs_installed else 'Skipped: package not installed') }}"
     tags: [execute]
 

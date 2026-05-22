@@ -1,10 +1,7 @@
 playbook_name: "cis_1_2_1_2"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-dnf_conf: "/etc/dnf/dnf.conf"
-repo_dir: "/etc/yum.repos.d/"
-req_01: |
-  Apply global gpgcheck activation by editing /etc/dnf/dnf.conf using command: `sed -i 's/^gpgcheck\\s*=\\s*.*/gpgcheck=1/' /etc/dnf/dnf.conf`. Expected result: gpgcheck is set to 1 in the main configuration file.
-req_02: |
-  Apply gpgcheck activation in all repository files under /etc/yum.repos.d/ using command: `find /etc/yum.repos.d/ -name \"*.repo\" -exec sed -i 's/^gpgcheck\\s*=\\s*.*/gpgcheck=1/' {} \\;`. Expected result: All gpgcheck directives in .repo files are set to 1.
-req_03: |
-  Verify that gpgcheck is globally activated using command: `grep -r '^gpgcheck\\s*=' /etc/dnf/dnf.conf /etc/yum.repos.d/*.repo | grep -v 'gpgcheck=1'`. Expected result: No output (all instances show gpgcheck=1).
+req_01: "Check if dnf is installed using command: `rpm -q dnf`"
+req_02: "Set gpgcheck=1 in /etc/dnf/dnf.conf"
+req_03: "Set gpgcheck=1 in all .repo files under /etc/yum.repos.d/"
+req_04: "Verify gpgcheck=1 globally"
+req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

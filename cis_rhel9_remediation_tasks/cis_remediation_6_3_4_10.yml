@@ -84,7 +84,7 @@
       task_02_cmd: "chgrp root {{ audit_tools | join(' ') }}"
       task_02_rc: "{{ 0 if not (result_02 is failed) else 1 }}"
       data_02: "{{ audit_tools | join(', ') }}"
-      status_02: "{{ 'APPLIED' if not (result_02 is failed) and (result_01.rc | default(-1)) == 0 else ('SKIPPED' if (result_01.rc | default(-1)) != 0 else 'FAIL') }}"
+      status_02: "{{ 'APPLIED' if not (result_02 is failed) and (result_01.rc | default(-1)) == 0 else ('SKIP' if (result_01.rc | default(-1)) != 0 else 'FAIL') }}"
       details_02: "{{ 'Group ownership changed to root for all audit tools' if not (result_02 is failed) and (result_01.rc | default(-1)) == 0 else ('Skipped - prerequisite check failed' if (result_01.rc | default(-1)) != 0 else 'Failed to change group ownership') }}"
     tags: [execute]
 
@@ -104,7 +104,7 @@
       task_03_cmd: "stat -c '%g %n' {{ audit_tools | join(' ') }} | awk '$1 != 0 {exit 1}'"
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'PASS' if (result_03.rc | default(-1)) == 0 else ('SKIPPED' if (result_01.rc | default(-1)) != 0 else 'FAIL') }}"
+      status_03: "{{ 'PASS' if (result_03.rc | default(-1)) == 0 else ('SKIP' if (result_01.rc | default(-1)) != 0 else 'FAIL') }}"
       details_03: "{{ 'All audit tools have group ID 0 (root)' if (result_03.rc | default(-1)) == 0 else ('Skipped - prerequisite check failed' if (result_01.rc | default(-1)) != 0 else 'Verification failed - some tools do not have root group ownership') }}"
     tags: [execute]
 

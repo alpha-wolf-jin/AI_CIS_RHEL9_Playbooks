@@ -44,7 +44,7 @@
       task_02_cmd: "dnf install -y audit audit-libs"
       task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
       data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else 'Skipped - no package manager' }}"
-      status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else ('SKIPPED' if result_02 is not defined else 'FAIL') }}"
+      status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else ('SKIP' if result_02 is not defined else 'FAIL') }}"
       details_02: "{{ 'Packages installed successfully' if (result_02.rc | default(-1)) == 0 else ('Skipped - no package manager available' if result_02 is not defined else 'Package installation failed') }}"
     tags: [execute]
 

@@ -31,7 +31,7 @@
     data_01: "{{ result_01.stdout | default('') | trim if result_01 is defined else 'N/A' }}"
     status_01: >-
       {%- if not (prerequisite_met | default(false)) -%}
-        SKIPPED
+        SKIP
       {%- elif result_01.rc | default(-1) == 0 -%}
         PASS
       {%- else -%}

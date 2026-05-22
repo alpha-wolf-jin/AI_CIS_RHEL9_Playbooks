@@ -66,7 +66,7 @@
       task_02_cmd: "dnf install -y systemd-journal-remote"
       task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
       data_02: "{{ 'Package installed' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else 'Installation skipped or failed' }}"
-      status_02: "{{ 'SKIPPED' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if (result_01.rc | default(-1)) != 0 else ('PASS' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else 'FAIL') }}"
       details_02: "{{ 'dnf not available, skipped' if (result_01.rc | default(-1)) != 0 else ('Package installed successfully' if (result_02 is defined and (result_02.rc | default(-1)) == 0) else 'Package installation failed') }}"
     tags: [execute]
 

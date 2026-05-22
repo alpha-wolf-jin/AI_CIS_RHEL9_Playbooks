@@ -5,4 +5,4 @@ req_03: |
 req_04: |
   Check if EtM is disabled for SSH in system-wide crypto policy using command: `grep -Psi -- '^\\h*etm\\b' /etc/crypto-policies/state/CURRENT.pol`. Expected result: output includes 'etm@libssh = DISABLE_ETM', 'etm@openssh-client = DISABLE_ETM', 'etm@openssh-server = DISABLE_ETM', or 'etm = DISABLE_ETM'.
 req_05: "Summarize overall compliance status: if all previous checks pass, the system is compliant with disabling EtM for SSH; otherwise, it is non-compliant."
-req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

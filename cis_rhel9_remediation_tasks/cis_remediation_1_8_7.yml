@@ -8,120 +8,230 @@
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Check if /etc/dconf/db exists"
-  ansible.builtin.stat:
-    path: /etc/dconf/db
-  register: _dconf_db_stat
-  tags: [snapshot]
-- name: "Snapshot - Backup /etc/dconf/db tree"
-  ansible.builtin.shell: cp -a /etc/dconf/db "{{ backup_dir }}/dconf_db_backup"
+- name: "Snapshot - Record file list in dconf db locks directories"
+  ansible.builtin.shell: find /etc/dconf/db/ -type f -path '*/locks/*' 2>/dev/null || true
   args:
     executable: /bin/bash
-  when: _dconf_db_stat.stat.exists and _dconf_db_stat.stat.isdir
+  register: _snap_dconf_locks_files
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Save dconf locks file list"
+  ansible.builtin.copy:
+    content: "{{ _snap_dconf_locks_files.stdout | default('') }}"
+    dest: "{{ backup_dir }}/dconf_locks.filelist"
+  tags: [snapshot]
+- name: "Snapshot - Mark remediation script as absent"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/remediate_script.absent"
   tags: [snapshot]
 
 - block:
-        # === EXECUTE ===
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
 
-# Check GDM packages
-  - name: "Pre - Gather installed package facts"
+  - name: "Req 01 - Check if GDM is installed"
     ansible.builtin.package_facts:
       manager: auto
     failed_when: false
     tags: [execute]
 
-  - name: "Pre - Determine if GDM is installed"
+  - name: "Req 01 - Set GDM installation fact"
     ansible.builtin.set_fact:
       gdm_installed: "{{ 'gdm' in ansible_facts.packages or 'gdm3' in ansible_facts.packages }}"
     tags: [execute]
 
-# Requirement 1 – deploy and run remediation script
-  - name: "Req 1 - Deploy remediation script"
+  - name: "Req 01 - Deploy remediation script"
     ansible.builtin.copy:
-      content: "{{ script_content }}"
-      dest: "/tmp/cis_1_8_7_remediate.sh"
+      dest: "{{ remediate_script }}"
       mode: '0700'
-    when: gdm_installed | default(false)
+      content: "{{ remediate_script_content }}"
+    when: gdm_installed | default(false) | bool
     failed_when: false
     tags: [execute]
 
-  - name: "Req 1 - Run remediation script to lock automount and automount-open"
-    ansible.builtin.shell: /bin/bash /tmp/cis_1_8_7_remediate.sh
+  - name: "Req 01 - Execute remediation script"
+    ansible.builtin.shell: /bin/bash "{{ remediate_script }}"
     args:
       executable: /bin/bash
-    register: remediation_result
+    register: result_01
+    when: gdm_installed | default(false) | bool
     failed_when: false
-    when: gdm_installed | default(false)
+    changed_when: false
     tags: [execute]
 
-  - name: "Req 1 - Remove remediation script"
+  - name: "Req 01 - Remove temporary script"
     ansible.builtin.file:
-      path: /tmp/cis_1_8_7_remediate.sh
+      path: "{{ remediate_script }}"
       state: absent
     failed_when: false
     tags: [execute]
 
-# Requirement 2 – verify locks
-  - name: "Req 2 - Verify automount and automount-open are locked"
+  - name: "Req 01 - Store requirement 01 details"
+    ansible.builtin.set_fact:
+      task_01_name: "Execute remediation script to lock automount and automount-open"
+      task_01_cmd: "/bin/bash {{ remediate_script }}"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: >-
+        {%- if not (gdm_installed | default(false) | bool) -%}
+          SKIP
+        {%- elif result_01.rc | default(-1) == 0 -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_01: >-
+        {%- if not (gdm_installed | default(false) | bool) -%}
+          GDM not installed — remediation not applicable
+        {%- elif result_01.rc | default(-1) == 0 -%}
+          Remediation script executed successfully
+        {%- else -%}
+          Remediation script failed with exit code {{ result_01.rc | default(-1) }}
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 02 - Verify automount and automount-open are locked"
     ansible.builtin.shell: |
-      set -o pipefail
-      automount_locked=0
-      automount_open_locked=0
-      if grep -Pril '^\h*/org/gnome/desktop/media-handling/automount\b' /etc/dconf/db/*/locks/ >/dev/null 2>&1; then automount_locked=1; fi
-      if grep -Pril '^\h*/org/gnome/desktop/media-handling/automount-open\b' /etc/dconf/db/*/locks/ >/dev/null 2>&1; then automount_open_locked=1; fi
-      if [ $automount_locked -eq 1 ] && [ $automount_open_locked -eq 1 ]; then echo "PASS"; else echo "FAIL"; fi
+      l_kfd="/etc/dconf/db/$(grep -Psril '^\h*automount\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d"
+      l_kfd2="/etc/dconf/db/$(grep -Psril '^\h*automount-open\b' /etc/dconf/db/*/ | awk -F'/' '{split($(NF-1),a,".");print a[1]}').d"
+      automount_locked="NOT_LOCKED"
+      automount_open_locked="NOT_LOCKED"
+      if [ -d "$l_kfd" ]; then
+        if grep -Priq '^\h*/org/gnome/desktop/media-handling/automount\b' "$l_kfd/locks/" 2>/dev/null; then
+          automount_locked="LOCKED"
+        fi
+      fi
+      if [ -d "$l_kfd2" ]; then
+        if grep -Priq '^\h*/org/gnome/desktop/media-handling/automount-open\b' "$l_kfd2/locks/" 2>/dev/null; then
+          automount_open_locked="LOCKED"
+        fi
+      fi
+      echo "automount: $automount_locked"
+      echo "automount-open: $automount_open_locked"
     args:
       executable: /bin/bash
-    register: verify_result
+    register: result_02
+    when: gdm_installed | default(false) | bool
     failed_when: false
     changed_when: false
-    when: gdm_installed | default(false)
-    tags: [execute, verify]
+    tags: [execute]
 
-# Requirement 3 – report (always runs, handles skipped case)
+  - name: "Req 02 - Store requirement 02 details"
+    ansible.builtin.set_fact:
+      task_02_name: "Verify automount and automount-open are locked in dconf locks directory"
+      task_02_cmd: "grep -Priq in /etc/dconf/db/*/locks/"
+      task_02_rc: "{{ result_02.rc | default(-1) }}"
+      data_02: "{{ result_02.stdout | default('') | trim }}"
+      status_02: >-
+        {%- if not (gdm_installed | default(false) | bool) -%}
+          SKIP
+        {%- elif 'automount: LOCKED' in result_02.stdout | default('') and 'automount-open: LOCKED' in result_02.stdout | default('') -%}
+          PASS
+        {%- else -%}
+          FAIL
+        {%- endif -%}
+      details_02: >-
+        {%- if not (gdm_installed | default(false) | bool) -%}
+          GDM not installed — verification not applicable
+        {%- elif 'automount: LOCKED' in result_02.stdout | default('') and 'automount-open: LOCKED' in result_02.stdout | default('') -%}
+          Both automount and automount-open are locked
+        {%- else -%}
+          One or both settings are not locked
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req 03 - Store final remediation result in cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    tags: [execute]
+
   - name: "Generate remediation report"
     ansible.builtin.debug:
       msg:
       - "REMEDIATION REPORT — CIS 1.8.7"
       - "Reference: CIS Benchmark checkpoint 1.8.7"
       - ""
-      - "REQUIREMENT 01 — Run provided remediation script to lock automount and automount-open for GDM:"
-      - "  Task: Run remediation script"
-      - "  Command: /bin/bash /tmp/cis_1_8_7_remediate.sh"
-      - "  Exit code: {{ (remediation_result | default({})).rc | default(-1) }}"
-      - "  Data: {{ (remediation_result | default({})).stdout | default('') | trim }}"
-      - "  Status: {{ 'SKIPPED' if not (gdm_installed | default(false)) else 'APPLIED' if (remediation_result | default({})).rc | default(-1) == 0 else 'FAILED' }}"
-      - "  Details: {{ 'Script executed successfully' if (remediation_result | default({})).rc | default(-1) == 0 else 'Script failed or skipped' if gdm_installed | default(false) else 'GDM not installed' }}"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 02 — Verify automount and automount-open are locked:"
-      - "  Task: Verify dconf locks"
-      - "  Command: grep checks for automount and automount-open lock entries"
-      - "  Exit code: {{ (verify_result | default({})).rc | default(-1) }}"
-      - "  Data: {{ (verify_result | default({})).stdout | default('') | trim }}"
-      - "  Status: {{ 'SKIPPED' if not (gdm_installed | default(false)) else 'PASS' if (verify_result | default({})).stdout | default('') | trim == 'PASS' else 'FAIL' }}"
-      - "  Details: {{ 'Locks verified' if (verify_result | default({})).stdout | default('') | trim == 'PASS' else 'Locks missing or GDM not installed' if gdm_installed | default(false) else 'GDM not installed' }}"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ 'SUCCESS' if (gdm_installed | default(false) and (verify_result | default({})).stdout | default('') | trim == 'PASS') else 'SKIPPED (GDM not installed)' if not (gdm_installed | default(false)) else 'INCOMPLETE' }}"
-      - "  Details: {{ 'CIS 1.8.7 remediation applied and verified' if (gdm_installed | default(false) and (verify_result | default({})).stdout | default('') | trim == 'PASS') else 'Remediation could not be confirmed or GDM not installed' }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
-# === RESTORE ===
-  - name: "Restore - Check if backup of /etc/dconf/db exists"
-    ansible.builtin.stat:
-      path: "{{ backup_dir }}/dconf_db_backup"
-    register: _restore_backup_stat
+  - name: "Restore - Read original dconf locks file list"
+    ansible.builtin.slurp:
+      src: "{{ backup_dir }}/dconf_locks.filelist"
+    register: _restore_dconf_locks_filelist
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Overwrite /etc/dconf/db with original tree"
-    ansible.builtin.shell: rsync -a --delete "{{ backup_dir }}/dconf_db_backup/" /etc/dconf/db/
+  - name: "Restore - Find current files in dconf locks directories"
+    ansible.builtin.shell: find /etc/dconf/db/ -type f -path '*/locks/*' 2>/dev/null || true
     args:
       executable: /bin/bash
-    when: _restore_backup_stat.stat.exists | default(false)
+    register: _restore_dconf_locks_current
+    changed_when: false
+    failed_when: false
+    when: _restore_dconf_locks_filelist.content is defined
+    tags: [restore]
+
+  - name: "Restore - Delete lock files added during execution"
+    ansible.builtin.file:
+      path: "{{ item }}"
+      state: absent
+    loop: >-
+      {{
+        (_restore_dconf_locks_current.stdout_lines | default([]))
+        | difference((_restore_dconf_locks_filelist.content | default('') | b64decode).splitlines())
+      }}
+    when:
+    - _restore_dconf_locks_filelist.content is defined
+    - _restore_dconf_locks_current.stdout_lines is defined
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if remediation script absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/remediate_script.absent"
+    register: _restore_script_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Remove remediation script if it was absent before"
+    ansible.builtin.file:
+      path: "{{ remediate_script }}"
+      state: absent
+    when: _restore_script_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 

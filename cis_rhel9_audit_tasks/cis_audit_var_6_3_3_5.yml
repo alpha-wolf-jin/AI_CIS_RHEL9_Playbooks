@@ -32,7 +32,7 @@ req_18: |
 req_19: |
   Check loaded audit rules for file watch on /etc/NetworkManager using command: `auditctl -l | awk ''/^ *-w/ && (/etc\/issue/ || /etc\/issue.net/ || /etc\/hosts/ || /etc\/sysconfig\/network/ || /etc\/hostname/ || /etc\/NetworkManager/) && /[ \t]+-p *wa/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)''`. Expected result: `-w /etc/NetworkManager -p wa -k system-locale`
 req_20: "Summarize overall compliance status: all on-disk and loaded audit rules match expected output for checkpoint 6.3.3.5."
-req_21: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_21: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 
 expected_02: "-a always,exit -F arch=b64 -S sethostname,setdomainname -k system-locale"
 expected_03: "-a always,exit -F arch=b32 -S sethostname,setdomainname -k system-locale"

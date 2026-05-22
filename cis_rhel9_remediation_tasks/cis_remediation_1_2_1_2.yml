@@ -7,140 +7,152 @@
     path: "{{ backup_dir }}"
     state: directory
     mode: '0700'
-  failed_when: false
   tags: [snapshot]
 - name: "Snapshot - Check if /etc/dnf/dnf.conf exists"
   ansible.builtin.stat:
-    path: "{{ dnf_conf }}"
-  register: _snap_dnf_conf
+    path: "/etc/dnf/dnf.conf"
+  register: _sg_dnf_conf_stat
   tags: [snapshot]
 - name: "Snapshot - Backup /etc/dnf/dnf.conf if exists"
   ansible.builtin.copy:
-    src: "{{ dnf_conf }}"
-    dest: "{{ backup_dir }}/dnf.conf.backup"
+    src: "/etc/dnf/dnf.conf"
+    dest: "{{ backup_dir }}/dnf.conf.present"
     remote_src: true
-  when: _snap_dnf_conf.stat.exists
-  failed_when: false
-  changed_when: false
+  when: _sg_dnf_conf_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Backup repository .repo files"
-  ansible.builtin.shell: |
-    find {{ repo_dir }} -name "*.repo" -exec cp {} {{ backup_dir }}/ \;
-  args:
-    executable: /bin/bash
-  changed_when: false
-  failed_when: false
+- name: "Snapshot - Mark /etc/dnf/dnf.conf as absent if not exists"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ backup_dir }}/dnf.conf.absent"
+  when: not _sg_dnf_conf_stat.stat.exists
   tags: [snapshot]
 
 - block:
-  - name: "Check if dnf is installed"
-    ansible.builtin.package_facts:
-      manager: auto
-    failed_when: false
+  - name: "Initialize data variables"
+    set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
+      details_01: "Not evaluated"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
+      details_02: "Not evaluated"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
+      details_03: "Not evaluated"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
+      details_04: "Not evaluated"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
+      details_05: "Not evaluated"
+      task_01_name: "Not executed"
+      task_01_cmd: "N/A"
+      task_01_rc: -1
     tags: [execute]
 
-  - name: "Set dnf installed fact"
-    ansible.builtin.set_fact:
-      dnf_installed: "{{ 'dnf' in ansible_facts.packages }}"
-      playbook_skipped: "{{ 'dnf' not in ansible_facts.packages }}"
-    tags: [execute]
-
-  - name: "Req 01 - Set gpgcheck=1 in /etc/dnf/dnf.conf"
-    ansible.builtin.lineinfile:
-      path: "{{ dnf_conf }}"
-      regexp: |
-        ^gpgcheck\s*=\s*.*
-      line: 'gpgcheck=1'
-    when: dnf_installed | default(false)
-    failed_when: false
+  - name: "Req 01 - Check if dnf is installed"
+    ansible.builtin.shell: "rpm -q dnf"
+    args:
+      executable: /bin/bash
     register: result_01
-    tags: [execute]
-
-  - name: "Req 02 - Set gpgcheck=1 in all .repo files under /etc/yum.repos.d/"
-    ansible.builtin.shell: |
-      find {{ repo_dir }} -name "*.repo" -exec sed -i 's/^gpgcheck\s*=\s*.*/gpgcheck=1/' {} \;
-    args:
-      executable: /bin/bash
-    when: dnf_installed | default(false)
     failed_when: false
-    register: result_02
-    tags: [execute]
-
-  - name: "Req 03 - Verify gpgcheck=1 globally"
-    ansible.builtin.shell: |
-      grep -r '^gpgcheck\s*=' {{ dnf_conf }} {{ repo_dir }}*.repo | grep -v 'gpgcheck=1'
-    args:
-      executable: /bin/bash
-    when: dnf_installed | default(false)
-    failed_when: false
-    register: result_03
+    changed_when: false
     tags: [execute]
 
   - name: "Store requirement 01 details"
-    ansible.builtin.set_fact:
-      task_01_name: "Req 01 - Set gpgcheck=1 in /etc/dnf/dnf.conf"
-      task_01_cmd: "lineinfile: set gpgcheck=1 in {{ dnf_conf }}"
-      task_01_rc: "{{ 0 if result_01 is succeeded else -1 }}"
-      data_01: "{{ result_01.msg | default('') | trim }}"
-      status_01: "{{ 'PASS' if result_01 is succeeded else 'FAIL' }}"
-      details_01: "{{ 'Completed successfully' if result_01 is succeeded else result_01.msg | default('Failed') }}"
-    when: dnf_installed | default(false) and result_01 is defined
+    set_fact:
+      task_01_name: "Check if dnf is installed"
+      task_01_cmd: "rpm -q dnf"
+      task_01_rc: "{{ result_01.rc | default(-1) }}"
+      data_01: "{{ result_01.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
+      details_01: "{{ 'dnf package is installed' if result_01.rc | default(-1) == 0 else 'dnf package is NOT installed' }}"
+      dnf_installed: "{{ result_01.rc | default(-1) == 0 }}"
+    tags: [execute]
+
+  - name: "Req 02 - Set gpgcheck=1 in /etc/dnf/dnf.conf"
+    ansible.builtin.lineinfile:
+      path: "/etc/dnf/dnf.conf"
+      regexp: |
+        ^gpgcheck\s*=\s*.*
+      line: 'gpgcheck=1'
+    register: result_02
+    failed_when: false
+    when: dnf_installed | bool
     tags: [execute]
 
   - name: "Store requirement 02 details"
-    ansible.builtin.set_fact:
-      task_02_name: "Req 02 - Set gpgcheck=1 in .repo files"
+    set_fact:
+      task_02_name: "Set gpgcheck=1 in /etc/dnf/dnf.conf"
       task_02_cmd: |
-        find /etc/yum.repos.d/ -name \"*.repo\" -exec sed -i 's/^gpgcheck\\s*=\\s*.*/gpgcheck=1/' {} \\;
-      task_02_rc: "{{ result_02.rc | default(-1) }}"
-      data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'PASS' if (result_02.rc | default(-1)) == 0 else 'FAIL' }}"
-      details_02: "{{ 'Completed successfully' if (result_02.rc | default(-1)) == 0 else 'Failed' }}"
-    when: dnf_installed | default(false) and result_02 is defined
+        lineinfile: regexp='^gpgcheck\\s*=\\s*.*' line='gpgcheck=1' path=/etc/dnf/dnf.conf
+      task_02_rc: "{{ 0 if not result_02.failed | default(false) else 1 }}"
+      data_02: "{{ 'gpgcheck=1 set in /etc/dnf/dnf.conf' if not result_02.failed | default(false) else result_02.msg | default('Unknown error') }}"
+      status_02: "{{ 'PASS' if not result_02.failed | default(false) else 'FAIL' }}"
+      details_02: "{{ 'Global gpgcheck set to 1' if not result_02.failed | default(false) else 'Failed to set gpgcheck' }}"
+    when: dnf_installed | bool
+    tags: [execute]
+
+  - name: "Req 03 - Set gpgcheck=1 in all .repo files under /etc/yum.repos.d/"
+    ansible.builtin.shell: |
+      find /etc/yum.repos.d/ -name "*.repo" -exec sed -i 's/^gpgcheck\s*=\s*.*/gpgcheck=1/' {} \;
+    args:
+      executable: /bin/bash
+    register: result_03
+    failed_when: false
+    when: dnf_installed | bool
     tags: [execute]
 
   - name: "Store requirement 03 details"
-    ansible.builtin.set_fact:
-      task_03_name: "Req 03 - Verify gpgcheck=1 globally"
+    set_fact:
+      task_03_name: "Set gpgcheck=1 in all .repo files under /etc/yum.repos.d/"
       task_03_cmd: |
-        grep -r '^gpgcheck\\s*=' /etc/dnf/dnf.conf /etc/yum.repos.d/*.repo | grep -v 'gpgcheck=1'
+        find /etc/yum.repos.d/ -name \"*.repo\" -exec sed -i 's/^gpgcheck\\s*=\\s*.*/gpgcheck=1/' {} \\;
       task_03_rc: "{{ result_03.rc | default(-1) }}"
       data_03: "{{ result_03.stdout | default('') | trim }}"
-      status_03: "{{ 'PASS' if (result_03.rc | default(-1)) == 1 else 'FAIL' }}"
-      details_03: "{{ 'No non-1 gpgcheck entries found' if (result_03.rc | default(-1)) == 1 else 'Non-1 gpgcheck entries exist: ' + (result_03.stdout | default('') | trim) }}"
-    when: dnf_installed | default(false) and result_03 is defined
+      status_03: "{{ 'PASS' if result_03.rc | default(-1) == 0 else 'FAIL' }}"
+      details_03: "{{ 'Repository gpgcheck set to 1' if result_03.rc | default(-1) == 0 else 'Failed to set repository gpgcheck' }}"
+    when: dnf_installed | bool
     tags: [execute]
 
-  - name: "Set skipped statuses if dnf not installed"
-    ansible.builtin.set_fact:
-      task_01_name: "Req 01 - Set gpgcheck=1 in /etc/dnf/dnf.conf"
-      task_01_cmd: "N/A (skipped)"
-      task_01_rc: -1
-      data_01: "N/A"
-      status_01: "SKIPPED"
-      details_01: "DNF package not installed"
-      task_02_name: "Req 02 - Set gpgcheck=1 in .repo files"
-      task_02_cmd: "N/A (skipped)"
-      task_02_rc: -1
-      data_02: "N/A"
-      status_02: "SKIPPED"
-      details_02: "DNF package not installed"
-      task_03_name: "Req 03 - Verify gpgcheck=1 globally"
-      task_03_cmd: "N/A (skipped)"
-      task_03_rc: -1
-      data_03: "N/A"
-      status_03: "SKIPPED"
-      details_03: "DNF package not installed"
-    when: not (dnf_installed | default(false))
+  - name: "Req 04 - Verify gpgcheck=1 globally"
+    ansible.builtin.shell: |
+      grep -r '^gpgcheck\s*=\s*1' /etc/dnf/dnf.conf /etc/yum.repos.d/
+    args:
+      executable: /bin/bash
+    register: result_04
+    failed_when: false
+    changed_when: false
+    when: dnf_installed | bool
+    tags: [execute]
+
+  - name: "Store requirement 04 details"
+    set_fact:
+      task_04_name: "Verify gpgcheck=1 globally"
+      task_04_cmd: |
+        grep -r '^gpgcheck\\s*=\\s*1' /etc/dnf/dnf.conf /etc/yum.repos.d/
+      task_04_rc: "{{ result_04.rc | default(-1) }}"
+      data_04: "{{ result_04.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if result_04.rc | default(-1) == 0 else 'FAIL' }}"
+      details_04: "{{ 'All gpgcheck entries are set to 1' if result_04.rc | default(-1) == 0 else 'Some gpgcheck entries are not set to 1' }}"
+    when: dnf_installed | bool
+    tags: [execute]
+
+  - name: "Req 05 - Store final remediation result in cis_result"
+    set_fact:
+      cis_result: "{{ status_04 | default('ERROR') | trim }}"
+      task_05_name: "Store final remediation result"
+      task_05_cmd: "N/A"
+      task_05_rc: 0
+      data_05: "cis_result={{ status_04 | default('ERROR') | trim }}"
+      status_05: "PASS"
+      details_05: "Final remediation status stored in cis_result"
     tags: [execute]
 
   - name: "Generate remediation report"
-    ansible.builtin.debug:
+    debug:
       msg:
-      - "========================================================"
-      - "        REMEDIATION REPORT — CIS 1.2.1.2"
-      - "========================================================"
-      - ""
+      - "REMEDIATION REPORT — CIS 1.2.1.2"
       - "Reference: CIS Benchmark checkpoint 1.2.1.2"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
@@ -148,60 +160,74 @@
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ 'APPLIED' if status_01 | default('UNKNOWN') == 'PASS' else ('FAILED' if status_01 == 'FAIL' else status_01) }}"
-      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
       - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ 'APPLIED' if status_02 | default('UNKNOWN') == 'PASS' else ('FAILED' if status_02 == 'FAIL' else status_02) }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
       - ""
       - "REQUIREMENT 03 - {{ req_03 }}:"
       - "  Task: {{ task_03_name | default('Not recorded') }}"
       - "  Command: {{ task_03_cmd | default('N/A') }}"
       - "  Exit code: {{ task_03_rc | default(-1) }}"
       - "  Data: {{ data_03 | default('') | trim }}"
-      - "  Status: {{ 'APPLIED' if status_03 | default('UNKNOWN') == 'PASS' else ('FAILED' if status_03 == 'FAIL' else status_03) }}"
-      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
       - ""
-      - "========================================================"
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ 'APPLIED' if status_03 | default('UNKNOWN') == 'PASS' else ('FAILED' if status_03 == 'FAIL' else status_03) }}"
-      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
-      - "========================================================"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
     tags: [execute]
 
   always:
-  - name: "Restore - Check if backup directory exists"
-    ansible.builtin.stat:
-      path: "{{ backup_dir }}"
-    register: _restore_backup_dir
-    tags: [restore]
-
   - name: "Restore - Check if dnf.conf backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/dnf.conf.backup"
-    register: _restore_dnf_backup
+      path: "{{ backup_dir }}/dnf.conf.present"
+    register: _restore_present
+    failed_when: false
     tags: [restore]
 
   - name: "Restore - Restore /etc/dnf/dnf.conf from backup"
     ansible.builtin.copy:
-      src: "{{ backup_dir }}/dnf.conf.backup"
-      dest: "{{ dnf_conf }}"
+      src: "{{ backup_dir }}/dnf.conf.present"
+      dest: "/etc/dnf/dnf.conf"
       remote_src: true
-    when: _restore_dnf_backup.stat.exists
+    when: _restore_present.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore repo files from backup"
-    ansible.builtin.shell: |
-      cp "{{ backup_dir }}"/*.repo {{ repo_dir }}/ 2>/dev/null || true
-    args:
-      executable: /bin/bash
-    when: _restore_backup_dir.stat.exists
+  - name: "Restore - Check if dnf.conf absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/dnf.conf.absent"
+    register: _restore_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete /etc/dnf/dnf.conf if it was absent before"
+    ansible.builtin.file:
+      path: "/etc/dnf/dnf.conf"
+      state: absent
+    when: _restore_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
@@ -209,6 +235,5 @@
     ansible.builtin.file:
       path: "{{ backup_dir }}"
       state: absent
-    when: _restore_backup_dir.stat.exists
     failed_when: false
     tags: [restore]

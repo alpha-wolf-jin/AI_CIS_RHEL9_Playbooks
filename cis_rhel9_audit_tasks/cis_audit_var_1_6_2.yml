@@ -2,4 +2,4 @@ req_01: "Check if OpenSSH server is installed using command: `rpm -q openssh-ser
 req_02: |
   Check if the system-wide crypto policy is set in sshd configuration using command: `grep -Pi '^\\h*CRYPTO_POLICY\\h*=' /etc/sysconfig/sshd`. Expected result: No output returned.
 req_03: "Summarize overall compliance: If the OpenSSH server is installed and the command returns no output, the system is compliant; otherwise, it is non-compliant."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

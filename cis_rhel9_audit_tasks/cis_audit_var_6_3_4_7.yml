@@ -3,4 +3,4 @@ req_02: "Check if /etc/audit/ directory exists using command: `test -d /etc/audi
 req_03: |
   Check that all .conf and .rules files in /etc/audit/ are owned by group root using command: `find /etc/audit/ -type f \\( -name '*.conf' -o -name '*.rules' \\) ! -group root`. Expected result: no output (empty)
 req_04: "Summarize overall compliance: if all previous checks pass, the system is compliant with checkpoint 6.3.4.7. Expected result: compliant"
-req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

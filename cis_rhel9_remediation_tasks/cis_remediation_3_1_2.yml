@@ -150,7 +150,7 @@
       task_01_name: "Execute remediation script"
       task_01_cmd: "/bin/bash {{ script_path }}"
       task_01_rc: "{{ result_01.rc | default(-1) if need_remediation | bool else -1 }}"
-      data_01: "{{ result_01.stdout | default('') | trim if need_remediation | bool else 'SKIPPED' }}"
+      data_01: "{{ result_01.stdout | default('') | trim if need_remediation | bool else 'SKIP' }}"
       status_01: "{{ 'PASS' if (need_remediation | bool) and (result_01.rc | default(-1) == 0) else ('SKIP' if not (need_remediation | bool) else 'FAIL') }}"
       details_01: "{{ 'Remediation script executed successfully' if (need_remediation | bool) and (result_01.rc | default(-1) == 0) else ('No wireless interfaces present – remediation not required' if not (need_remediation | bool) else 'Script failed') }}"
     tags: [execute]

@@ -201,7 +201,7 @@
 
   - name: "Req 02 - Set skipped status when authselect not installed"
     ansible.builtin.set_fact:
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "authselect package not installed"
     when: not (authselect_installed | default(false))
     tags: [execute]

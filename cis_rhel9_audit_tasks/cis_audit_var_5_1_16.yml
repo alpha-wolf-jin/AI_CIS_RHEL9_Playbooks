@@ -2,5 +2,5 @@ req_01: "Check if OpenSSH server is installed using command: `dpkg -l | grep ope
 req_02: "Check the global MaxAuthTries setting using command: `sshd -T | grep maxauthtries`. Expected result: maxauthtries 4 or less."
 req_03: "If Match blocks are used, check MaxAuthTries for a specific user (e.g., sshuser) using command: `sshd -T -C user=sshuser | grep maxauthtries`. Expected result: maxauthtries 4 or less."
 req_04: "Summarize overall compliance: Ensure all checks pass and MaxAuthTries is 4 or less in both global and any applicable Match block contexts."
-req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 sshd_package_name: "openssh-server"

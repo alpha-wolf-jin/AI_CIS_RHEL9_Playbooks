@@ -23,19 +23,19 @@
 - block:
   - name: "Initialize data variables"
     ansible.builtin.set_fact:
-      status_01: "SKIPPED"
+      status_01: "SKIP"
       details_01: "Audit not applicable (grub not installed)"
       task_01_name: "Not executed"
       task_01_cmd: "N/A"
       task_01_rc: "-1"
       data_01: "N/A"
-      status_02: "SKIPPED"
+      status_02: "SKIP"
       details_02: "Compliance check not applicable (grub not installed)"
       task_02_name: "Not executed"
       task_02_cmd: "N/A"
       task_02_rc: "-1"
       data_02: "N/A"
-      status_03: "SKIPPED"
+      status_03: "SKIP"
       details_03: "cis_result not stored (grub not installed)"
       task_03_name: "Not executed"
       task_03_cmd: "N/A"
@@ -96,7 +96,7 @@
 
   - name: "Req 03 - Store final compliance result in cis_result"
     ansible.builtin.set_fact:
-      cis_result: "{{ status_02 | default('SKIPPED') | trim }}"
+      cis_result: "{{ status_02 | default('SKIP') | trim }}"
     when: "grub_installed | default(false) | bool"
 
   - name: "Store requirement 03 details"

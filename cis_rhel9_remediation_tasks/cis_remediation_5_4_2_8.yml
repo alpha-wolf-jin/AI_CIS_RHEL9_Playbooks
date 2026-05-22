@@ -106,7 +106,7 @@
   - name: "Req 03 - Store final remediation result in cis_result"
     ansible.builtin.set_fact:
       cis_result: >-
-        {{ 'SKIPPED' if (playbook_skipped | default(false))
+        {{ 'SKIP' if (playbook_skipped | default(false))
            else ('PASS' if (result_02.stdout | default('') | trim | length == 0)
            else 'FAIL') }}
     tags: [execute]
@@ -124,7 +124,7 @@
       - "  Command: /bin/bash /tmp/remediate_cis_5_4_2_8.sh"
       - "  Exit code: {{ result_01.rc | default(-1) }}"
       - "  Data: {{ result_01.stdout | default('') | trim }}"
-      - "  Status: {{ ('SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL')) | trim }}"
+      - "  Status: {{ ('SKIP' if (playbook_skipped | default(false)) else ('PASS' if (result_01.rc | default(-1)) == 0 else 'FAIL')) | trim }}"
       - "  Details: {{ ('shadow-utils not installed' if (playbook_skipped | default(false)) else ('Script executed successfully' if (result_01.rc | default(-1)) == 0 else 'Script execution failed')) | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
@@ -132,7 +132,7 @@
       - "  Command: awk/passwd verification pipeline"
       - "  Exit code: {{ result_02.rc | default(-1) }}"
       - "  Data: {{ result_02.stdout | default('') | trim }}"
-      - "  Status: {{ ('SKIPPED' if (playbook_skipped | default(false)) else ('PASS' if (result_02.stdout | default('') | trim | length == 0) else 'FAIL')) | trim }}"
+      - "  Status: {{ ('SKIP' if (playbook_skipped | default(false)) else ('PASS' if (result_02.stdout | default('') | trim | length == 0) else 'FAIL')) | trim }}"
       - "  Details: {{ ('shadow-utils not installed' if (playbook_skipped | default(false)) else ('No unlocked accounts found — compliant' if (result_02.stdout | default('') | trim | length == 0) else 'Unlocked accounts remain: ' + (result_02.stdout | default('') | trim))) | trim }}"
       - ""
       - "REQUIREMENT 03 - {{ req_03 }}:"

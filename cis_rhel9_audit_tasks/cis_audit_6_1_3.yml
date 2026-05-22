@@ -76,13 +76,13 @@
       task_01_rc: "{{ audit_result.rc | default(-1) if not playbook_skipped else -1 }}"
       data_01: "{{ audit_result.stdout | default('') | trim if not playbook_skipped else 'Script not executed - AIDE not installed' }}"
       status_01: >-
-        {{ 'SKIPPED' if playbook_skipped else ('PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'ERROR')) | trim }}
+        {{ 'SKIP' if playbook_skipped else ('PASS' if '** PASS **' in audit_result.stdout | default('') else ('FAIL' if '** FAIL **' in audit_result.stdout | default('') else 'ERROR')) | trim }}
       details_01: "{{ 'AIDE is not installed - not applicable' if playbook_skipped else ('Audit script executed successfully' if audit_result.rc | default(-1) == 0 else 'Audit script failed with exit code ' + (audit_result.rc | default(-1) | string)) | trim }}"
     tags: [execute]
 
   - name: "Req 2 - Determine compliance status"
     ansible.builtin.set_fact:
-      status_02: "{{ 'SKIPPED' if playbook_skipped else ('PASS' if '** PASS **' in audit_result.stdout | default('') else 'FAIL') | trim }}"
+      status_02: "{{ 'SKIP' if playbook_skipped else ('PASS' if '** PASS **' in audit_result.stdout | default('') else 'FAIL') | trim }}"
       details_02: "{{ 'AIDE package not installed - not applicable' if playbook_skipped else (audit_result.stdout | default('') | trim) | trim }}"
       task_02_name: "Req 02 - Evaluate compliance status"
       task_02_cmd: "Parsed audit script output for PASS/FAIL markers"
@@ -96,7 +96,7 @@
 
   - name: "Req 3 - Store final compliance result in cis_result"
     ansible.builtin.set_fact:
-      cis_result: "{{ 'SKIPPED' if playbook_skipped | default(false) else status_02 | trim }}"
+      cis_result: "{{ 'SKIP' if playbook_skipped | default(false) else status_02 | trim }}"
     tags: [execute]
 
   - name: "Store requirement 03 details"

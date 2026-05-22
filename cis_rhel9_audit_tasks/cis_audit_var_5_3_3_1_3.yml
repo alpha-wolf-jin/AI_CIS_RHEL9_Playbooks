@@ -15,4 +15,4 @@ req_04: >-
 req_05: >-
   Summarize overall compliance status: all checks passed (even_deny_root or root_unlock_time >= 60 enabled, no invalid lower values). Expected result: compliant.
 req_06: >-
-  Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable.
+  Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable.

@@ -4,7 +4,7 @@ req_02: |
 req_03: |
   Check that pam_pwhistory.so lines in the password stack of /etc/pam.d/system-auth include use_authtok using command: `grep -P -- '^\h*password\h+([^#\n\r]+)\h+pam_pwhistory\.so\h+([^#\n\r]+\h+)?use_authtok\b' /etc/pam.d/system-auth`. Expected result: output similar to 'password   required   pam_pwhistory.so use_authtok'.
 req_04: "Summarize overall compliance: both /etc/pam.d/password-auth and /etc/pam.d/system-auth must have pam_pwhistory.so lines with use_authtok. Expected result: both checks pass."
-req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
 req_06: "Generate audit report as per format."
 cmd_01: "ls /etc/pam.d/password-auth /etc/pam.d/system-auth 2>/dev/null"
 cmd_02: |

@@ -5,4 +5,4 @@ req_03: |
 req_04: |
   Check locally available GPG keys in /etc/pki/rpm-gpg/ and their source packages using command: `for PACKAGE in $(find /etc/pki/rpm-gpg/ -type f -exec rpm -qf {} \\; | sort -u); do rpm -q --queryformat \"%{NAME}-%{VERSION} %{PACKAGER} %{SUMMARY}\\n\" \"${PACKAGE}\"; done`. Expected result: list of package names, packagers, and summaries for each GPG key file.
 req_05: "Summarize overall compliance status: Ensure that all GPG keys are correctly configured, installed, and match expected repository keys. Expected result: all checks pass with no missing or mismatched keys."
-req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIPPED/UNKNOWN) derived from the last requirement's status variable."
+req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."

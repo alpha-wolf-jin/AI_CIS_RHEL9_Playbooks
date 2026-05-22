@@ -128,7 +128,7 @@
       task_03_cmd: "passwd -l <username>"
       task_03_rc: "{{ result_03.results[0].rc | default(-1) if result_03.results is defined else -1 }}"
       data_03: "{{ future_users | default([]) | join(', ') if future_users | default([]) | length > 0 else 'No users to lock' }}"
-      status_03: "{{ 'APPLIED' if (future_users | default([]) | length > 0) and (result_03 is not failed) else 'SKIPPED' if (future_users | default([]) | length == 0) else 'FAIL' }}"
+      status_03: "{{ 'APPLIED' if (future_users | default([]) | length > 0) and (result_03 is not failed) else 'SKIP' if (future_users | default([]) | length == 0) else 'FAIL' }}"
       details_03: "{{ 'Locked users: ' + (future_users | default([]) | join(', ')) if (future_users | default([]) | length > 0) and (result_03 is not failed) else 'No users required locking' if (future_users | default([]) | length == 0) else 'Failed to lock users' }}"
     tags: [execute]
 
@@ -148,7 +148,7 @@
       task_04_cmd: "passwd -e <username>"
       task_04_rc: "{{ result_04.results[0].rc | default(-1) if result_04.results is defined else -1 }}"
       data_04: "{{ future_users | default([]) | join(', ') if future_users | default([]) | length > 0 else 'No users to expire' }}"
-      status_04: "{{ 'APPLIED' if (future_users | default([]) | length > 0) and (result_04 is not failed) else 'SKIPPED' if (future_users | default([]) | length == 0) else 'FAIL' }}"
+      status_04: "{{ 'APPLIED' if (future_users | default([]) | length > 0) and (result_04 is not failed) else 'SKIP' if (future_users | default([]) | length == 0) else 'FAIL' }}"
       details_04: "{{ 'Expired passwords for: ' + (future_users | default([]) | join(', ')) if (future_users | default([]) | length > 0) and (result_04 is not failed) else 'No users required password expiry' if (future_users | default([]) | length == 0) else 'Failed to expire passwords' }}"
     tags: [execute]
 
@@ -169,7 +169,7 @@
       task_05_cmd: "echo '<new_secure_password>' | passwd --stdin <username>"
       task_05_rc: "{{ result_05.results[0].rc | default(-1) if result_05.results is defined else -1 }}"
       data_05: "{{ future_users | default([]) | join(', ') if future_users | default([]) | length > 0 else 'No users to reset' }}"
-      status_05: "{{ 'APPLIED' if (future_users | default([]) | length > 0) and (result_05 is not failed) else 'SKIPPED' if (future_users | default([]) | length == 0) else 'FAIL' }}"
+      status_05: "{{ 'APPLIED' if (future_users | default([]) | length > 0) and (result_05 is not failed) else 'SKIP' if (future_users | default([]) | length == 0) else 'FAIL' }}"
       details_05: "{{ 'Reset passwords for: ' + (future_users | default([]) | join(', ')) if (future_users | default([]) | length > 0) and (result_05 is not failed) else 'No users required password reset' if (future_users | default([]) | length == 0) else 'Failed to reset passwords' }}"
     tags: [execute]
 

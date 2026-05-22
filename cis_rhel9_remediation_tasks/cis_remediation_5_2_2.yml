@@ -85,21 +85,21 @@
       task_01_cmd: |
         lineinfile: path={{ sudoers_file }} regexp='^Defaults\\s+!?use_pty' line='Defaults    use_pty'
       task_01_rc: "{{ result_01.rc | default(-1) | int }}"
-      data_01: "{{ 'SKIPPED - sudo not installed' if not (sudo_installed | default(false) | bool) else ('No change' if not (result_01.changed | default(false)) else 'use_pty line added/updated') }}"
-      status_01: "{{ 'SKIPPED' if not (sudo_installed | default(false) | bool) else ('PASS' if (result_01 is not failed and not (result_01.skipped | default(false))) else 'FAIL') }}"
+      data_01: "{{ 'SKIP - sudo not installed' if not (sudo_installed | default(false) | bool) else ('No change' if not (result_01.changed | default(false)) else 'use_pty line added/updated') }}"
+      status_01: "{{ 'SKIP' if not (sudo_installed | default(false) | bool) else ('PASS' if (result_01 is not failed and not (result_01.skipped | default(false))) else 'FAIL') }}"
       details_01: "{{ 'sudo package not installed' if not (sudo_installed | default(false) | bool) else ('use_pty configured successfully' if (result_01 is not failed and not (result_01.skipped | default(false))) else 'Failed to configure use_pty') }}"
       task_02_name: "Verify use_pty in sudoers"
       task_02_cmd: |
         grep -E '^Defaults\\s+use_pty' {{ sudoers_file }}
       task_02_rc: "{{ result_02.rc | default(-1) | int }}"
       data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'SKIPPED' if not (sudo_installed | default(false) | bool) else ('PASS' if 'use_pty' in (result_02.stdout | default('')) else 'FAIL') }}"
+      status_02: "{{ 'SKIP' if not (sudo_installed | default(false) | bool) else ('PASS' if 'use_pty' in (result_02.stdout | default('')) else 'FAIL') }}"
       details_02: "{{ 'sudo package not installed' if not (sudo_installed | default(false) | bool) else ('use_pty is properly configured' if 'use_pty' in (result_02.stdout | default('')) else 'use_pty NOT found in sudoers') }}"
     tags: [execute]
 
   - name: "Req 03 - Store overall remediation result in cis_result"
     ansible.builtin.set_fact:
-      cis_result: "{{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' else 'SKIPPED' if status_01 == 'SKIPPED' else 'FAIL' }}"
+      cis_result: "{{ 'PASS' if status_01 == 'PASS' and status_02 == 'PASS' else 'SKIP' if status_01 == 'SKIP' else 'FAIL' }}"
     tags: [execute]
 
   - name: "Store requirement 03 report details"

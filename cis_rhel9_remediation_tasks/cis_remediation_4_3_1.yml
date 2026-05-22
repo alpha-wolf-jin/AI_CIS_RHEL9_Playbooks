@@ -11,22 +11,22 @@
 
 - name: "Initialize report variables"
   set_fact:
-    status_01: "SKIPPED"
+    status_01: "SKIP"
     details_01: "Not yet evaluated"
     data_01: ""
-    status_02: "SKIPPED"
+    status_02: "SKIP"
     details_02: "Not yet evaluated"
     data_02: ""
-    status_03: "SKIPPED"
+    status_03: "SKIP"
     details_03: "Not yet evaluated"
     data_03: ""
-    status_04: "SKIPPED"
+    status_04: "SKIP"
     details_04: "Not yet evaluated"
     data_04: ""
-    status_05: "SKIPPED"
+    status_05: "SKIP"
     details_05: "Not yet evaluated"
     data_05: ""
-    status_06: "SKIPPED"
+    status_06: "SKIP"
     details_06: "Not yet evaluated"
     data_06: ""
   tags: [execute]
@@ -51,7 +51,7 @@
       task_01_cmd: "systemctl is-active firewalld (systemd module)"
       task_01_rc: "0"
       data_01: "{{ 'firewalld is active' if firewalld_active else 'firewalld is not active' }}"
-      status_01: "{{ 'SKIPPED' if firewalld_active else 'APPLIED' }}"
+      status_01: "{{ 'SKIP' if firewalld_active else 'APPLIED' }}"
       details_01: "{{ 'No action required: firewalld is active, skipping nftables remediation' if firewalld_active else 'firewalld not active, proceeding' }}"
     tags: [execute]
 
@@ -182,7 +182,7 @@
         {%- set statuses = [status_01, status_02, status_03, status_04, status_05, status_06] -%}
         {%- if 'FAILED' in statuses %}FAIL
         {%- elif 'APPLIED' in statuses %}APPLIED
-        {%- else %}SKIPPED
+        {%- else %}SKIP
         {%- endif -%}
     tags: [execute]
 
@@ -205,7 +205,7 @@
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('N/A') | trim }}"
-      - "  Status: {{ status_01 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_01 | default('SKIP') | trim }}"
       - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
       - ""
       - "Requirement 2: {{ req_02 }}"
@@ -213,7 +213,7 @@
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('N/A') | trim }}"
-      - "  Status: {{ status_02 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_02 | default('SKIP') | trim }}"
       - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
       - ""
       - "Requirement 3: {{ req_03 }}"
@@ -221,7 +221,7 @@
       - "  Command: {{ task_03_cmd | default('N/A') }}"
       - "  Exit code: {{ task_03_rc | default(-1) }}"
       - "  Data: {{ data_03 | default('N/A') | trim }}"
-      - "  Status: {{ status_03 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_03 | default('SKIP') | trim }}"
       - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
       - ""
       - "Requirement 4: {{ req_04 }}"
@@ -229,7 +229,7 @@
       - "  Command: {{ task_04_cmd | default('N/A') }}"
       - "  Exit code: {{ task_04_rc | default(-1) }}"
       - "  Data: {{ data_04 | default('N/A') | trim }}"
-      - "  Status: {{ status_04 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_04 | default('SKIP') | trim }}"
       - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
       - ""
       - "Requirement 5: {{ req_05 }}"
@@ -237,7 +237,7 @@
       - "  Command: {{ task_05_cmd | default('N/A') }}"
       - "  Exit code: {{ task_05_rc | default(-1) }}"
       - "  Data: {{ data_05 | default('N/A') | trim }}"
-      - "  Status: {{ status_05 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_05 | default('SKIP') | trim }}"
       - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
       - ""
       - "Requirement 6: {{ req_06 }}"
@@ -245,7 +245,7 @@
       - "  Command: {{ task_06_cmd | default('N/A') }}"
       - "  Exit code: {{ task_06_rc | default(-1) }}"
       - "  Data: {{ data_06 | default('N/A') | trim }}"
-      - "  Status: {{ status_06 | default('SKIPPED') | trim }}"
+      - "  Status: {{ status_06 | default('SKIP') | trim }}"
       - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
       - ""
       - "========================================================"

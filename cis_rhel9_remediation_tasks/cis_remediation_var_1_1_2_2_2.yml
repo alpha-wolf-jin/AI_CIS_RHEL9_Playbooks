@@ -1,6 +1,5 @@
-checkpoint_id: "cis_1_1_2_2_2"
-state_guard_dir: "/usr/local/bin/cis/.cis_state_guard/{{ checkpoint_id }}"
-state_guard_flag: "{{ state_guard_dir }}/checkpoint.flag"
+playbook_name: "cis_1_1_2_2_2_remediation"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
 req_01: |
   Check if /dev/shm is a separate partition using command: `mount | grep -E '\\s/dev/shm\\s'`. Expected result: output shows a separate partition entry for /dev/shm.
 req_02: "Edit /etc/fstab to add nodev to the mounting options for /dev/shm. Expected result: the fourth field for /dev/shm includes nodev (e.g., defaults,rw,nosuid,nodev,noexec,relatime)."
