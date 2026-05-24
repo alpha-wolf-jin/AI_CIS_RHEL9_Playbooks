@@ -1,12 +1,12 @@
-req_01: "Run the provided audit script to verify log file permissions and ownership in /var/log"
+playbook_name: "cis_6_2_4_1_audit_logfile_access"
+backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
+req_01: "Run the provided audit script to verify Ensure access to all logfiles has been configured."
 req_02: "VERIFY: Summarise compliance status for Ensure access to all logfiles has been configured. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
-req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
-req_04: "Create a task named 'Generate audit report' using debug msg with EXACT format including OVERALL COMPLIANCE: section"
-audit_script: "/tmp/audit_6_2_4_1.sh"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact."
+audit_script: "/tmp/cis_6_2_4_1_audit.sh"
 audit_script_content: |
   {% raw %}
   #!/usr/bin/env bash
-
   {
      l_op2="" l_output2=""
      l_uidmin="$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)"
@@ -24,13 +24,15 @@ audit_script_content: |
         fi
         [ -n "$l_op2" ] && l_output2="$l_output2\n - File: \"$l_fname\" is:$l_op2\n"
      }
-     unset a_file && a_file=() # clear and initialize array
+     unset a_file && a_file=()
      while IFS= read -r -d $'\0' l_file; do
         [ -e "$l_file" ] && a_file+=("$(stat -Lc '%n^%#a^%U^%u^%G^%g' "$l_file")")
-     done < <(find -L /var/log -type f \( -perm /0137 -o ! -user root -o ! -group root \) -not -path '/var/log/ai-playbooks-backup/*' -print0)
+     done < <(find -L /var/log -type f \( -perm /0137 -o ! -user root -o ! -group root \) -not -path '/var/log/ai-playbooks-backup/*' -print0 2>/dev/null)
      while IFS="^" read -r l_fname l_mode l_user l_uid l_group l_gid; do
+        [[ -z "$l_fname" ]] && continue
         l_bname="$(basename "$l_fname")"
-        case "$l_bname" in lastlog | lastlog.* | wtmp | wtmp.* | wtmp-* | btmp | btmp.* | btmp-* | README)
+        case "$l_bname" in
+           lastlog | lastlog.* | wtmp | wtmp.* | wtmp-* | btmp | btmp.* | btmp-* | README)
               perm_mask='0113'
               maxperm="$( printf '%o' $(( 0777 & ~$perm_mask)) )"
               l_auser="root"
