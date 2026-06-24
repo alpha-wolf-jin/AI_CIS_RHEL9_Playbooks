@@ -125,7 +125,7 @@
     set_fact:
       task_02_name: "Req 02 - Create NO-SHA1 subpolicy file"
       task_02_cmd: |
-        printf '%s\\n' \"# This is a subpolicy dropping the SHA1 hash and signature support\" \"hash = -SHA1\" \"sign = -*-SHA1\" \"sha1_in_certs = 0\" >> /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+        printf '%s\\n' "# This is a subpolicy dropping the SHA1 hash and signature support" "hash = -SHA1" "sign = -*-SHA1" "sha1_in_certs = 0" >> /etc/crypto-policies/policies/modules/NO-SHA1.pmod
       task_02_rc: "{{ 0 if (result_02.failed | default(false) == false) else -1 }}"
       data_02: "{{ 'File created' if result_02.changed | default(false) else 'File already correct' }}"
       status_02: >-
@@ -247,18 +247,14 @@
     tags: [execute]
 
   always:
-# === RESTORE PHASE (GUARANTEED) ===
+        # === STATE GUARD — RESTORE PHASE ===
+        # Restore must re-discover state from disk, not from variables
+        # registered in pre_tasks or the block above.
+
   - name: "Restore - Check if NO-SHA1.pmod backup exists"
     ansible.builtin.stat:
       path: "{{ backup_dir }}/NO-SHA1.pmod.present"
-    register: _restore_nosha1_present
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Check if NO-SHA1.pmod was absent"
-    ansible.builtin.stat:
-      path: "{{ backup_dir }}/NO-SHA1.pmod.absent"
-    register: _restore_nosha1_absent
+    register: _restore_nosha1_backup
     failed_when: false
     tags: [restore]
 
@@ -267,11 +263,21 @@
       src: "{{ backup_dir }}/NO-SHA1.pmod.present"
       dest: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
       remote_src: true
-    when: _restore_nosha1_present.stat.exists | default(false)
+      owner: root
+      group: root
+      mode: '0644'
+    when: _restore_nosha1_backup.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Delete NO-SHA1.pmod if it was absent"
+  - name: "Restore - Check if NO-SHA1.pmod absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/NO-SHA1.pmod.absent"
+    register: _restore_nosha1_absent
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Delete NO-SHA1.pmod (was absent before)"
     ansible.builtin.file:
       path: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
       state: absent
@@ -282,27 +288,30 @@
   - name: "Restore - Check if config backup exists"
     ansible.builtin.stat:
       path: "{{ backup_dir }}/config.present"
-    register: _restore_config_present
+    register: _restore_config_backup
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if config was absent"
+  - name: "Restore - Restore /etc/crypto-policies/config from backup"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/config.present"
+      dest: /etc/crypto-policies/config
+      remote_src: true
+      owner: root
+      group: root
+      mode: '0644'
+    when: _restore_config_backup.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if config absent marker exists"
     ansible.builtin.stat:
       path: "{{ backup_dir }}/config.absent"
     register: _restore_config_absent
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore crypto-policies config from backup"
-    ansible.builtin.copy:
-      src: "{{ backup_dir }}/config.present"
-      dest: /etc/crypto-policies/config
-      remote_src: true
-    when: _restore_config_present.stat.exists | default(false)
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Delete config if it was absent"
+  - name: "Restore - Delete /etc/crypto-policies/config (was absent before)"
     ansible.builtin.file:
       path: /etc/crypto-policies/config
       state: absent
@@ -310,34 +319,41 @@
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if original policy backup exists"
+  - name: "Restore - Check if original policy file exists"
     ansible.builtin.stat:
       path: "{{ backup_dir }}/original_policy.txt"
-    register: _restore_policy_backup
+    register: _restore_policy_file
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Read original policy string"
+  - name: "Restore - Read original crypto policy"
     ansible.builtin.slurp:
       src: "{{ backup_dir }}/original_policy.txt"
-    register: _restore_original_policy
-    when:
-    - _restore_policy_backup.stat.exists | default(false)
+    register: _restore_policy_content
+    when: _restore_policy_file.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Revert system crypto policy to original"
-    ansible.builtin.shell: "update-crypto-policies --set {{ (_restore_original_policy.content | b64decode | trim) }}"
+  - name: "Restore - Apply original crypto policy"
+    ansible.builtin.shell: >
+      update-crypto-policies --set {{ _restore_policy_content.content | b64decode | trim }}
     args:
       executable: /bin/bash
+    register: _restore_policy_result
     when:
-    - _restore_policy_backup.stat.exists | default(false)
-    - _restore_original_policy.content is defined
-    - (_restore_original_policy.content | b64decode | trim) != ''
+    - _restore_policy_file.stat.exists | default(false)
+    - _restore_policy_content.content is defined
+    - _restore_policy_content.content | b64decode | trim | length > 0
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Remove backup directory"
+  - name: "Restore - Reload sshd (only if policy restore succeeded)"
+    ansible.builtin.shell: systemctl reload-or-restart sshd
+    when: _restore_policy_result.rc | default(1) == 0
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Clean up backup directory"
     ansible.builtin.file:
       path: "{{ backup_dir }}"
       state: absent

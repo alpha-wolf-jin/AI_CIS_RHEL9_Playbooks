@@ -22,12 +22,10 @@
     task_01_name: "Not executed"
     task_01_cmd: "N/A"
     task_01_rc: -1
-    package_installed: false
+    crypto_policies_installed: false
 
-- name: "Req 01 - Check crypto-policies package installed"
-  ansible.builtin.shell: "rpm -q crypto-policies"
-  args:
-    executable: /bin/bash
+- name: "Req 01 - Check if crypto-policies package is installed"
+  ansible.builtin.command: rpm -q crypto-policies
   register: result_01
   failed_when: false
   changed_when: false
@@ -37,10 +35,21 @@
     task_01_name: "Check crypto-policies package installed"
     task_01_cmd: "rpm -q crypto-policies"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
-    data_01: "{{ result_01.stdout | default('') | trim }}"
-    status_01: "{{ ('PASS' if result_01.rc | default(-1) == 0 else 'SKIP') | trim }}"
-    details_01: "{{ ('Package installed: ' ~ result_01.stdout | trim if result_01.rc | default(-1) == 0 else 'crypto-policies package not installed — SKIP') | trim }}"
-    package_installed: "{{ result_01.rc | default(-1) == 0 }}"
+    data_01: "{{ 'crypto-policies-' + result_01.stdout if result_01.rc == 0 else 'package not installed' }}"
+    status_01: "{{ 'PASS' if result_01.rc == 0 else 'SKIP' }}"
+    details_01: "{{ 'crypto-policies package is installed' if result_01.rc == 0 else 'crypto-policies package not found — entire check SKIP' }}"
+    crypto_policies_installed: "{{ result_01.rc == 0 }}"
+
+- name: "Check policy state file exists"
+  ansible.builtin.stat:
+    path: "{{ crypto_policy_file }}"
+  register: policy_file_stat
+  when: "crypto_policies_installed | default(false)"
+
+- name: "Set policy file existence fact"
+  ansible.builtin.set_fact:
+    policy_file_exists: "{{ policy_file_stat.stat.exists | default(false) }}"
+  when: "crypto_policies_installed | default(false)"
 
 - name: "Req 02 - Check SHA1 hash/sign support disabled"
   ansible.builtin.shell: |
@@ -48,7 +57,7 @@
   args:
     executable: /bin/bash
   register: result_02
-  when: "package_installed | default(false)"
+  when: "crypto_policies_installed | default(false) and policy_file_exists | default(false)"
   failed_when: false
   changed_when: false
 
@@ -56,24 +65,24 @@
   ansible.builtin.set_fact:
     task_02_name: "Check SHA1 hash/sign support disabled"
     task_02_cmd: |
-      awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\\s*-\\s*([^#\\n\\r]+)?SHA1/){print}' {{ crypto_policy_file }}
+      awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\s*-\s*([^#\n\r]+)?SHA1/){print}' {{ crypto_policy_file }}
     task_02_rc: "{{ result_02.rc | default(-1) if result_02 is defined else -1 }}"
     data_02: "{{ result_02.stdout | default('') | trim if result_02 is defined else '' }}"
     status_02: >-
-      {%- if not (package_installed | default(false)) -%}
+      {%- if not (crypto_policies_installed | default(false)) -%}
         SKIP
-      {%- elif result_02 is not defined or result_02.skipped | default(false) -%}
-        SKIP
+      {%- elif not (policy_file_exists | default(false)) -%}
+        FAIL
       {%- elif (result_02.stdout | default('') | trim) == '' -%}
         PASS
       {%- else -%}
         FAIL
       {%- endif -%}
     details_02: >-
-      {%- if not (package_installed | default(false)) -%}
-        crypto-policies package not installed — SKIP
-      {%- elif result_02 is not defined or result_02.skipped | default(false) -%}
-        Skipped: prerequisite not met
+      {%- if not (crypto_policies_installed | default(false)) -%}
+        Skipped: crypto-policies package not installed
+      {%- elif not (policy_file_exists | default(false)) -%}
+        Failed: policy state file not found — cannot verify SHA1 setting
       {%- elif (result_02.stdout | default('') | trim) == '' -%}
         No SHA1 hash/sign lines found — compliant
       {%- else -%}
@@ -86,7 +95,7 @@
   args:
     executable: /bin/bash
   register: result_03
-  when: "package_installed | default(false)"
+  when: "crypto_policies_installed | default(false) and policy_file_exists | default(false)"
   failed_when: false
   changed_when: false
 
@@ -94,24 +103,24 @@
   ansible.builtin.set_fact:
     task_03_name: "Check sha1_in_certs set to 0"
     task_03_cmd: |
-      grep -Psi -- '^\\h*sha1_in_certs\\h*=\\h*' {{ crypto_policy_file }}
+      grep -Psi -- '^\h*sha1_in_certs\h*=\h*' {{ crypto_policy_file }}
     task_03_rc: "{{ result_03.rc | default(-1) if result_03 is defined else -1 }}"
     data_03: "{{ result_03.stdout | default('') | trim if result_03 is defined else '' }}"
     status_03: >-
-      {%- if not (package_installed | default(false)) -%}
+      {%- if not (crypto_policies_installed | default(false)) -%}
         SKIP
-      {%- elif result_03 is not defined or result_03.skipped | default(false) -%}
-        SKIP
+      {%- elif not (policy_file_exists | default(false)) -%}
+        FAIL
       {%- elif 'sha1_in_certs = 0' in result_03.stdout | default('') -%}
         PASS
       {%- else -%}
         FAIL
       {%- endif -%}
     details_03: >-
-      {%- if not (package_installed | default(false)) -%}
-        crypto-policies package not installed — SKIP
-      {%- elif result_03 is not defined or result_03.skipped | default(false) -%}
-        Skipped: prerequisite not met
+      {%- if not (crypto_policies_installed | default(false)) -%}
+        Skipped: crypto-policies package not installed
+      {%- elif not (policy_file_exists | default(false)) -%}
+        Failed: policy state file not found — cannot verify sha1_in_certs
       {%- elif 'sha1_in_certs = 0' in result_03.stdout | default('') -%}
         sha1_in_certs = 0 — compliant
       {%- else -%}
@@ -121,7 +130,7 @@
 - name: "Req 04 - Determine overall compliance status"
   ansible.builtin.set_fact:
     cis_result: >-
-      {%- if not (package_installed | default(false)) -%}
+      {%- if not (crypto_policies_installed | default(false)) -%}
         SKIP
       {%- elif status_02 | trim == 'PASS' and status_03 | trim == 'PASS' -%}
         PASS
@@ -133,7 +142,7 @@
   ansible.builtin.set_fact:
     status_04: "{{ cis_result | trim }}"
     data_04: "Overall compliance: {{ cis_result | trim }}"
-    details_04: "Determined from requirements 02 and 03"
+    details_04: "Summary derived from requirements 02 and 03"
     task_04_name: "Summarize overall compliance status"
     task_04_cmd: "N/A"
     task_04_rc: 0
