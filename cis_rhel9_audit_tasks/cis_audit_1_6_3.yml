@@ -35,7 +35,7 @@
     task_01_name: "Check crypto-policies package installed"
     task_01_cmd: "rpm -q crypto-policies"
     task_01_rc: "{{ result_01.rc | default(-1) }}"
-    data_01: "{{ 'crypto-policies-' + result_01.stdout if result_01.rc == 0 else 'package not installed' }}"
+    data_01: "{{ result_01.stdout if result_01.rc == 0 else 'package not installed' }}"
     status_01: "{{ 'PASS' if result_01.rc == 0 else 'SKIP' }}"
     details_01: "{{ 'crypto-policies package is installed' if result_01.rc == 0 else 'crypto-policies package not found — entire check SKIP' }}"
     crypto_policies_installed: "{{ result_01.rc == 0 }}"
