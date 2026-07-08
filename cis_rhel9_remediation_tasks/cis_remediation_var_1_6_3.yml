@@ -1,9 +1,9 @@
-playbook_name: "cis_1_6_3_crypto_sha1"
+playbook_name: "cis_1_6_3_remediation"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-req_01: "Apply prerequisite check: ensure `update-crypto-policies` command is available using command: `which update-crypto-policies`. Expected result: path to the binary is returned."
+req_01: "Apply prerequisite check: ensure `update-crypto-policies` is installed using command: `which update-crypto-policies`. Expected result: path to binary is returned."
 req_02: |
-  Apply creation of NO-SHA1 subpolicy file disabling SHA1 hash and signature support using command: `printf '%s\\n' \"# This is a subpolicy dropping the SHA1 hash and signature support\" \"hash = -SHA1\" \"sign = -*-SHA1\" \"sha1_in_certs = 0\" >> /etc/crypto-policies/policies/modules/NO-SHA1.pmod`. Expected result: file /etc/crypto-policies/policies/modules/NO-SHA1.pmod is created with the specified content.
-req_03: "Apply the NO-SHA1 subpolicy to the system-wide crypto policy using command: `update-crypto-policies --set DEFAULT:NO-SHA1`. Expected result: command completes without error, system crypto policy updated."
+  Apply subpolicy file creation using command: `printf '%s\\n' \"# This is a subpolicy dropping the SHA1 hash and signature support\" \"hash = -SHA1\" \"sign = -*-SHA1\" \"sha1_in_certs = 0\" >> /etc/crypto-policies/policies/modules/NO-SHA1.pmod`. Expected result: file /etc/crypto-policies/policies/modules/NO-SHA1.pmod is created with the specified content.
+req_03: "Apply system-wide crypto policy update using command: `update-crypto-policies --set DEFAULT:NO-SHA1`. Expected result: command completes without error, policy is set to DEFAULT with NO-SHA1 subpolicy."
 req_04: "Apply reboot to make cryptographic settings effective using command: `reboot`. Expected result: system reboots and cryptographic settings are applied to running services."
-req_05: "Verify that SHA1 hash and signature support is disabled using command: `update-crypto-policies --show`. Expected result: output includes 'NO-SHA1' in the active policy string."
+req_05: "Verify SHA1 hash and signature support is disabled using command: `update-crypto-policies --show`. Expected result: output includes 'DEFAULT:NO-SHA1' or similar indication that SHA1 is disabled."
 req_06: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
