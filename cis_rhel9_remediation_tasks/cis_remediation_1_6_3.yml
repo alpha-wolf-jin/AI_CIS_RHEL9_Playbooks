@@ -20,6 +20,18 @@
     remote_src: true
   when: _snap_config_stat.stat.exists
   tags: [snapshot]
+- name: "Snapshot - Check if NO-SHA1.pmod exists"
+  ansible.builtin.stat:
+    path: "{{ subpolicy_file }}"
+  register: _snap_subpolicy_stat
+  tags: [snapshot]
+- name: "Snapshot - Create absent marker if NO-SHA1.pmod did not exist"
+  ansible.builtin.file:
+    path: "{{ backup_dir }}/subpolicy.absent"
+    state: touch
+    mode: '0600'
+  when: not _snap_subpolicy_stat.stat.exists | default(false)
+  tags: [snapshot]
 
 - block:
 # Initialize report variables with defaults (SKIP/not collected)
@@ -282,10 +294,18 @@
     failed_when: false
     tags: [restore]
 
+  - name: "Restore - Check if subpolicy absent marker exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/subpolicy.absent"
+    register: _restore_subpolicy_absent
+    failed_when: false
+    tags: [restore]
+
   - name: "Restore - Remove subpolicy file (created during remediation)"
     ansible.builtin.file:
       path: "{{ subpolicy_file }}"
       state: absent
+    when: _restore_subpolicy_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
