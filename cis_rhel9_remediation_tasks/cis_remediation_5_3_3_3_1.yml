@@ -6,320 +6,384 @@
   ansible.builtin.file:
     path: "{{ backup_dir }}"
     state: directory
-    mode: '0700'
+    mode: '0755'
   tags: [snapshot]
 - name: "Snapshot - Check if pwhistory.conf exists"
   ansible.builtin.stat:
-    path: "{{ pwhistory_conf }}"
-  register: _snap_pwhistory_stat
-  failed_when: false
+    path: /etc/security/pwhistory.conf
+  register: _pwhistory_stat
   tags: [snapshot]
 - name: "Snapshot - Backup pwhistory.conf if exists"
   ansible.builtin.copy:
-    src: "{{ pwhistory_conf }}"
-    dest: "{{ backup_dir }}/pwhistory.conf.backup"
+    src: /etc/security/pwhistory.conf
+    dest: "{{ backup_dir }}/pwhistory.conf.present"
     remote_src: true
-  when: "_snap_pwhistory_stat.stat.exists | default(false)"
-  failed_when: false
+  when: _pwhistory_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Check if authselect directory exists"
-  ansible.builtin.stat:
-    path: "{{ authselect_dir }}"
-  register: _snap_authselect_stat
-  failed_when: false
-  tags: [snapshot]
-- name: "Snapshot - Backup authselect directory if exists"
+- name: "Snapshot - Mark pwhistory.conf as absent"
   ansible.builtin.copy:
-    src: "{{ authselect_dir }}/"
-    dest: "{{ backup_dir }}/authselect/"
-    remote_src: true
-  when: "_snap_authselect_stat.stat.exists | default(false) and _snap_authselect_stat.stat.isdir | default(false)"
-  failed_when: false
+    content: "absent"
+    dest: "{{ backup_dir }}/pwhistory.conf.absent"
+  when: not _pwhistory_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Check if remediation script exists"
-  ansible.builtin.stat:
-    path: "/tmp/remediate_pwhistory_remember.sh"
-  register: _snap_script_stat
+- name: "Snapshot - Get authselect directory"
+  ansible.builtin.shell: "set -o pipefail && head -1 /etc/authselect/authselect.conf | grep 'custom/' || true"
+  args:
+    executable: /bin/bash
+  register: _authselect_dir_raw
   failed_when: false
+  changed_when: false
   tags: [snapshot]
-- name: "Snapshot - Record script existence marker"
-  ansible.builtin.copy:
-    content: "{{ _snap_script_stat.stat.exists | default(false) }}"
-    dest: "{{ backup_dir }}/script_existed"
-    force: false
-  failed_when: false
+- name: "Snapshot - Set authselect directory fact"
+  ansible.builtin.set_fact:
+    authselect_dir: "{{ _authselect_dir_raw.stdout | trim }}"
+  tags: [snapshot]
+- name: "Snapshot - Backup authselect files"
+  block:
+  - name: "Snapshot - Check if system-auth authselect exists"
+    ansible.builtin.stat:
+      path: "{{ authselect_dir }}/system-auth"
+    register: _sysauth_stat
+  - name: "Snapshot - Backup system-auth authselect"
+    ansible.builtin.copy:
+      src: "{{ authselect_dir }}/system-auth"
+      dest: "{{ backup_dir }}/system-auth.present"
+      remote_src: true
+    when: _sysauth_stat.stat.exists
+  - name: "Snapshot - Check if password-auth authselect exists"
+    ansible.builtin.stat:
+      path: "{{ authselect_dir }}/password-auth"
+    register: _pwauth_stat
+  - name: "Snapshot - Backup password-auth authselect"
+    ansible.builtin.copy:
+      src: "{{ authselect_dir }}/password-auth"
+      dest: "{{ backup_dir }}/password-auth.present"
+      remote_src: true
+    when: _pwauth_stat.stat.exists
+  when: authselect_dir | length > 0
   tags: [snapshot]
 
 - block:
-  - name: "Initialize data variables"
-    ansible.builtin.set_fact:
-      task_01_name: "Not executed"
-      task_01_cmd: "N/A"
-      task_01_rc: -1
-      data_01: ""
-      status_01: "UNKNOWN"
-      details_01: ""
-      task_02_name: "Not executed"
-      task_02_cmd: "N/A"
-      task_02_rc: -1
-      data_02: ""
-      status_02: "UNKNOWN"
-      details_02: ""
-      task_03_name: "Not executed"
-      task_03_cmd: "N/A"
-      task_03_rc: -1
-      data_03: ""
-      status_03: "UNKNOWN"
-      details_03: ""
-      task_04_name: "Not executed"
-      task_04_cmd: "N/A"
-      task_04_rc: -1
-      data_04: ""
-      status_04: "UNKNOWN"
-      details_04: ""
-    tags: [execute]
-
-  - name: "Req 01 - Check if authselect package is installed"
+  - name: "Req step-01 - Gather package facts"
     ansible.builtin.package_facts:
       manager: auto
-    failed_when: false
     tags: [execute]
 
-  - name: "Req 01 - Set authselect installed fact"
+  - name: "Req step-01 - Check required packages"
     ansible.builtin.set_fact:
-      authselect_installed: "{{ 'authselect' in ansible_facts.packages }}"
-      playbook_skipped: "{{ 'authselect' not in ansible_facts.packages }}"
+      _playbook_skip: "{{ not ('pam' in ansible_facts.packages) or not ('authselect' in ansible_facts.packages) }}"
     tags: [execute]
 
-  - name: "Req 01 - Set remember parameter in pwhistory.conf"
-    ansible.builtin.lineinfile:
-      path: "{{ pwhistory_conf }}"
-      regexp: |
-        ^\s*remember\s*=
-      line: "remember = {{ remember_value }}"
-      create: true
-      mode: '0644'
-    register: result_01_lineinfile
-    failed_when: false
-    when: "not (playbook_skipped | default(false) | bool)"
+  - name: "Req step-01 - Initialize authselect configured flag"
+    ansible.builtin.set_fact:
+      _authselect_configured: false
+    when: not _playbook_skip
     tags: [execute]
 
-  - name: "Req 01 - Deploy remediation script to remove remember from PAM"
-    ansible.builtin.copy:
-      content: |
-        #!/usr/bin/env bash
-        profile_dir=$(authselect current -r 2>/dev/null | head -1)
-        if [ -z "$profile_dir" ]; then
-          echo "ERROR: could not determine authselect profile"
-          exit 1
-        fi
-        for l_pam_file in system-auth password-auth; do
-          l_authselect_file="/etc/authselect/$profile_dir/$l_pam_file"
-          if [ -f "$l_authselect_file" ]; then
-            sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwhistory\.so.*)(\s+ remember\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
-          fi
-        done
-        authselect apply-changes
-      dest: "/tmp/remediate_pwhistory_remember.sh"
-      mode: '0700'
-    when: "not (playbook_skipped | default(false) | bool)"
-    failed_when: false
+  - name: "Req step-01 - Check authselect configuration"
+    ansible.builtin.stat:
+      path: /etc/authselect/authselect.conf
+    register: _authselect_conf_stat
+    when: not _playbook_skip
     tags: [execute]
 
-  - name: "Req 01 - Execute remediation script"
-    ansible.builtin.shell: /bin/bash /tmp/remediate_pwhistory_remember.sh
+  - name: "Req step-01 - Set authselect configured flag"
+    ansible.builtin.set_fact:
+      _authselect_configured: "{{ _authselect_conf_stat.stat.exists }}"
+    when: not _playbook_skip
+    tags: [execute]
+
+  - name: "Req step-01 - Run audit script"
+    ansible.builtin.shell:
+      cmd: /bin/bash
+      stdin: "{{ audit_script_content }}"
     args:
       executable: /bin/bash
-    register: result_01_script
+    register: _step01_check_output
     failed_when: false
     changed_when: false
-    when: "not (playbook_skipped | default(false) | bool)"
+    when: not _playbook_skip
     tags: [execute]
 
-  - name: "Req 01 - Clean up remediation script"
-    ansible.builtin.file:
-      path: "/tmp/remediate_pwhistory_remember.sh"
-      state: absent
-    failed_when: false
-    when: "not (playbook_skipped | default(false) | bool)"
-    tags: [execute]
-
-  - name: "Req 02 - Verify password history remember is configured"
-    ansible.builtin.shell: |
-      pwhistory_ok=0
-      if grep -Pq '^\s*remember\s*=\s*{{ remember_value }}\s*$' {{ pwhistory_conf }}; then
-        echo "pwhistory.conf: remember={{ remember_value }} - OK"
-      else
-        echo "pwhistory.conf: remember={{ remember_value }} - MISSING"
-        pwhistory_ok=1
-      fi
-      for f in system-auth password-auth; do
-        actual=$(readlink -f /etc/pam.d/$f 2>/dev/null || echo /etc/pam.d/$f)
-        if [ -f "$actual" ] && grep -Pq '^\s*password\s+(requisite|required|sufficient)\s+pam_pwhistory\.so.*\s+remember\s*=' "$actual"; then
-          echo "$f ($actual): remember argument still present - FAIL"
-          pwhistory_ok=1
-        else
-          echo "$f ($actual): no remember argument - OK"
-        fi
-      done
-      if [ "$pwhistory_ok" -eq 0 ]; then
-        echo "COMPLIANT"
-      else
-        echo "NONCOMPLIANT"
-      fi
-    args:
-      executable: /bin/bash
-    register: result_02
-    failed_when: false
-    changed_when: false
-    when: "not (playbook_skipped | default(false) | bool)"
-    tags: [execute]
-
-  - name: "Req 02 - Store verification details"
+  - name: "Req step-01 - Determine if compliant"
     ansible.builtin.set_fact:
-      task_02_name: "Verify password history remember is configured"
-      task_02_cmd: "grep remember in pwhistory.conf and check real PAM files for remember argument"
-      task_02_rc: "{{ result_02.rc | default(-1) }}"
-      data_02: "{{ result_02.stdout | default('') | trim }}"
-      status_02: "{{ 'PASS' if ('COMPLIANT' in (result_02.stdout | default(''))) else 'FAIL' }}"
-      details_02: "{{ 'System is compliant' if ('COMPLIANT' in (result_02.stdout | default(''))) else 'System is not compliant' }}"
-    when: "not (playbook_skipped | default(false) | bool)"
+      _audit_compliant: "{{ _step01_check_output.stdout | trim == 'COMPLIANT' }}"
+    when: not _playbook_skip
     tags: [execute]
 
-  - name: "Req 02 - Store skipped verification details"
+  - name: "Req step-01 - Set status_01"
     ansible.builtin.set_fact:
-      task_02_name: "Verify password history remember is configured"
-      task_02_cmd: "N/A"
-      task_02_rc: -1
-      data_02: "SKIP"
-      status_02: "SKIP"
-      details_02: "authselect package not installed"
-    when: "playbook_skipped | default(false) | bool"
+      task_01_name: "Run CIS audit script"
+      task_01_cmd: "bash -c 'audit script (stdin)'"
+      task_01_rc: "{{ _step01_check_output.rc if not _playbook_skip else -1 }}"
+      data_01: "{{ _step01_check_output.stdout if not _playbook_skip else '' }}"
+      status_01: >-
+        {%- if _playbook_skip -%} SKIP
+        {%- elif _step01_check_output.rc == 0 -%} PASS
+        {%- else -%} ERROR
+        {%- endif -%}
     tags: [execute]
 
-  - name: "Req 01 - Store remediation details"
+  - name: "Req step-01 - Set details_01"
     ansible.builtin.set_fact:
-      task_01_name: "Run remediation script and set remember in pwhistory.conf"
-      task_01_cmd: "lineinfile + /tmp/remediate_pwhistory_remember.sh"
-      task_01_rc: "{{ result_01_script.rc | default(0) }}"
-      data_01: "{{ result_01_script.stdout | default('') | trim }}"
-      status_01: "{{ status_02 | default('ERROR') | trim }}"
       details_01: >-
-        {% if playbook_skipped | default(false) | bool %}
-          authselect not installed - skipped
-        {% elif (result_01_script.rc | default(-1) | int) != 0 and status_02 | default('') | trim == 'PASS' %}
-          Remediation script exited with non-zero code {{ result_01_script.rc }} but verification passed
-        {% elif (result_01_script.rc | default(-1) | int) != 0 %}
-          Remediation script failed with exit code {{ result_01_script.rc }}
-        {% else %}
-          Remediation script executed successfully
-        {% endif %}
+        {%- if status_01 == 'SKIP' -%} Required packages not installed
+        {%- elif status_01 == 'PASS' -%}
+          {%- if data_01 | trim == 'COMPLIANT' -%}
+            Configuration already compliant, remediation skipped
+          {%- else -%}
+            Configuration not compliant, proceeding to remediation
+          {%- endif -%}
+        {%- else -%} Audit script failed
+        {%- endif -%}
     tags: [execute]
 
-  - name: "Req 03a - Compute cis_result"
+  - name: "Req step-02 - Set remember line in pwhistory.conf"
+    ansible.builtin.lineinfile:
+      path: /etc/security/pwhistory.conf
+      regexp: |
+        ^remember\s*=\s*
+      line: "remember = {{ password_history_remember }}"
+      create: yes
+      mode: '0644'
+    when:
+    - not _playbook_skip
+    - not _audit_compliant
+    register: _lineinfile_result
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req step-02 - Run remediation script"
+    ansible.builtin.shell:
+      cmd: /bin/bash
+      stdin: "{{ remediation_script_content }}"
+    args:
+      executable: /bin/bash
+    register: _remediation_output
+    failed_when: false
+    changed_when: false
+    when:
+    - not _playbook_skip
+    - not _audit_compliant
+    - _authselect_configured
+    tags: [execute]
+
+  - name: "Req step-02 - Set status_02"
     ansible.builtin.set_fact:
-      cis_result: "{{ 'PASS' if status_02 == 'PASS' else 'FAIL' if status_02 == 'FAIL' else 'SKIP' if status_02 == 'SKIP' else 'ERROR' }}"
+      task_02_name: "Apply remediation"
+      task_02_cmd: "lineinfile + bash remediation script"
+      task_02_rc: >-
+        {%- if not _playbook_skip and not _audit_compliant %}
+        {%-   if _authselect_configured %}
+        {%-     if _lineinfile_result is not failed and _remediation_output.rc | default(-1) == 0 %}0{% else %}1{% endif %}
+        {%-   else %}
+        {%-     if _lineinfile_result is not failed %}0{% else %}1{% endif %}
+        {%-   endif %}
+        {%- else %}-1{% endif %}
+      data_02: >-
+        {%- if _playbook_skip -%} N/A
+        {%- elif _audit_compliant -%} N/A
+        {%- elif not _authselect_configured -%} pwhistory.conf updated, PAM script skipped (authselect not configured)
+        {%- else -%} pwhistory.conf updated, PAM script executed
+        {%- endif -%}
+      status_02: >-
+        {%- if _playbook_skip -%} SKIP
+        {%- elif _audit_compliant -%} SKIP
+        {%- elif not _authselect_configured -%} SKIP
+        {%- elif _lineinfile_result is not failed and _remediation_output.rc | default(-1) == 0 -%} PASS
+        {%- else -%} ERROR
+        {%- endif -%}
     tags: [execute]
 
-  - name: "Req 03b - Store cis_result details"
+  - name: "Req step-02 - Set details_02"
     ansible.builtin.set_fact:
-      task_03_name: "Store final remediation result"
-      task_03_cmd: "set_fact cis_result based on verification status"
-      task_03_rc: 0
-      data_03: "cis_result = {{ cis_result }}"
-      status_03: "{{ 'PASS' if cis_result in ['PASS', 'FAIL', 'SKIP', 'ERROR'] else 'ERROR' }}"
-      details_03: "cis_result stored successfully"
+      details_02: >-
+        {%- if status_02 == 'PASS' -%} Remediation applied
+        {%- elif status_02 == 'SKIP' -%} Skipped (not applicable or authselect not configured)
+        {%- else -%} Failed
+        {%- endif -%}
     tags: [execute]
 
-  - name: "Req 04 - Generate remediation report"
+  - name: "Req step-03 - Run verification audit script"
+    ansible.builtin.shell:
+      cmd: /bin/bash
+      stdin: "{{ audit_script_content }}"
+    args:
+      executable: /bin/bash
+    register: _step03_output
+    failed_when: false
+    changed_when: false
+    when: not _playbook_skip
+    tags: [execute]
+
+  - name: "Req step-03 - Set status_03"
+    ansible.builtin.set_fact:
+      task_03_name: "Re-run CIS audit script"
+      task_03_cmd: "bash -c 'audit script (stdin)'"
+      task_03_rc: "{{ _step03_output.rc if not _playbook_skip else -1 }}"
+      data_03: "{{ _step03_output.stdout if not _playbook_skip else '' }}"
+      status_03: >-
+        {%- if _playbook_skip -%} SKIP
+        {%- elif _step03_output.stdout | trim == 'COMPLIANT' -%} PASS
+        {%- else -%} FAIL
+        {%- endif -%}
+    tags: [execute]
+
+  - name: "Req step-03 - Set details_03"
+    ansible.builtin.set_fact:
+      details_03: "{{ 'System is compliant' if status_03 == 'PASS' else 'Not compliant' }}"
+    tags: [execute]
+
+  - name: "Req step-04 - Set cis_result"
+    ansible.builtin.set_fact:
+      cis_result: "{{ status_03 | trim }}"
+    tags: [execute]
+
+  - name: "Req step-04 - Store task_04 metadata"
+    ansible.builtin.set_fact:
+      task_04_name: "Store cis_result"
+      task_04_cmd: "set_fact"
+      task_04_rc: 0
+    tags: [execute]
+
+  - name: "Req step-04 - Set data_04"
+    ansible.builtin.set_fact:
+      data_04: "{{ cis_result }}"
+    tags: [execute]
+
+  - name: "Req step-04 - Set status_04"
+    ansible.builtin.set_fact:
+      status_04: "{{ cis_result }}"
+    tags: [execute]
+
+  - name: "Req step-04 - Set details_04"
+    ansible.builtin.set_fact:
+      details_04: "Final result: {{ cis_result }}"
+    tags: [execute]
+
+  - name: "Generate remediation report"
     ansible.builtin.debug:
       msg:
-      - "========================================================"
       - "REMEDIATION REPORT — CIS 5.3.3.3.1"
       - "Reference: CIS Benchmark checkpoint 5.3.3.3.1"
-      - "========================================================"
       - ""
       - "REQUIREMENT 01 - {{ req_01 }}:"
       - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
       - "  Data: {{ data_01 | default('') | trim }}"
-      - "  Status: {{ status_01 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_01 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
       - ""
       - "REQUIREMENT 02 - {{ req_02 }}:"
       - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
       - "  Data: {{ data_02 | default('') | trim }}"
-      - "  Status: {{ status_02 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
       - ""
       - "REQUIREMENT 03 - {{ req_03 }}:"
       - "  Task: {{ task_03_name | default('Not recorded') }}"
       - "  Command: {{ task_03_cmd | default('N/A') }}"
       - "  Exit code: {{ task_03_rc | default(-1) }}"
       - "  Data: {{ data_03 | default('') | trim }}"
-      - "  Status: {{ status_03 | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_03 | default('Not evaluated') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
-      - "  Result: {{ cis_result | default('UNKNOWN') | trim }}"
-      - "  Details: {{ details_02 | default('Not evaluated') | trim }}"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
+  - name: "Restore - Rediscover authselect directory"
+    ansible.builtin.shell: "set -o pipefail && head -1 /etc/authselect/authselect.conf | grep 'custom/' || true"
+    args:
+      executable: /bin/bash
+    register: _restore_authselect_raw
+    failed_when: false
+    changed_when: false
+    tags: [restore]
+
+  - name: "Restore - Set restore authselect dir fact"
+    ansible.builtin.set_fact:
+      _restore_authselect_dir: "{{ _restore_authselect_raw.stdout | trim }}"
+    tags: [restore]
+
   - name: "Restore - Check if pwhistory.conf backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/pwhistory.conf.backup"
-    register: _restore_pwhistory
+      path: "{{ backup_dir }}/pwhistory.conf.present"
+    register: _restore_pwhistory_present
     failed_when: false
     tags: [restore]
 
   - name: "Restore - Restore pwhistory.conf from backup"
     ansible.builtin.copy:
-      src: "{{ backup_dir }}/pwhistory.conf.backup"
-      dest: "{{ pwhistory_conf }}"
+      src: "{{ backup_dir }}/pwhistory.conf.present"
+      dest: /etc/security/pwhistory.conf
       remote_src: true
-    when: "_restore_pwhistory.stat.exists | default(false)"
+    when: _restore_pwhistory_present.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if authselect backup exists"
+  - name: "Restore - Check if pwhistory.conf was absent marker"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/authselect"
-    register: _restore_authselect
+      path: "{{ backup_dir }}/pwhistory.conf.absent"
+    register: _restore_pwhistory_absent
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore authselect directory from backup"
-    ansible.builtin.shell: |
-      if [ -d "{{ backup_dir }}/authselect" ]; then
-        rm -rf {{ authselect_dir }}/*
-        cp -r "{{ backup_dir }}/authselect/"* {{ authselect_dir }}/
-      fi
-    args:
-      executable: /bin/bash
-    when: "_restore_authselect.stat.exists | default(false) and _restore_authselect.stat.isdir | default(false)"
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Read script existence marker"
-    ansible.builtin.slurp:
-      src: "{{ backup_dir }}/script_existed"
-    register: _restore_script_existed
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Delete remediation script if it did not exist originally"
+  - name: "Restore - Remove pwhistory.conf if was absent"
     ansible.builtin.file:
-      path: "/tmp/remediate_pwhistory_remember.sh"
+      path: /etc/security/pwhistory.conf
       state: absent
+    when: _restore_pwhistory_absent.stat.exists | default(false)
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if system-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/system-auth.present"
+    register: _restore_sysauth_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore system-auth authselect file"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/system-auth.present"
+      dest: "{{ _restore_authselect_dir }}/system-auth"
+      remote_src: true
     when:
-    - "_restore_script_existed.content is defined"
-    - "(_restore_script_existed.content | b64decode | trim) == 'False'"
+    - _restore_sysauth_present.stat.exists | default(false)
+    - _restore_authselect_dir | length > 0
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Check if password-auth backup exists"
+    ansible.builtin.stat:
+      path: "{{ backup_dir }}/password-auth.present"
+    register: _restore_pwauth_present
+    failed_when: false
+    tags: [restore]
+
+  - name: "Restore - Restore password-auth authselect file"
+    ansible.builtin.copy:
+      src: "{{ backup_dir }}/password-auth.present"
+      dest: "{{ _restore_authselect_dir }}/password-auth"
+      remote_src: true
+    when:
+    - _restore_pwauth_present.stat.exists | default(false)
+    - _restore_authselect_dir | length > 0
     failed_when: false
     tags: [restore]
 

@@ -1,7 +1,10 @@
-req_01: "Check if the system-wide crypto policy file exists using command: `test -f /etc/crypto-policies/state/CURRENT.pol`. Expected result: file exists (exit code 0)."
+policy_file: "/etc/crypto-policies/state/CURRENT.pol"
+req_01: "Check if the system-wide crypto policy file exists using command: test -f /etc/crypto-policies/state/CURRENT.pol. Expected result: exit status 0 (file exists)"
+# Escaped backslashes inside double-quoted strings to prevent YAML parse errors
 req_02: |
-  Check that SHA1 hash and signature support is disabled in the system-wide crypto policy using command: `awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\\s*-\\s*([^#\\n\\r]+)?SHA1/){print}' /etc/crypto-policies/state/CURRENT.pol`. Expected result: no output (nothing returned).
+  Check that the hash and sign lines do not include SHA1 (excluding commented lines) using command: awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\\s*-\\s*([^#\\n\\r]+)?SHA1/){print}' /etc/crypto-policies/state/CURRENT.pol. Expected result: no output (nothing returned)
 req_03: |
-  Check that sha1_in_certs is set to 0 (disabled) using command: `grep -Psi -- '^\\h*sha1_in_certs\\h*=\\h*' /etc/crypto-policies/state/CURRENT.pol`. Expected result: output contains `sha1_in_certs = 0`.
-req_04: "Overall compliance status: PASS if all above checks pass, SKIP if the crypto policy file does not exist, FAIL if the file exists but SHA1 hash/signature support is enabled or sha1_in_certs is not set to 0."
-req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+  Check that sha1_in_certs is set to 0 (disabled) using command: grep -Psi -- '^\\h*sha1_in_certs\\h*=\\h*' /etc/crypto-policies/state/CURRENT.pol. Expected result: output contains sha1_in_certs = 0
+req_04: "Check overall compliance status: PASS if all above checks pass, SKIP if the policy file does not exist, FAIL if the file exists but SHA1 hash/sign support is enabled or sha1_in_certs is not 0."
+req_05: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable. Also store the raw output of step-02 and step-03 in cis_result_comment and cis_raw_output."
+req_06: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format: AUDIT REPORT — CIS 1.6.3 ..."

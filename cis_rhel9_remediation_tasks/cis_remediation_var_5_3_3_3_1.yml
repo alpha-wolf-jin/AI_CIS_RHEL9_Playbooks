@@ -1,9 +1,40 @@
-playbook_name: "cis_5_3_3_3_1"
+playbook_name: "remediate_cis_5_3_3_3_1"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-req_01: "Run the provided remediation script to fix Ensure password history remember is configured"
-req_02: "VERIFY: Run audit check to confirm Ensure password history remember is configured is properly configured. Expected result: System is compliant"
-req_03: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
-req_04: "Generate remediation report"
-pwhistory_conf: "/etc/security/pwhistory.conf"
-authselect_dir: "/etc/authselect"
-remember_value: "24"
+password_history_remember: "24"
+req_01: "1. Verify if the password history remember configuration is already present. Check /etc/security/pwhistory.conf for 'remember = {{ password_history_remember }}' and ensure no 'remember' argument exists in pam_pwhistory.so lines in /etc/pam.d/system-auth and /etc/pam.d/password-auth. If the configuration is already correct, skip remediation and go to step-04 (transform). Otherwise, proceed to step-02 (remediation)"
+req_02: "2. Run the provided remediation script to fix Ensure password history remember is configured. Edit or add the following line in /etc/security/pwhistory.conf: remember = {{ password_history_remember }} Run the following script to remove the remember argument from the pam_pwhistory.so module in /etc/pam.d/system-auth and /etc/pam.d/password-auth: — run audit_script — . Expected result: Script applies the required changes"
+req_03: "3. VERIFY: Run audit check to confirm Ensure password history remember is configured is properly configured. Expected result: System is compliant"
+req_04: "4. Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+audit_script_content: |
+  #!/usr/bin/env bash
+  {
+    l_remember="{{ password_history_remember }}"
+    l_pwhistory_conf_ok=0
+    l_pam_ok=0
+    if grep -Eqs "^\s*remember\s*=\s*${l_remember}\s*$" /etc/security/pwhistory.conf; then
+      l_pwhistory_conf_ok=1
+    fi
+    l_pam_ok=1
+    for l_pam_file in system-auth password-auth; do
+      l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+      if grep -Eqs "^\s*password\s+(requisite|required|sufficient)\s+pam_pwhistory\.so.*\s+remember\s*=\s*\S+" "$l_authselect_file"; then
+        l_pam_ok=0
+      fi
+    done
+    if [ "$l_pwhistory_conf_ok" -eq 1 ] && [ "$l_pam_ok" -eq 1 ]; then
+      echo "COMPLIANT"
+    else
+      echo "NOT_COMPLIANT"
+    fi
+  }
+remediation_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+    for l_pam_file in system-auth password-auth; do
+      l_authselect_file="/etc/authselect/$(head -1 /etc/authselect/authselect.conf | grep 'custom/')/$l_pam_file"
+      sed -ri 's/(^\s*password\s+(requisite|required|sufficient)\s+pam_pwhistory\.so.*)(\s+ remember\s*=\s*\S+)(.*$)/\1\4/' "$l_authselect_file"
+    done
+    authselect apply-changes
+  }
+  {% endraw %}

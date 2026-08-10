@@ -1,11 +1,16 @@
-# Audit script content - exact from CIS procedure
+kernel_module_name: "cramfs"
+req_01: "Run the provided audit script to verify Ensure cramfs kernel module is not available"
+req_02: "VERIFY: Summarise compliance status for Ensure cramfs kernel module is not available. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Create a task named 'Generate audit report' using debug msg with exact format"
+audit_script: "/tmp/cis_audit_cramfs.sh"
 audit_script_content: |
-  {% raw %}
   #!/usr/bin/env bash
   {
      l_output3="" l_dl="" # clear variables
      unset a_output; unset a_output2 # unset arrays
-     l_mod_name="cramfs" # set module name
+     l_mod_name="{{ kernel_module_name }}" # set module name
+     {% raw %}
      l_mod_type="fs" # set module type
      l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
      f_module_chk()
@@ -49,16 +54,3 @@ audit_script_content: |
      fi
   }
   {% endraw %}
-
-# Requirement descriptions - use exact text from requirements
-req_01: >-
-  1. Run the provided audit script to verify Ensure cramfs kernel module is not available.
-  Run the following script to verify:
-  - IF - the cramfs kernel module is available in ANY installed kernel, verify:
-    • An entry including /bin/true or /bin/false exists in a file within the /etc/modprobe.d/ directory
-    • The module is deny listed in a file within the /etc/modprobe.d/ directory
-    • The module is not loaded in the running kernel
-  - IF - the cramfs kernel module is not available on the system, or pre-compiled into the kernel, no additional configuration is necessary
-req_02: "2. VERIFY: Summarise compliance status for Ensure cramfs kernel module is not available. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
-req_03: "3. Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
-req_04: "4. Create a task named 'Generate audit report' using debug msg with EXACTLY this format: AUDIT REPORT — CIS 1.1.1.1 ..."

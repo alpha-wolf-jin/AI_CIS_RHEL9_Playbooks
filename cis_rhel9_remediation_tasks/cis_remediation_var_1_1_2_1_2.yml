@@ -1,10 +1,9 @@
-playbook_name: "CIS_1.1.2.1.2_nodev_tmp"
+playbook_name: "cis_1_1_2_1_2_remediation"
 backup_dir: "/var/log/ai-playbooks-backup/{{ playbook_name }}"
-req_01: |
-  Check if a separate partition exists for /tmp using command: `mount | grep -E '\\s/tmp\\s'`. Expected result: output showing /tmp partition details.
-req_02: |
-  Edit /etc/fstab to add nodev to the mounting options for /tmp partition using command: `sed -i 's|\\(\\s/tmp\\s\\+\\S\\+\\s\\+\\S\\+\\)|\\1,nodev|' /etc/fstab`. Expected result: /etc/fstab updated with nodev option for /tmp.
-req_03: "Remount /tmp with the configured options using command: `mount -o remount /tmp`. Expected result: /tmp remounted with nodev option."
-req_04: |
-  Verify nodev option is set on /tmp partition using command: `mount | grep -E '\\s/tmp\\s' | grep -o 'nodev'`. Expected result: output contains 'nodev'.
-req_05: "Store the final remediation result in a variable named 'cis_result' using set_fact. Set cis_result to the overall remediation status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+fs_option: "nodev"
+partition: "/tmp"
+req_01: "Check if /tmp is a separate partition and nodev option is set in /etc/fstab"
+req_02: "Add nodev option to /etc/fstab for /tmp"
+req_03: "Remount /tmp partition"
+req_04: "Verify live mount options of /tmp"
+req_05: "Set final compliance status (cis_result)"

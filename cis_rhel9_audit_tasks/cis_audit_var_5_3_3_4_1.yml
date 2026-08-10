@@ -1,6 +1,7 @@
-req_01: |
-  Check if pam_unix.so is configured in PAM files using command: `grep -P -- '^\\h*(auth|account|password|session)\\h+(requisite|required|sufficient)\\h+pam_unix\\.so\\b' /etc/pam.d/password-auth /etc/pam.d/system-auth`. Expected result: Lines showing pam_unix.so usage without nullok.
+req_01: "1. Check if PAM configuration files exist using command: `ls /etc/pam.d/password-auth /etc/pam.d/system-auth`. Expected result: Both files exist"
 req_02: |
-  Check that none of the returned lines from the previous command include the nullok argument using command: `grep -P -- '^\\h*(auth|account|password|session)\\h+(requisite|required|sufficient)\\h+pam_unix\\.so\\b' /etc/pam.d/password-auth /etc/pam.d/system-auth | grep nullok`. Expected result: No output (empty).
-req_03: "Verify overall compliance: Ensure that the pam_unix.so module does not have the nullok argument in any PAM configuration line. Expected result: All lines from the first check are present and none contain nullok."
-req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/UNKNOWN) derived from the last requirement's status variable."
+  2. Check that pam_unix.so lines do not include nullok using command: `grep -P -- '^\\h*(auth|account|password|session)\\h+(requisite|required|sufficient)\\h+pam_unix\\.so\\b' /etc/pam.d/password-auth /etc/pam.d/system-auth`. Expected result: None of the returned lines includes 'nullok'
+req_03: "3. Check overall compliance status. Expected result: PASS if all checks pass, SKIP if PAM configuration files do not exist, FAIL if pam_unix.so lines include nullok."
+req_04: "4. Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+grep_cmd: |
+  grep -P -- '^\\h*(auth|account|password|session)\\h+(requisite|required|sufficient)\\h+pam_unix\\.so\\b' /etc/pam.d/password-auth /etc/pam.d/system-auth

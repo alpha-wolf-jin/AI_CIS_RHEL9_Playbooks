@@ -2,199 +2,183 @@
 - name: Initialize meta data variables
   include_vars: cis_audit_var_1_6_3.yml
 
+- name: "Req step-01 - Gather package facts"
+  ansible.builtin.package_facts:
+    manager: auto
+  tags: [audit]
+- name: "Req step-01 - Set crypto-policies installed flag and skip reason"
+  ansible.builtin.set_fact:
+    crypto_policies_installed: "{{ 'crypto-policies' in ansible_facts.packages }}"
+    audit_skip_reason: "{{ '' if ('crypto-policies' in ansible_facts.packages) else 'crypto-policies package is not installed' }}"
+  tags: [audit]
 - name: "Initialize data variables"
-  set_fact:
-    data_01: "Not collected yet"
-    status_01: "ERROR"
-    details_01: "Not evaluated"
-    data_02: "Not collected yet"
-    status_02: "ERROR"
+  ansible.builtin.set_fact:
+    task_01_name: "Check policy file existence"
+    task_01_cmd: "test -f {{ policy_file }}"
+    task_01_rc: -1
+    data_01: ""
+    status_01: "SKIP"
+    details_01: "{{ 'Skipped: ' + audit_skip_reason if audit_skip_reason != '' else 'File existence status pending' }}"
+    task_02_name: "Check hash/sign directives for SHA1"
+    task_02_cmd: |
+      awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\\s*-\\s*([^#\\n\\r]+)?SHA1/){print}' {{ policy_file }}
+    task_02_rc: -1
+    data_02: ""
+    status_02: "SKIP"
     details_02: "Not evaluated"
-    data_03: "Not collected yet"
-    status_03: "ERROR"
+    task_03_name: "Check sha1_in_certs parameter"
+    task_03_cmd: |
+      grep -Psi -- '^\\h*sha1_in_certs\\h*=\\h*' {{ policy_file }}
+    task_03_rc: -1
+    data_03: ""
+    status_03: "SKIP"
     details_03: "Not evaluated"
-    data_04: "Not collected yet"
     status_04: "ERROR"
     details_04: "Not evaluated"
-    data_05: "Not collected yet"
     status_05: "ERROR"
-    details_05: "Not evaluated"
-    task_01_name: "Not executed"
-    task_01_cmd: "N/A"
-    task_01_rc: -1
-    task_02_name: "Not executed"
-    task_02_cmd: "N/A"
-    task_02_rc: -1
-    task_03_name: "Not executed"
-    task_03_cmd: "N/A"
-    task_03_rc: -1
-    task_04_name: "Not executed"
-    task_04_cmd: "N/A"
-    task_04_rc: -1
-    task_05_name: "Not executed"
-    task_05_cmd: "N/A"
-    task_05_rc: -1
-
-- name: "Req 01 - Check if the system-wide crypto policy file exists"
-  ansible.builtin.shell: test -f /etc/crypto-policies/state/CURRENT.pol
+    details_05: ""
+    cis_result: "ERROR"
+    cis_result_comment: ""
+    cis_raw_output: ""
+  tags: [audit]
+- name: "Req step-01 - Check policy file exists"
+  ansible.builtin.shell: test -f "{{ policy_file }}"
   args:
     executable: /bin/bash
-  register: result_01
+  register: _step01_output
+  when: crypto_policies_installed | bool
   failed_when: false
   changed_when: false
-
-- name: "Store requirement 01 details"
-  set_fact:
-    task_01_name: "Check if CURRENT.pol exists"
-    task_01_cmd: "test -f /etc/crypto-policies/state/CURRENT.pol"
-    task_01_rc: "{{ result_01.rc | default(-1) }}"
-    data_01: "{{ 'File exists' if result_01.rc | default(-1) == 0 else 'File does not exist' }}"
-    status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
-    details_01: "{{ 'CURRENT.pol file is present' if result_01.rc | default(-1) == 0 else 'CURRENT.pol file is missing' }}"
-
-- name: "Set policy file existence flag"
-  set_fact:
-    policy_file_exists: "{{ result_01.rc == 0 }}"
-
-- name: "Req 02 - Check that SHA1 hash and signature support is disabled"
+  tags: [audit]
+- name: "Req step-01 - Store details for file existence"
+  ansible.builtin.set_fact:
+    task_01_rc: "{{ _step01_output.rc | default(-1) }}"
+    data_01: "{{ _step01_output.stdout | default('') | trim }}"
+    status_01: "{{ 'PASS' if _step01_output.rc | default(-1) == 0 else 'SKIP' }}"
+    details_01: "{{ 'Policy file exists' if _step01_output.rc | default(-1) == 0 else 'Policy file not found; audit skipped' }}"
+  when: _step01_output is defined
+  tags: [audit]
+- name: "Req step-02 - Check hash/sign directives for SHA1"
   ansible.builtin.shell: |
-    awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\s*-\s*([^#\n\r]+)?SHA1/){print}' /etc/crypto-policies/state/CURRENT.pol
+    set -o pipefail
+    awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\s*-\s*([^#\n\r]+)?SHA1/){print}' "{{ policy_file }}"
   args:
     executable: /bin/bash
-  register: result_02
+  register: _step02_output
+  when:
+  - crypto_policies_installed | bool
+  - _step01_output is defined
+  - _step01_output.rc | default(-1) == 0
   failed_when: false
   changed_when: false
-  when: policy_file_exists | bool
-
-- name: "Store requirement 02 details"
-  set_fact:
-    task_02_name: "Check SHA1 hash and signature support disabled"
-    task_02_cmd: |
-      awk -F= '($1~/(hash|sign)/ && $2~/SHA1/ && $2!~/^\s*-\s*([^#\n\r]+)?SHA1/){print}' /etc/crypto-policies/state/CURRENT.pol
-    task_02_rc: "{{ result_02.rc | default(-1) if policy_file_exists | bool else -1 }}"
-    data_02: "{{ result_02.stdout | default('') | trim if policy_file_exists | bool else 'N/A' }}"
-    status_02: >-
-      {{-
-        'SKIP' if not (policy_file_exists | bool) else
-        ('PASS' if (result_02.stdout | default('') | trim) == '' else 'FAIL')
-      -}}
-    details_02: >-
-      {{-
-        'Prerequisite not met - policy file does not exist' if not (policy_file_exists | bool) else
-        ('SHA1 hash and signature support disabled - no non‑negated SHA1 entries found' if (result_02.stdout | default('') | trim) == '' else
-        'SHA1 hash and/or signature support still enabled - non‑negated SHA1 entries detected')
-      -}}
-
-- name: "Req 03 - Check that sha1_in_certs is set to 0"
-  ansible.builtin.shell: grep -Psi -- '^\h*sha1_in_certs\h*=\h*' /etc/crypto-policies/state/CURRENT.pol
+  tags: [audit]
+- name: "Req step-02 - Store details for SHA1 check"
+  ansible.builtin.set_fact:
+    task_02_rc: "{{ _step02_output.rc | default(-1) }}"
+    data_02: "{{ _step02_output.stdout | default('') | trim }}"
+    status_02: "{{ 'PASS' if (_step02_output.stdout | default('') | trim == '') else 'FAIL' }}"
+    details_02: "{{ 'No uncommented SHA1 lines found' if (_step02_output.stdout | default('') | trim == '') else 'Uncommented SHA1 lines found' }}"
+  when: _step02_output is defined
+  tags: [audit]
+- name: "Req step-03 - Check sha1_in_certs setting"
+  ansible.builtin.shell: |
+    grep -Psi -- '^\h*sha1_in_certs\h*=\h*' "{{ policy_file }}"
   args:
     executable: /bin/bash
-  register: result_03
+  register: _step03_output
+  when:
+  - crypto_policies_installed | bool
+  - _step01_output is defined
+  - _step01_output.rc | default(-1) == 0
   failed_when: false
   changed_when: false
-  when: policy_file_exists | bool
-
-- name: "Store requirement 03 details"
-  set_fact:
-    task_03_name: "Check sha1_in_certs = 0 in current policy"
-    task_03_cmd: |
-      grep -Psi -- '^\\h*sha1_in_certs\\h*=\\h*' /etc/crypto-policies/state/CURRENT.pol
-    task_03_rc: "{{ result_03.rc | default(-1) if policy_file_exists | bool else -1 }}"
-    data_03: "{{ result_03.stdout | default('') | trim if policy_file_exists | bool else 'N/A' }}"
-    status_03: >-
-      {{-
-        'SKIP' if not (policy_file_exists | bool) else
-        ('PASS' if (result_03.stdout | default('') | trim) == 'sha1_in_certs = 0' else 'FAIL')
-      -}}
-    details_03: >-
-      {{-
-        'Prerequisite not met - policy file does not exist' if not (policy_file_exists | bool) else
-        ('sha1_in_certs = 0 is set in CURRENT.pol' if (result_03.stdout | default('') | trim) == 'sha1_in_certs = 0' else
-        'sha1_in_certs = 0 is NOT present in CURRENT.pol')
-      -}}
-
-- name: "Req 04 - Summarize overall compliance"
-  set_fact:
+  tags: [audit]
+- name: "Req step-03 - Store details for sha1_in_certs"
+  ansible.builtin.set_fact:
+    task_03_rc: "{{ _step03_output.rc | default(-1) }}"
+    data_03: "{{ _step03_output.stdout | default('') | trim }}"
+    status_03: "{{ 'PASS' if ('sha1_in_certs = 0' in (_step03_output.stdout | default('') | trim)) else 'FAIL' }}"
+    details_03: "{{ 'sha1_in_certs is set to 0' if ('sha1_in_certs = 0' in (_step03_output.stdout | default('') | trim)) else 'sha1_in_certs is not set to 0 or missing' }}"
+  when: _step03_output is defined
+  tags: [audit]
+- name: "Req step-04 - Determine overall compliance status"
+  ansible.builtin.set_fact:
     status_04: >-
-      {{-
-        'SKIP' if not (policy_file_exists | bool) else
-        ('PASS' if (status_02 | default('') | trim == 'PASS' and status_03 | default('') | trim == 'PASS') else 'FAIL')
-      -}}
+      {%- if not crypto_policies_installed | bool -%}SKIP
+      {%- elif _step01_output is not defined or _step01_output.rc | default(-1) != 0 -%}SKIP
+      {%- elif _step02_output is defined and _step03_output is defined and (_step02_output.stdout | default('') | trim == '') and ('sha1_in_certs = 0' in (_step03_output.stdout | default('') | trim)) -%}PASS
+      {%- else -%}FAIL{%- endif -%}
     details_04: >-
-      {{-
-        'Policy file does not exist - audit skipped' if not (policy_file_exists | bool) else
-        ('All checks passed - system-wide crypto policy disables SHA1 support' if (status_02 | default('') | trim == 'PASS' and status_03 | default('') | trim == 'PASS') else
-        'One or more checks failed - SHA1 support may still be enabled')
-      -}}
-
-- name: "Store requirement 04 data and task info"
-  set_fact:
-    data_04: "{{ status_04 | default('ERROR') | trim }}"
-    task_04_name: "Summarize overall compliance"
-    task_04_cmd: "set_fact based on previous statuses"
-    task_04_rc: 0
-
-- name: "Req 05 - Store final audit result in cis_result"
-  set_fact:
+      {%- if not crypto_policies_installed | bool -%}crypto-policies package not installed; skip audit
+      {%- elif _step01_output is not defined or _step01_output.rc | default(-1) != 0 -%}Policy file not found; skip audit
+      {%- elif _step02_output is defined and _step03_output is defined and (_step02_output.stdout | default('') | trim == '') and ('sha1_in_certs = 0' in (_step03_output.stdout | default('') | trim)) -%}All checks passed
+      {%- else -%}SHA1 support is enabled or sha1_in_certs not set to 0{%- endif -%}
+  register: _step04_output
+  tags: [audit]
+- name: "Req step-05 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
     cis_result: "{{ status_04 | default('ERROR') | trim }}"
-
-- name: "Store requirement 05 details"
-  set_fact:
-    task_05_name: "Store overall audit result"
-    task_05_cmd: "set_fact cis_result = status_04"
-    task_05_rc: 0
-    data_05: "{{ cis_result | default('ERROR') | trim }}"
+    cis_result_comment: "{{ _step02_output.stdout | default('') | trim if _step02_output is defined else '' }}"
+    cis_raw_output: "{{ _step03_output.stdout | default('') | trim if _step03_output is defined else '' }}"
     status_05: "PASS"
-    details_05: "cis_result set to {{ cis_result | default('ERROR') | trim }}"
-
-- name: "Generate audit report"
-  debug:
+    details_05: "cis_result stored with raw outputs from step-02 and step-03"
+  tags: [audit]
+- name: "Req step-06 - Generate audit report"
+  ansible.builtin.debug:
     msg:
     - "AUDIT REPORT — CIS 1.6.3"
     - "Reference: CIS Benchmark checkpoint 1.6.3"
     - ""
     - "REQUIREMENT 01 - {{ req_01 }}:"
-    - "  Task: {{ task_01_name | default('Not recorded') }}"
-    - "  Command: {{ task_01_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_01_rc | default(-1) }}"
-    - "  Data: {{ data_01 | default('') | trim }}"
-    - "  Status: {{ status_01 | default('ERROR') | trim }}"
-    - "  Details: {{ details_01 | default('') | trim }}"
+    - "  Task: {{ task_01_name }}"
+    - "  Command: {{ task_01_cmd }}"
+    - "  Exit code: {{ task_01_rc }}"
+    - "  Data: {{ data_01 }}"
+    - "  Status: {{ status_01 }}"
+    - "  Details: {{ details_01 }}"
     - ""
     - "REQUIREMENT 02 - {{ req_02 }}:"
-    - "  Task: {{ task_02_name | default('Not recorded') }}"
-    - "  Command: {{ task_02_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_02_rc | default(-1) }}"
-    - "  Data: {{ data_02 | default('') | trim }}"
-    - "  Status: {{ status_02 | default('ERROR') | trim }}"
-    - "  Details: {{ details_02 | default('') | trim }}"
+    - "  Task: {{ task_02_name }}"
+    - "  Command: {{ task_02_cmd }}"
+    - "  Exit code: {{ task_02_rc }}"
+    - "  Data: {{ data_02 }}"
+    - "  Status: {{ status_02 }}"
+    - "  Details: {{ details_02 }}"
     - ""
     - "REQUIREMENT 03 - {{ req_03 }}:"
-    - "  Task: {{ task_03_name | default('Not recorded') }}"
-    - "  Command: {{ task_03_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_03_rc | default(-1) }}"
-    - "  Data: {{ data_03 | default('') | trim }}"
-    - "  Status: {{ status_03 | default('ERROR') | trim }}"
-    - "  Details: {{ details_03 | default('') | trim }}"
+    - "  Task: {{ task_03_name }}"
+    - "  Command: {{ task_03_cmd }}"
+    - "  Exit code: {{ task_03_rc }}"
+    - "  Data: {{ data_03 }}"
+    - "  Status: {{ status_03 }}"
+    - "  Details: {{ details_03 }}"
     - ""
     - "REQUIREMENT 04 - {{ req_04 }}:"
-    - "  Task: {{ task_04_name | default('Not recorded') }}"
-    - "  Command: {{ task_04_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_04_rc | default(-1) }}"
-    - "  Data: {{ data_04 | default('') | trim }}"
-    - "  Status: {{ status_04 | default('ERROR') | trim }}"
-    - "  Details: {{ details_04 | default('') | trim }}"
+    - "  Task: Determine overall compliance"
+    - "  Command: N/A"
+    - "  Exit code: 0"
+    - "  Data: N/A"
+    - "  Status: {{ status_04 }}"
+    - "  Details: {{ details_04 }}"
     - ""
     - "REQUIREMENT 05 - {{ req_05 }}:"
-    - "  Task: {{ task_05_name | default('Not recorded') }}"
-    - "  Command: {{ task_05_cmd | default('N/A') }}"
-    - "  Exit code: {{ task_05_rc | default(-1) }}"
-    - "  Data: {{ data_05 | default('') | trim }}"
-    - "  Status: {{ status_05 | default('ERROR') | trim }}"
-    - "  Details: {{ details_05 | default('') | trim }}"
+    - "  Task: Store final audit result"
+    - "  Command: set_fact"
+    - "  Exit code: 0"
+    - "  Data: {{ cis_result_comment }}"
+    - "  Status: {{ status_05 }}"
+    - "  Details: {{ details_05 }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: Generate audit report"
+    - "  Command: debug"
+    - "  Exit code: 0"
+    - "  Data: N/A"
+    - "  Status: PASS"
+    - "  Details: Report generated"
     - ""
     - "========================================================"
     - "OVERALL COMPLIANCE:"
-    - "  Result: {{ cis_result | default('ERROR') | trim }}"
-    - "  Details: {{ details_04 | default('Not evaluated') | trim }}"
+    - "  Result: {{ cis_result }}"
     - "========================================================"
+  tags: [audit]

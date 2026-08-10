@@ -1,9 +1,7 @@
-req_01: "Check if /etc/security/pwhistory.conf exists using command: `test -f /etc/security/pwhistory.conf`. Expected result: file exists."
+req_01: "Check if the /etc/security/pwhistory.conf file exists using command: `test -f /etc/security/pwhistory.conf`. Expected result: file exists (exit code 0)."
 req_02: |
-  Check if pam_pwhistory module is configured in /etc/pam.d/password-auth and /etc/pam.d/system-auth using command: `grep -Pi -- 'pam_pwhistory\\.so' /etc/pam.d/password-auth /etc/pam.d/system-auth`. Expected result: at least one line returned.
-req_03: |
-  Verify that the remember option in /etc/security/pwhistory.conf is set to 24 or more using command: `grep -Pi -- '^\\h*remember\\h*=\\h*(2[4-9]|[3-9][0-9]|[1-9][0-9]{2,})\\b' /etc/security/pwhistory.conf`. Expected result: line like 'remember = 24' or higher.
-req_04: |
-  Verify that the remember option in pam_pwhistory.so is not set to less than 24 in /etc/pam.d/password-auth and /etc/pam.d/system-auth using command: `grep -Pi -- '^\\h*password\\h+(requisite|required|sufficient)\\h+pam_pwhistory\\.so\\h+([^#\\n\\r]+\\h+)?remember=(2[0-3]|1[0-9]|[0-9])\\b' /etc/pam.d/system-auth /etc/pam.d/password-auth`. Expected result: no output (nothing returned).
-req_05: "Summarize overall compliance: PASS if all checks pass, SKIP if /etc/security/pwhistory.conf does not exist or pam_pwhistory is not configured, FAIL if any check fails."
+  Check if the remember option is set to 24 or more in /etc/security/pwhistory.conf using command: `grep -Pi -- '^\\h*remember\\h*=\\h*(2[4-9]|[3-9][0-9]|[1-9][0-9]{2,})\\b' /etc/security/pwhistory.conf`. Expected result: output contains a line like `remember = 24` or higher.
+req_03: "Check if the remember option is not set to less than 24 in the PAM system-auth file (using authselect-aware path: /etc/authselect/$(authselect current --raw 2>/dev/null)/system-auth or /etc/pam.d/system-auth). Expected result: no output (nothing returned)."
+req_04: "Check if the remember option is not set to less than 24 in the PAM password-auth file (using authselect-aware path: /etc/authselect/$(authselect current --raw 2>/dev/null)/password-auth or /etc/pam.d/password-auth). Expected result: no output (nothing returned)."
+req_05: "Check overall compliance status: PASS if all previous checks pass, SKIP if /etc/security/pwhistory.conf does not exist, FAIL if the file exists but the remember option is less than 24 or the pam_pwhistory module has remember set to less than 24 in the PAM files. Expected result: one of PASS, SKIP, or FAIL based on the checks."
 req_06: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

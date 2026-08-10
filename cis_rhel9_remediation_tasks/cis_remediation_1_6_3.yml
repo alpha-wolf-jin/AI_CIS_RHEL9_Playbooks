@@ -2,206 +2,241 @@
 - name: Initialize meta data variables
   include_vars: cis_remediation_var_1_6_3.yml
 
-- name: "Snapshot - Create backup directory"
+- name: "State Guard - Remove stale checkpoint if exists"
   ansible.builtin.file:
-    path: "{{ backup_dir }}"
+    path: "{{ state_guard_dir }}"
+    state: absent
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint directory"
+  ansible.builtin.file:
+    path: "{{ state_guard_dir }}"
     state: directory
     mode: '0700'
   tags: [snapshot]
-- name: "Snapshot - Check if config file exists"
+- name: "State Guard - Check if NO-SHA1.pmod exists"
   ansible.builtin.stat:
-    path: "{{ config_file }}"
-  register: _snap_config_stat
+    path: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+  register: _sg_nosha1_stat
   tags: [snapshot]
-- name: "Snapshot - Backup config file if exists"
+- name: "State Guard - Backup NO-SHA1.pmod if present"
   ansible.builtin.copy:
-    src: "{{ config_file }}"
-    dest: "{{ backup_dir }}/config.present"
+    src: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+    dest: "{{ state_guard_dir }}/NO-SHA1.pmod.present"
     remote_src: true
-  when: _snap_config_stat.stat.exists
+  when: _sg_nosha1_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Check if NO-SHA1.pmod exists"
-  ansible.builtin.stat:
-    path: "{{ subpolicy_file }}"
-  register: _snap_subpolicy_stat
+- name: "State Guard - Mark NO-SHA1.pmod as absent (not present pre-remediation)"
+  ansible.builtin.copy:
+    content: "absent"
+    dest: "{{ state_guard_dir }}/NO-SHA1.pmod.absent"
+  when: not _sg_nosha1_stat.stat.exists
   tags: [snapshot]
-- name: "Snapshot - Create absent marker if NO-SHA1.pmod did not exist"
-  ansible.builtin.file:
-    path: "{{ backup_dir }}/subpolicy.absent"
-    state: touch
-    mode: '0600'
-  when: not _snap_subpolicy_stat.stat.exists | default(false)
+- name: "State Guard - Capture current system-wide crypto policy"
+  ansible.builtin.shell: update-crypto-policies --show
+  args:
+    executable: /bin/bash
+  register: _sg_current_policy
+  tags: [snapshot]
+- name: "State Guard - Persist current crypto policy"
+  ansible.builtin.copy:
+    content: "{{ _sg_current_policy.stdout }}"
+    dest: "{{ state_guard_dir }}/current_policy.state"
+  tags: [snapshot]
+- name: "State Guard - Create checkpoint flag"
+  ansible.builtin.copy:
+    content: "checkpoint"
+    dest: "{{ state_guard_flag }}"
   tags: [snapshot]
 
 - block:
-# Initialize report variables with defaults (SKIP/not collected)
-  - name: "Initialize report data"
-    set_fact:
-      task_01_name: "Not recorded"
-      task_01_cmd: "N/A"
-      task_01_rc: -1
-      data_01: "Not collected"
-      status_01: "SKIP"
+        # === EXECUTE (tag: execute) ===
+
+  - name: "Initialize data variables"
+    ansible.builtin.set_fact:
+      data_01: "Not collected yet"
+      status_01: "ERROR"
       details_01: "Not evaluated"
-      task_02_name: "Not recorded"
-      task_02_cmd: "N/A"
-      task_02_rc: -1
-      data_02: "Not collected"
-      status_02: "SKIP"
+      data_02: "Not collected yet"
+      status_02: "ERROR"
       details_02: "Not evaluated"
-      task_03_name: "Not recorded"
-      task_03_cmd: "N/A"
-      task_03_rc: -1
-      data_03: "Not collected"
-      status_03: "SKIP"
+      data_03: "Not collected yet"
+      status_03: "ERROR"
       details_03: "Not evaluated"
-      task_04_name: "Not recorded"
-      task_04_cmd: "N/A"
-      task_04_rc: -1
-      data_04: "Not collected"
-      status_04: "SKIP"
+      data_04: "Not collected yet"
+      status_04: "ERROR"
       details_04: "Not evaluated"
-      task_05_name: "Not recorded"
-      task_05_cmd: "N/A"
-      task_05_rc: -1
-      data_05: "Not collected"
-      status_05: "SKIP"
+      data_05: "Not collected yet"
+      status_05: "ERROR"
       details_05: "Not evaluated"
-      task_06_name: "Not recorded"
-      task_06_cmd: "N/A"
-      task_06_rc: -1
-      data_06: "Not collected"
-      status_06: "SKIP"
-      details_06: "Not evaluated"
     tags: [execute]
 
-# Requirement 1 - Prerequisite check
-  - name: "Req 01 - Check if update-crypto-policies binary exists"
-    ansible.builtin.shell: which update-crypto-policies
+# Requirement 1
+  - name: "Req step-01 - Check crypto-policies-scripts package"
+    ansible.builtin.shell: rpm -q crypto-policies-scripts
     args:
       executable: /bin/bash
-    register: result_01
+    register: _step01_output
     failed_when: false
     changed_when: false
     tags: [execute]
 
   - name: "Store requirement 01 details"
-    set_fact:
-      task_01_name: "Prerequisite check - which update-crypto-policies"
-      task_01_cmd: "which update-crypto-policies"
-      task_01_rc: "{{ result_01.rc | default(-1) }}"
-      data_01: "{{ result_01.stdout | default('') | trim }}"
-      status_01: "{{ 'PASS' if result_01.rc | default(-1) == 0 else 'FAIL' }}"
-      details_01: "{{ 'Binary found at: ' ~ result_01.stdout | trim if result_01.rc | default(-1) == 0 else 'update-crypto-policies not installed' }}"
-      crypto_policies_available: "{{ result_01.rc | default(-1) == 0 }}"
+    ansible.builtin.set_fact:
+      task_01_name: "Check crypto-policies-scripts package"
+      task_01_cmd: "rpm -q crypto-policies-scripts"
+      task_01_rc: "{{ _step01_output.rc | default(-1) }}"
+      data_01: "{{ _step01_output.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if _step01_output.rc | default(-1) == 0 else 'SKIP' }}"
+      details_01: "{{ 'Package is installed' if _step01_output.rc | default(-1) == 0 else 'Package not installed – remediation will be skipped' }}"
+      crypto_policies_installed: "{{ _step01_output.rc | default(-1) == 0 }}"
     tags: [execute]
 
-# Requirement 2 - Subpolicy creation
-  - name: "Req 02 - Create NO-SHA1 subpolicy file"
-    ansible.builtin.shell: printf '%s\n' "# This is a subpolicy dropping the SHA1 hash and signature support" "hash = -SHA1" "sign = -*-SHA1" "sha1_in_certs = 0" >> /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+# Requirement 2 – create subpolicy file idempotently using lineinfile
+  - name: "Req step-02 - Ensure NO-SHA1 subpolicy lines exist"
+    ansible.builtin.lineinfile:
+      path: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+      line: "{{ item }}"
+      create: true
+      owner: root
+      group: root
+      mode: '0644'
+    loop:
+    - "# This is a subpolicy dropping the SHA1 hash and signature support"
+    - "hash = -SHA1"
+    - "sign = -*-SHA1"
+    - "sha1_in_certs = 0"
+    when: crypto_policies_installed | default(false) | bool
+    register: _step02_output
+    failed_when: false
+    tags: [execute]
+
+  - name: "Req step-02 - Verify NO-SHA1 subpolicy file content"
+    ansible.builtin.shell: |
+      set -o pipefail
+      grep -qxF '# This is a subpolicy dropping the SHA1 hash and signature support' /etc/crypto-policies/policies/modules/NO-SHA1.pmod && \
+      grep -qxF 'hash = -SHA1' /etc/crypto-policies/policies/modules/NO-SHA1.pmod && \
+      grep -qxF 'sign = -*-SHA1' /etc/crypto-policies/policies/modules/NO-SHA1.pmod && \
+      grep -qxF 'sha1_in_certs = 0' /etc/crypto-policies/policies/modules/NO-SHA1.pmod && \
+      echo "OK"
     args:
       executable: /bin/bash
-      creates: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
-    register: result_02
+    register: subpolicy_check
     failed_when: false
-    when: crypto_policies_available | bool
+    changed_when: false
+    when: crypto_policies_installed | default(false) | bool
     tags: [execute]
 
   - name: "Store requirement 02 details"
-    set_fact:
-      task_02_name: "Create NO-SHA1 subpolicy file"
-      task_02_cmd: |
-        printf '%s\\n' \"# This is a subpolicy dropping the SHA1 hash and signature support\" \"hash = -SHA1\" \"sign = -*-SHA1\" \"sha1_in_certs = 0\" >> /etc/crypto-policies/policies/modules/NO-SHA1.pmod
-      task_02_rc: "{{ (result_02.rc | default(-1)) if crypto_policies_available | bool else -1 }}"
-      data_02: "{{ result_02.stdout | default('') | trim if crypto_policies_available | bool else 'N/A' }}"
-      status_02: "{{ 'PASS' if (crypto_policies_available | bool and result_02.rc | default(-1) == 0) else ('SKIP' if not crypto_policies_available | bool else 'FAIL') }}"
-      details_02: "{{ 'Subpolicy file created or already present' if (crypto_policies_available | bool and result_02.rc | default(-1) == 0) else ('Prerequisite not met' if not crypto_policies_available | bool else 'Failed to create subpolicy') }}"
+    ansible.builtin.set_fact:
+      task_02_name: "Create/verify NO-SHA1.pmod subpolicy"
+      task_02_cmd: "lineinfile module + grep verification"
+      task_02_rc: "{{ 0 if subpolicy_check.stdout | default('') | trim == 'OK' else 1 }}"
+      data_02: "{{ subpolicy_check.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if subpolicy_check.stdout | default('') | trim == 'OK' else 'FAIL' }}"
+      details_02: "{{ 'Subpolicy file present and contains all required lines' if subpolicy_check.stdout | default('') | trim == 'OK' else 'Subpolicy file missing or incomplete' }}"
+    when: crypto_policies_installed | default(false) | bool
     tags: [execute]
 
-# Requirement 3 - Update system-wide crypto policy
-  - name: "Req 03 - Update system-wide crypto policy to include NO-SHA1"
+  - name: "Store requirement 02 details (skipped)"
+    ansible.builtin.set_fact:
+      status_02: "SKIP"
+      details_02: "crypto-policies-scripts not installed"
+      data_02: ""
+      task_02_name: "Create subpolicy"
+      task_02_cmd: "lineinfile + grep"
+      task_02_rc: -1
+    when: not (crypto_policies_installed | default(false) | bool)
+    tags: [execute]
+
+# Requirement 3 – update system-wide policy (idempotent: check first)
+  - name: "Req step-03 - Check if NO-SHA1 is already in active policy"
+    ansible.builtin.shell: set -o pipefail && update-crypto-policies --show | grep -o 'NO-SHA1'
+    args:
+      executable: /bin/bash
+    register: _step03_check
+    failed_when: false
+    changed_when: false
+    when: crypto_policies_installed | default(false) | bool
+    tags: [execute]
+
+  - name: "Req step-03 - Update system-wide crypto policy"
     ansible.builtin.shell: update-crypto-policies --set DEFAULT:NO-SHA1
     args:
       executable: /bin/bash
-    register: result_03
+    register: _step03_output
     failed_when: false
-    when: crypto_policies_available | bool
+    when:
+    - crypto_policies_installed | default(false) | bool
+    - _step03_check.stdout | default('') | trim != 'NO-SHA1'
     tags: [execute]
 
   - name: "Store requirement 03 details"
-    set_fact:
-      task_03_name: "Update crypto policy"
+    ansible.builtin.set_fact:
+      task_03_name: "Update crypto policy to DEFAULT:NO-SHA1"
       task_03_cmd: "update-crypto-policies --set DEFAULT:NO-SHA1"
-      task_03_rc: "{{ (result_03.rc | default(-1)) if crypto_policies_available | bool else -1 }}"
-      data_03: "{{ result_03.stdout | default('') | trim if crypto_policies_available | bool else 'N/A' }}"
-      status_03: "{{ 'PASS' if (crypto_policies_available | bool and result_03.rc | default(-1) == 0) else ('SKIP' if not crypto_policies_available | bool else 'FAIL') }}"
-      details_03: "{{ 'Policy updated successfully' if (crypto_policies_available | bool and result_03.rc | default(-1) == 0) else ('Prerequisite not met' if not crypto_policies_available | bool else 'Policy update failed') }}"
+      task_03_rc: "{{ _step03_output.rc | default(0) }}"
+      data_03: "{{ _step03_output.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (_step03_output.rc | default(0) == 0) else ('SKIP' if _step03_check.stdout | default('') | trim == 'NO-SHA1' else 'FAIL') }}"
+      details_03: "{{ 'Policy updated successfully' if (_step03_output.rc | default(0) == 0) else ('Policy already contained NO-SHA1' if _step03_check.stdout | default('') | trim == 'NO-SHA1' else 'Policy update failed') }}"
     tags: [execute]
 
-# Requirement 4 - Reboot
-  - name: "Req 04 - Reboot system to apply cryptographic settings"
+# Requirement 4 – reboot if policy was actually changed
+  - name: "Req step-04 - Reboot system to apply cryptographic settings"
     ansible.builtin.reboot:
       reboot_timeout: 180
-    register: result_04
+    register: _step04_output
     failed_when: false
-    when: crypto_policies_available | bool
+    when:
+    - crypto_policies_installed | default(false) | bool
+    - (_step03_output.rc | default(0) == 0)           # only reboot if we ran the update and it succeeded
+    - _step03_check.stdout | default('') | trim != 'NO-SHA1'
     tags: [execute]
 
   - name: "Store requirement 04 details"
-    set_fact:
+    ansible.builtin.set_fact:
       task_04_name: "Reboot system"
       task_04_cmd: "reboot"
-      task_04_rc: "{{ 0 if not (result_04.failed | default(true)) else 1 }}"
-      data_04: "{{ 'Reboot initiated' if not (result_04.failed | default(true)) else 'Reboot failed' }}"
-      status_04: "{{ 'PASS' if (crypto_policies_available | bool and not (result_04.failed | default(true))) else ('SKIP' if not crypto_policies_available | bool else 'FAIL') }}"
-      details_04: "{{ 'System rebooted successfully' if (crypto_policies_available | bool and not (result_04.failed | default(true))) else ('Prerequisite not met' if not crypto_policies_available | bool else 'Reboot failed') }}"
+      task_04_rc: "{{ _step04_output.rc | default(0) }}"
+      data_04: "{{ 'Reboot succeeded' if _step04_output.rebooted | default(false) else 'Reboot not needed' }}"
+      status_04: "{{ 'PASS' if (_step04_output.rebooted | default(false)) else 'SKIP' }}"
+      details_04: "{{ 'System rebooted' if _step04_output.rebooted | default(false) else 'No policy change – reboot skipped' }}"
     tags: [execute]
 
-# Requirement 5 - Verify SHA1 disabled
-  - name: "Req 05 - Verify SHA1 hash and signature support is disabled"
+# Requirement 5 – verify
+  - name: "Req step-05 - Verify active crypto policy includes NO-SHA1"
     ansible.builtin.shell: update-crypto-policies --show
     args:
       executable: /bin/bash
-    register: result_05
+    register: _step05_output
     failed_when: false
     changed_when: false
-    when: crypto_policies_available | bool
+    when: crypto_policies_installed | default(false) | bool
     tags: [execute]
 
   - name: "Store requirement 05 details"
-    set_fact:
+    ansible.builtin.set_fact:
       task_05_name: "Verify active crypto policy"
       task_05_cmd: "update-crypto-policies --show"
-      task_05_rc: "{{ (result_05.rc | default(-1)) if crypto_policies_available | bool else -1 }}"
-      data_05: "{{ result_05.stdout | default('') | trim if crypto_policies_available | bool else 'N/A' }}"
-      status_05: >-
-        {{- 'PASS' if (crypto_policies_available | bool and 'NO-SHA1' in (result_05.stdout | default(''))) else
-           ('SKIP' if not crypto_policies_available | bool else 'FAIL') -}}
-      details_05: >-
-        {{- 'NO-SHA1 subpolicy is active' if (crypto_policies_available | bool and 'NO-SHA1' in (result_05.stdout | default(''))) else
-           ('Prerequisite not met' if not crypto_policies_available | bool else 'NO-SHA1 not found in active policy') -}}
+      task_05_rc: "{{ _step05_output.rc | default(-1) }}"
+      data_05: "{{ _step05_output.stdout | default('') | trim }}"
+      status_05: "{{ 'PASS' if 'NO-SHA1' in _step05_output.stdout | default('') else 'FAIL' }}"
+      details_05: "{{ 'Active policy contains NO-SHA1' if 'NO-SHA1' in _step05_output.stdout | default('') else 'NO-SHA1 not found in active policy' }}"
     tags: [execute]
 
-# Requirement 6 - Store final result (FIXED circular reference)
-  - name: "Req 06 - Store final remediation result in cis_result"
-    set_fact:
+# Requirement 6 – final result
+  - name: "Req step-06 - Store remediation result in cis_result"
+    ansible.builtin.set_fact:
       cis_result: "{{ status_05 | default('ERROR') | trim }}"
-      task_06_name: "Store overall remediation result"
-      task_06_cmd: "set_fact cis_result = status_05"
-      task_06_rc: 0
-      data_06: "{{ status_05 | default('ERROR') | trim }}"
-      status_06: "PASS"
-      details_06: "cis_result set to {{ status_05 | default('ERROR') | trim }}"
     tags: [execute]
 
-# Final report
-  - name: "Generate remediation report"
-    debug:
+# Requirement 7 – report
+  - name: "Req step-07 - Generate remediation report"
+    ansible.builtin.debug:
       msg:
       - "REMEDIATION REPORT — CIS 1.6.3"
       - "Reference: CIS Benchmark checkpoint 1.6.3"
       - ""
-      - "REQUIREMENT 01 - {{ req_01 | default('') }}:"
+      - "REQUIREMENT 01 - {{ req_01 }}:"
       - "  Task: {{ task_01_name | default('Not recorded') }}"
       - "  Command: {{ task_01_cmd | default('N/A') }}"
       - "  Exit code: {{ task_01_rc | default(-1) }}"
@@ -209,7 +244,7 @@
       - "  Status: {{ status_01 | default('ERROR') | trim }}"
       - "  Details: {{ details_01 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 02 - {{ req_02 | default('') }}:"
+      - "REQUIREMENT 02 - {{ req_02 }}:"
       - "  Task: {{ task_02_name | default('Not recorded') }}"
       - "  Command: {{ task_02_cmd | default('N/A') }}"
       - "  Exit code: {{ task_02_rc | default(-1) }}"
@@ -217,7 +252,7 @@
       - "  Status: {{ status_02 | default('ERROR') | trim }}"
       - "  Details: {{ details_02 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 03 - {{ req_03 | default('') }}:"
+      - "REQUIREMENT 03 - {{ req_03 }}:"
       - "  Task: {{ task_03_name | default('Not recorded') }}"
       - "  Command: {{ task_03_cmd | default('N/A') }}"
       - "  Exit code: {{ task_03_rc | default(-1) }}"
@@ -225,7 +260,7 @@
       - "  Status: {{ status_03 | default('ERROR') | trim }}"
       - "  Details: {{ details_03 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 04 - {{ req_04 | default('') }}:"
+      - "REQUIREMENT 04 - {{ req_04 }}:"
       - "  Task: {{ task_04_name | default('Not recorded') }}"
       - "  Command: {{ task_04_cmd | default('N/A') }}"
       - "  Exit code: {{ task_04_rc | default(-1) }}"
@@ -233,7 +268,7 @@
       - "  Status: {{ status_04 | default('ERROR') | trim }}"
       - "  Details: {{ details_04 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 05 - {{ req_05 | default('') }}:"
+      - "REQUIREMENT 05 - {{ req_05 }}:"
       - "  Task: {{ task_05_name | default('Not recorded') }}"
       - "  Command: {{ task_05_cmd | default('N/A') }}"
       - "  Exit code: {{ task_05_rc | default(-1) }}"
@@ -241,77 +276,85 @@
       - "  Status: {{ status_05 | default('ERROR') | trim }}"
       - "  Details: {{ details_05 | default('') | trim }}"
       - ""
-      - "REQUIREMENT 06 - {{ req_06 | default('') }}:"
-      - "  Task: {{ task_06_name | default('Not recorded') }}"
-      - "  Command: {{ task_06_cmd | default('N/A') }}"
-      - "  Exit code: {{ task_06_rc | default(-1) }}"
-      - "  Data: {{ data_06 | default('') | trim }}"
-      - "  Status: {{ status_06 | default('ERROR') | trim }}"
-      - "  Details: {{ details_06 | default('') | trim }}"
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: Store remediation result"
+      - "  Command: set_fact cis_result"
+      - "  Exit code: 0"
+      - "  Data: {{ cis_result | default('ERROR') | trim }}"
+      - "  Status: {{ cis_result | default('ERROR') | trim }}"
+      - "  Details: Overall remediation status"
       - ""
       - "========================================================"
       - "OVERALL REMEDIATION:"
       - "  Result: {{ cis_result | default('ERROR') | trim }}"
-      - "  Details: {{ details_05 | default('Not evaluated') | trim }}"
       - "========================================================"
     tags: [execute]
 
   always:
 # === RESTORE (tag: restore) ===
-  - name: "Restore - Check if config backup exists"
+  - name: "State Guard Restore - Check if checkpoint exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/config.present"
-    register: _restore_config_present
+      path: "{{ state_guard_flag }}"
+    register: _sg_restore_flag
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Restore crypto config from backup"
-    ansible.builtin.copy:
-      src: "{{ backup_dir }}/config.present"
-      dest: "{{ config_file }}"
-      remote_src: true
-    when: _restore_config_present.stat.exists
-    failed_when: false
-    tags: [restore]
-
-  - name: "Restore - Read original crypto policy from backup"
+  - name: "State Guard Restore - Read saved crypto policy"
     ansible.builtin.slurp:
-      src: "{{ backup_dir }}/config.present"
-    register: _restore_policy_content
-    when:
-    - _restore_config_present.stat.exists | default(false)
+      src: "{{ state_guard_dir }}/current_policy.state"
+    register: _sg_restore_policy_data
     failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
     tags: [restore]
 
-  - name: "Restore - Apply original crypto policy"
-    ansible.builtin.shell: "update-crypto-policies --set {{ _restore_policy_content.content | b64decode | trim }}"
+  - name: "State Guard Restore - Re-apply original crypto policy"
+    ansible.builtin.shell: "update-crypto-policies --set {{ _sg_restore_policy_data.content | b64decode | trim }}"
     args:
       executable: /bin/bash
     when:
-    - _restore_config_present.stat.exists | default(false)
-    - _restore_policy_content.content is defined
-    - (_restore_policy_content.content | b64decode | trim) | length > 0
+    - _sg_restore_flag.stat.exists | default(false)
+    - _sg_restore_policy_data is not failed
+    - _sg_restore_policy_data.content | default('') | length > 0
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Check if subpolicy absent marker exists"
+  - name: "State Guard Restore - Check if NO-SHA1.pmod backup exists"
     ansible.builtin.stat:
-      path: "{{ backup_dir }}/subpolicy.absent"
-    register: _restore_subpolicy_absent
+      path: "{{ state_guard_dir }}/NO-SHA1.pmod.present"
+    register: _sg_restore_nosha1_present
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Restore NO-SHA1.pmod from backup"
+    ansible.builtin.copy:
+      src: "{{ state_guard_dir }}/NO-SHA1.pmod.present"
+      dest: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+      remote_src: true
+    when: _sg_restore_nosha1_present.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Remove subpolicy file (created during remediation)"
+  - name: "State Guard Restore - Check if NO-SHA1.pmod was absent before"
+    ansible.builtin.stat:
+      path: "{{ state_guard_dir }}/NO-SHA1.pmod.absent"
+    register: _sg_restore_nosha1_absent
+    failed_when: false
+    when: _sg_restore_flag.stat.exists | default(false)
+    tags: [restore]
+
+  - name: "State Guard Restore - Delete NO-SHA1.pmod if it was created by remediation"
     ansible.builtin.file:
-      path: "{{ subpolicy_file }}"
+      path: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
       state: absent
-    when: _restore_subpolicy_absent.stat.exists | default(false)
+    when: _sg_restore_nosha1_absent.stat.exists | default(false)
     failed_when: false
     tags: [restore]
 
-  - name: "Restore - Remove backup directory"
+  - name: "State Guard Restore - Remove checkpoint"
     ansible.builtin.file:
-      path: "{{ backup_dir }}"
+      path: "{{ state_guard_dir }}"
       state: absent
+    when: _sg_restore_flag.stat.exists | default(false)
     failed_when: false
     tags: [restore]
