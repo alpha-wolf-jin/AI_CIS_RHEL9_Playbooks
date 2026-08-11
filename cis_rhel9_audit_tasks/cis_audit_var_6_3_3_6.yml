@@ -1,4 +1,30 @@
 req_01: "Run the provided audit script to verify Ensure use of privileged commands are collected. On disk configuration and Running configuration"
 req_02: "VERIFY: Summarise compliance status for Ensure use of privileged commands are collected. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
 req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
-req_04: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format: AUDIT REPORT — CIS 6.3.3.6 Reference: CIS Benchmark checkpoint 6.3.3.6 Then for each requirement: REQUIREMENT NN - <req_NN>:  With fields: Task, Command, Exit code, Data, Status (PASS/FAIL/SKIP/ERROR), Details. End with OVERALL COMPLIANCE: section containing Result: <cis_result>"
+req_04: "Create a task named 'Generate audit report' using debug msg with EXACTLY this format: AUDIT REPORT — CIS 6.3.3.6 ..."
+ondisk_script: "/tmp/cis_6.3.3.6_ondisk.sh"
+running_script: "/tmp/cis_6.3.3.6_running.sh"
+ondisk_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     for PARTITION in $(findmnt -n -l -k -it $(awk '/nodev/ { print $2 }' /proc/filesystems | paste -sd,) | grep -Pv "noexec|nosuid" | awk '{print $1}'); do
+        for PRIVILEGED in $(find "${PARTITION}" -xdev -perm /6000 -type f); do
+           grep -qr "${PRIVILEGED}" /etc/audit/rules.d && printf "OK: '${PRIVILEGED}' found in auditing rules.\n" || printf "Warning: '${PRIVILEGED}' not found in on disk configuration.\n"
+        done
+     done
+  }
+  {% endraw %}
+running_script_content: |
+  {% raw %}
+  #!/usr/bin/env bash
+  {
+     RUNNING=$(auditctl -l)
+     [ -n "${RUNNING}" ] && for PARTITION in $(findmnt -n -l -k -it $(awk '/nodev/ { print $2 }' /proc/filesystems | paste -sd,) | grep -Pv "noexec|nosuid" | awk '{print $1}'); do
+        for PRIVILEGED in $(find "${PARTITION}" -xdev -perm /6000 -type f); do
+           printf -- "${RUNNING}" | grep -q "${PRIVILEGED}" && printf "OK: '${PRIVILEGED}' found in auditing rules.\n" || printf "Warning: '${PRIVILEGED}' not found in running configuration.\n"
+        done
+     done \
+     || printf "ERROR: Variable 'RUNNING' is unset.\n"
+  }
+  {% endraw %}

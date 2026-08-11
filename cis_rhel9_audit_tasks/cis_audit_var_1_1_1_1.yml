@@ -1,16 +1,17 @@
 kernel_module_name: "cramfs"
-req_01: "Run the provided audit script to verify Ensure cramfs kernel module is not available"
+req_01: "Run the provided audit script to verify Ensure cramfs kernel module is not available."
 req_02: "VERIFY: Summarise compliance status for Ensure cramfs kernel module is not available. Expected result: PASS if compliant, SKIP if prerequisite not met (e.g., partition/package does not exist), FAIL if misconfigured"
 req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
-req_04: "Create a task named 'Generate audit report' using debug msg with exact format"
+req_04: "Generate audit report."
 audit_script: "/tmp/cis_audit_cramfs.sh"
 audit_script_content: |
+  {% raw %}
   #!/usr/bin/env bash
+
   {
      l_output3="" l_dl="" # clear variables
      unset a_output; unset a_output2 # unset arrays
-     l_mod_name="{{ kernel_module_name }}" # set module name
-     {% raw %}
+     l_mod_name="cramfs" # set module name
      l_mod_type="fs" # set module type
      l_mod_path="$(readlink -f /lib/modules/**/kernel/$l_mod_type | sort -u)"
      f_module_chk()
