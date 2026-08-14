@@ -9,7 +9,7 @@
 
 - name: script full path
   ansible.builtin.set_fact:
-    execution_path: "cis_rhel9_audit_tasks/cis_audit_{{ cis_item | replace('.','_') }}.yml"
+    execution_path: "{{ task_dir | default('cis_rhel9_audit_tasks') }}/cis_audit_{{ cis_item | replace('.','_') }}.yml"
 
 - name: Ignoer Error from tasks
   block:

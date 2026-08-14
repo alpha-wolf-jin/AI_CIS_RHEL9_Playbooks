@@ -25,8 +25,7 @@
 
     - name: Load the master index list
       include_vars:
-        file: win2022_cis.yml
-        #file: rhel9_cis.yml
+        file: rhel9_cis.yml
 
     - name: Include remediation actions for each selection
       ansible.builtin.include_tasks: remediation_actions.yaml

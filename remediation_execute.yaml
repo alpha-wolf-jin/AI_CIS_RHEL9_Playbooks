@@ -5,7 +5,7 @@
 
 - name: Build remediation task path
   ansible.builtin.set_fact:
-    execution_path: "cis_rhel9_remediation_tasks/cis_remediation_{{ cis_item | replace('.','_') }}.yml"
+    execution_path: "{{ task_dir | default('cis_rhel9_remediation_tasks') }}/cis_remediation_{{ cis_item | replace('.','_') }}.yml"
 
 - name: Run remediation task with error handling
   block:
