@@ -1,0 +1,285 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_1_1_1.yml
+
+- name: "Initialize data variables"
+  set_fact:
+    data_01: "Not collected yet"
+    status_01: "SKIP"
+    details_01: "Skipped by default"
+    data_02: "Not collected yet"
+    status_02: "SKIP"
+    details_02: "Skipped by default"
+    data_03: "Not collected yet"
+    status_03: "SKIP"
+    details_03: "Skipped by default"
+    data_04: "Not collected yet"
+    status_04: "SKIP"
+    details_04: "Skipped by default"
+    data_05: "Not collected yet"
+    status_05: "SKIP"
+    details_05: "Skipped by default"
+    data_06: "Not evaluated yet"
+    status_06: "ERROR"
+    details_06: "Not evaluated"
+    data_07: "Not evaluated yet"
+    status_07: "ERROR"
+    details_07: "Not evaluated"
+    task_01_name: "Not executed"
+    task_01_cmd: "N/A"
+    task_01_rc: -1
+    task_02_name: "Not executed"
+    task_02_cmd: "N/A"
+    task_02_rc: -1
+    task_03_name: "Not executed"
+    task_03_cmd: "N/A"
+    task_03_rc: -1
+    task_04_name: "Not executed"
+    task_04_cmd: "N/A"
+    task_04_rc: -1
+    task_05_name: "Not executed"
+    task_05_cmd: "N/A"
+    task_05_rc: -1
+    task_06_name: "Not executed"
+    task_06_cmd: "N/A"
+    task_06_rc: -1
+    task_07_name: "Not executed"
+    task_07_cmd: "N/A"
+    task_07_rc: -1
+    is_dc: false
+    is_member: false
+    os_is_windows: false
+
+- name: "Req 05 - Check if the operating system is Windows"
+  ansible.windows.win_shell: |
+    {% raw %}
+    (Get-WmiObject Win32_OperatingSystem).Caption
+    {% endraw %}
+  register: result_05
+  failed_when: false
+  changed_when: false
+
+- name: "Store requirement 05 details"
+  set_fact:
+    task_05_name: "Check if the operating system is Windows"
+    task_05_cmd: "(Get-WmiObject Win32_OperatingSystem).Caption"
+    task_05_rc: "{{ result_05.rc | default(-1) }}"
+    data_05: "{{ result_05.stdout | default('') | trim }}"
+    status_05: "{{ 'ERROR' if ((result_05.rc | default(-1)) != 0) or ((result_05.stdout | default('') | trim) == '') else ('PASS' if ('Windows' in (result_05.stdout | default('') | trim)) else 'SKIP') | trim }}"
+    details_05: "{{ 'ERROR: Command failed or returned empty output for OS caption' if ((result_05.rc | default(-1)) != 0) or ((result_05.stdout | default('') | trim) == '') else ('PASS: Operating system is Windows' if ('Windows' in (result_05.stdout | default('') | trim)) else 'SKIP: Operating system is not Windows - audit skipped') | trim }}"
+    os_is_windows: "{{ (result_05.rc | default(-1)) == 0 and ('Windows' in (result_05.stdout | default('') | trim)) }}"
+
+- name: "Req 01 - Check server domain role"
+  ansible.windows.win_shell: |
+    {% raw %}
+    (Get-WmiObject Win32_ComputerSystem).DomainRole
+    {% endraw %}
+  register: result_01
+  failed_when: false
+  changed_when: false
+  when: "os_is_windows | bool"
+
+- name: "Store requirement 01 details"
+  set_fact:
+    task_01_name: "Check server domain role"
+    task_01_cmd: "(Get-WmiObject Win32_ComputerSystem).DomainRole"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    domain_role: "{{ result_01.stdout | default('') | trim }}"
+    is_dc: "{{ ((result_01.stdout | default('') | trim) in ['4','5']) }}"
+    is_member: "{{ ((result_01.stdout | default('') | trim) in ['0','1','2','3']) }}"
+    status_01: "{{ ('PASS' if ((result_01.stdout | default('') | trim) in ['0','1','2','3','4','5']) else 'FAIL') | trim }}"
+    details_01: "{{ ('Domain role collected: ' + (result_01.stdout | default('') | trim)) if ((result_01.stdout | default('') | trim) in ['0','1','2','3','4','5']) else 'FAIL: Failed to collect valid domain role' }}"
+  when: "os_is_windows | bool"
+
+- name: "Req 02 - Check DC password history policy"
+  ansible.windows.win_shell: |
+    {% raw %}
+    Get-ADDefaultDomainPasswordPolicy | Select-Object -ExpandProperty PasswordHistoryCount
+    {% endraw %}
+  register: result_02
+  failed_when: false
+  changed_when: false
+  when:
+  - "os_is_windows | bool"
+  - "is_dc | bool"
+
+- name: "Store requirement 02 details"
+  set_fact:
+    task_02_name: "Check DC password history policy"
+    task_02_cmd: "Get-ADDefaultDomainPasswordPolicy | Select-Object -ExpandProperty PasswordHistoryCount"
+    task_02_rc: "{{ result_02.rc | default(-1) }}"
+    data_02: "{{ result_02.stdout | default('') | trim }}"
+    status_02: "{{ 'ERROR' if ((result_02.rc | default(-1)) != 0) or ((result_02.stdout | default('') | trim) == '') else ('PASS' if ((result_02.stdout | default('') | trim) | int >= (password_history_min | int)) else 'FAIL') | trim }}"
+    details_02: "{{ 'ERROR: Command failed or returned empty output for Domain Controller password history policy' if ((result_02.rc | default(-1)) != 0) or ((result_02.stdout | default('') | trim) == '') else ('PASS: Password history count ' + (result_02.stdout | default('') | trim) + ' meets minimum ' + password_history_min if ((result_02.stdout | default('') | trim) | int >= (password_history_min | int)) else 'FAIL: Password history count ' + (result_02.stdout | default('') | trim) + ' does not meet minimum ' + password_history_min) | trim }}"
+  when:
+  - "os_is_windows | bool"
+  - "is_dc | bool"
+
+- name: "Req 03 - Check Default Domain Policy GPO status"
+  ansible.windows.win_shell: |
+    {% raw %}
+    Get-GPO -Name 'Default Domain Policy' | Select-Object -ExpandProperty GpoStatus
+    {% endraw %}
+  register: result_03
+  failed_when: false
+  changed_when: false
+  when:
+  - "os_is_windows | bool"
+  - "is_dc | bool"
+
+- name: "Store requirement 03 details"
+  set_fact:
+    task_03_name: "Check Default Domain Policy GPO status"
+    task_03_cmd: "Get-GPO -Name 'Default Domain Policy' | Select-Object -ExpandProperty GpoStatus"
+    task_03_rc: "{{ result_03.rc | default(-1) }}"
+    data_03: "{{ result_03.stdout | default('') | trim }}"
+    status_03: "{{ 'ERROR' if ((result_03.rc | default(-1)) != 0) or ((result_03.stdout | default('') | trim) == '') else ('PASS' if (result_03.stdout | default('') | trim) == 'Enabled' else 'FAIL') | trim }}"
+    details_03: "{{ 'ERROR: Command failed or returned empty output for Default Domain Policy GPO status' if ((result_03.rc | default(-1)) != 0) or ((result_03.stdout | default('') | trim) == '') else ('PASS: GPO status is ' + (result_03.stdout | default('') | trim) if (result_03.stdout | default('') | trim) == 'Enabled' else 'FAIL: GPO status is ' + (result_03.stdout | default('') | trim) + ', expected Enabled') | trim }}"
+  when:
+  - "os_is_windows | bool"
+  - "is_dc | bool"
+
+- name: "Req 04 - Check member server local password history policy"
+  ansible.windows.win_shell: |
+    {% raw %}
+    $tmp = "$env:TEMP\secpol.cfg"
+    secedit /export /cfg $tmp /areas SECURITYPOLICY /quiet
+    Get-Content $tmp | Select-String 'PasswordHistorySize'
+    {% endraw %}
+  register: result_04
+  failed_when: false
+  changed_when: false
+  when:
+  - "os_is_windows | bool"
+  - "is_member | bool"
+
+- name: "Store requirement 04 details"
+  set_fact:
+    task_04_name: "Check member server local password history policy"
+    task_04_cmd: |
+      $tmp = \"$env:TEMP\\secpol.cfg\"; secedit /export /cfg $tmp /areas SECURITYPOLICY /quiet; Get-Content $tmp | Select-String 'PasswordHistorySize'
+    task_04_rc: "{{ result_04.rc | default(-1) }}"
+    data_04: "{{ result_04.stdout | default('') | trim }}"
+    status_04: "{{ 'ERROR' if ((result_04.rc | default(-1)) != 0) or ((result_04.stdout | default('') | trim) == '') else ('PASS' if ((result_04.stdout | default('') | trim) | regex_findall('PasswordHistorySize[^0-9]*([0-9]+)') | first | default('0') | int >= (password_history_min | int)) else 'FAIL') | trim }}"
+    details_04: "{{ 'ERROR: Command failed or returned empty output for Member Server local password history policy' if ((result_04.rc | default(-1)) != 0) or ((result_04.stdout | default('') | trim) == '') else ('PASS: PasswordHistorySize = ' + ((result_04.stdout | default('') | trim) | regex_findall('PasswordHistorySize[^0-9]*([0-9]+)') | first | default('0')) + ' meets minimum ' + password_history_min if ((result_04.stdout | default('') | trim) | regex_findall('PasswordHistorySize[^0-9]*([0-9]+)') | first | default('0') | int >= (password_history_min | int)) else 'FAIL: PasswordHistorySize = ' + ((result_04.stdout | default('') | trim) | regex_findall('PasswordHistorySize[^0-9]*([0-9]+)') | first | default('0')) + ' does not meet minimum ' + password_history_min) | trim }}"
+  when:
+  - "os_is_windows | bool"
+  - "is_member | bool"
+
+- name: "Req 06 - Compute overall compliance"
+  set_fact:
+    task_06_name: "Compute overall compliance"
+    task_06_cmd: "Evaluate status_01 through status_05"
+    task_06_rc: 0
+    data_06: "Overall compliance computed from applicable checks"
+    status_06: >-
+      {%- if (status_05 | default('ERROR') | trim) == 'SKIP' -%}
+      SKIP
+      {%- elif (status_05 | default('ERROR') | trim) != 'PASS' -%}
+      FAIL
+      {%- elif (status_01 | default('ERROR') | trim) != 'PASS' -%}
+      FAIL
+      {%- elif (is_dc | bool) and ((status_02 | default('ERROR') | trim) != 'PASS' or (status_03 | default('ERROR') | trim) != 'PASS') -%}
+      FAIL
+      {%- elif (is_member | bool) and (status_04 | default('ERROR') | trim) != 'PASS' -%}
+      FAIL
+      {%- elif not (is_dc | bool) and not (is_member | bool) -%}
+      FAIL
+      {%- else -%}
+      PASS
+      {%- endif -%}
+    details_06: >-
+      {%- if (status_05 | default('ERROR') | trim) == 'SKIP' -%}
+      SKIP: Operating system is not Windows
+      {%- elif (status_05 | default('ERROR') | trim) != 'PASS' -%}
+      FAIL: Operating system check could not be determined
+      {%- elif (status_01 | default('ERROR') | trim) != 'PASS' -%}
+      FAIL: Server domain role could not be determined
+      {%- elif (is_dc | bool) and ((status_02 | default('ERROR') | trim) != 'PASS' or (status_03 | default('ERROR') | trim) != 'PASS') -%}
+      FAIL: One or more Domain Controller checks failed or errored
+      {%- elif (is_member | bool) and (status_04 | default('ERROR') | trim) != 'PASS' -%}
+      FAIL: Member Server local policy check failed or errored
+      {%- elif not (is_dc | bool) and not (is_member | bool) -%}
+      FAIL: Server role is not a valid Domain Controller or Member Server
+      {%- else -%}
+      PASS: All applicable checks passed
+      {%- endif -%}
+
+- name: "Req 07 - Store final audit result in cis_result"
+  set_fact:
+    task_07_name: "Store final audit result in cis_result"
+    task_07_cmd: "cis_result = status_06"
+    task_07_rc: 0
+    data_07: "{{ status_06 | default('ERROR') | trim }}"
+    status_07: "{{ status_06 | default('ERROR') | trim }}"
+    details_07: "{{ details_06 | default('Not evaluated') | trim }}"
+    cis_result: "{{ status_06 | default('ERROR') | trim }}"
+
+- name: "Generate audit report"
+  debug:
+    msg:
+    - "AUDIT REPORT — CIS 1.1.1"
+    - "Reference: CIS Benchmark checkpoint 1.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 05 - {{ req_05 }}:"
+    - "  Task: {{ task_05_name | default('Not recorded') }}"
+    - "  Command: {{ task_05_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_05_rc | default(-1) }}"
+    - "  Data: {{ data_05 | default('') | trim }}"
+    - "  Status: {{ status_05 | default('ERROR') | trim }}"
+    - "  Details: {{ details_05 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 06 - {{ req_06 }}:"
+    - "  Task: {{ task_06_name | default('Not recorded') }}"
+    - "  Command: {{ task_06_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_06_rc | default(-1) }}"
+    - "  Data: {{ data_06 | default('') | trim }}"
+    - "  Status: {{ status_06 | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 07 - {{ req_07 }}:"
+    - "  Task: {{ task_07_name | default('Not recorded') }}"
+    - "  Command: {{ task_07_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_07_rc | default(-1) }}"
+    - "  Data: {{ data_07 | default('') | trim }}"
+    - "  Status: {{ status_07 | default('ERROR') | trim }}"
+    - "  Details: {{ details_07 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "  Details: {{ details_06 | default('Not evaluated') | trim }}"
+    - "========================================================"

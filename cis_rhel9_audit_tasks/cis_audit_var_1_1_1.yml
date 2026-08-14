@@ -1,0 +1,9 @@
+password_history_min: '24'
+req_01: "Check if the server is a Domain Controller or Member Server using: `(Get-WmiObject Win32_ComputerSystem).DomainRole`. Expected result: 4 or 5 for DC, 0-3 for Member Server."
+req_02: "Check DC password history policy using: `Get-ADDefaultDomainPasswordPolicy | Select-Object -ExpandProperty PasswordHistoryCount`. Expected result: 24 or more."
+req_03: "Check DC GPO setting for password history using: `Get-GPO -Name 'Default Domain Policy' | Select-Object -ExpandProperty GpoStatus`. Expected result: Enabled."
+req_04: |
+  Check Member Server local password history policy using: `$tmp = \"$env:TEMP\\secpol.cfg\"; secedit /export /cfg $tmp /areas SECURITYPOLICY /quiet; Get-Content $tmp | Select-String 'PasswordHistorySize'`. Expected result: PasswordHistorySize = 24 or more.
+req_05: "Check if the feature is applicable: verify the OS is Windows using: `(Get-WmiObject Win32_OperatingSystem).Caption`. Expected result: Windows operating system."
+req_06: "Check overall compliance: PASS if DC and Member Server checks pass, FAIL if any misconfigured, SKIP only if OS is not Windows."
+req_07: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

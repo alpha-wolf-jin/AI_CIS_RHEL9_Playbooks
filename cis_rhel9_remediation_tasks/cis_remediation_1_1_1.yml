@@ -1,0 +1,415 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_remediation_var_1_1_1.yml
+
+- name: "Snapshot - Remove stale backup directory"
+  ansible.windows.win_file:
+    path: "{{ backup_dir | trim }}"
+    state: absent
+  tags: [snapshot]
+- name: "Snapshot - Create backup directory"
+  ansible.windows.win_file:
+    path: "{{ backup_dir | trim }}"
+    state: directory
+  tags: [snapshot]
+- name: "Snapshot - Capture secedit temp files baseline"
+  ansible.windows.win_shell: |
+    $backupDir = "{{ backup_dir | trim }}"
+    $secpol = "{{ secpol_cfg_path | trim }}"
+    $verify = "{{ verify_cfg_path | trim }}"
+    if (Test-Path -LiteralPath $secpol) {
+      Copy-Item -LiteralPath $secpol -Destination "$backupDir\secpol.cfg.present" -Force
+    } else {
+      Set-Content -Path "$backupDir\secpol.cfg.absent" -Value 'absent' -Force
+    }
+    if (Test-Path -LiteralPath $verify) {
+      Copy-Item -LiteralPath $verify -Destination "$backupDir\verify.cfg.present" -Force
+    } else {
+      Set-Content -Path "$backupDir\verify.cfg.absent" -Value 'absent' -Force
+    }
+    Write-Output 'Snapshot temp files done'
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+- name: "Snapshot - Capture security policy baseline and role"
+  ansible.windows.win_shell: |
+    $backupDir = "{{ backup_dir | trim }}"
+    $role = (Get-WmiObject Win32_ComputerSystem).DomainRole
+    Set-Content -Path "$backupDir\domain_role.txt" -Value $role -Force
+    if ($role -in 4,5) {
+      try {
+        $count = Get-ADDefaultDomainPasswordPolicy | Select-Object -ExpandProperty PasswordHistoryCount
+        Set-Content -Path "$backupDir\dc_password_history_count.txt" -Value $count -Force
+      } catch {
+        Write-Output 'DC snapshot failed'
+      }
+    } elseif ($role -in 1,2,3) {
+      $cfg = "$backupDir\secpol_original.cfg"
+      secedit /export /cfg $cfg /quiet
+    }
+    Write-Output "Role: $role"
+  failed_when: false
+  changed_when: false
+  tags: [snapshot]
+
+- block:
+  - name: "Req step-01 - Detect server role using Win32_ComputerSystem"
+    ansible.windows.win_shell: "(Get-WmiObject Win32_ComputerSystem).DomainRole"
+    register: _step01_output
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req step-01 - Set server role flags, requirement 01 details, and branch defaults"
+    ansible.builtin.set_fact:
+      is_dc: "{{ (_step01_output.stdout | default('') | trim) in ['4','5'] }}"
+      is_member: "{{ (_step01_output.stdout | default('') | trim) in ['1','2','3'] }}"
+      task_01_name: "Detect server role"
+      task_01_cmd: "(Get-WmiObject Win32_ComputerSystem).DomainRole"
+      task_01_rc: "{{ _step01_output.rc | default(-1) }}"
+      data_01: "{{ _step01_output.stdout | default('') | trim }}"
+      status_01: "{{ 'PASS' if ((_step01_output.rc | default(-1)) == 0 and (_step01_output.stdout | default('') | trim) in ['1','2','3','4','5']) else 'ERROR' }}"
+      details_01: "{{ 'Server role detected: ' ~ (_step01_output.stdout | default('') | trim) if ((_step01_output.rc | default(-1)) == 0 and (_step01_output.stdout | default('') | trim) in ['1','2','3','4','5']) else 'Role detection failed or unexpected output' }}"
+      task_02_name: "Not executed"
+      task_02_cmd: "N/A"
+      task_02_rc: -1
+      data_02: ""
+      status_02: "SKIP"
+      details_02: "Skipped: not a domain controller"
+      task_03_name: "Not executed"
+      task_03_cmd: "N/A"
+      task_03_rc: -1
+      data_03: ""
+      status_03: "SKIP"
+      details_03: "Skipped: not a member server"
+      task_04_name: "Not executed"
+      task_04_cmd: "N/A"
+      task_04_rc: -1
+      data_04: ""
+      status_04: "SKIP"
+      details_04: "Skipped: not a member server"
+      task_05_name: "Not executed"
+      task_05_cmd: "N/A"
+      task_05_rc: -1
+      data_05: ""
+      status_05: "SKIP"
+      details_05: "Skipped: not a member server"
+      task_06_name: "Not executed"
+      task_06_cmd: "N/A"
+      task_06_rc: -1
+      data_06: ""
+      status_06: "SKIP"
+      details_06: "Skipped: not a domain controller"
+      task_07_name: "Not executed"
+      task_07_cmd: "N/A"
+      task_07_rc: -1
+      data_07: ""
+      status_07: "SKIP"
+      details_07: "Skipped: not a member server"
+      task_08_name: "Not executed"
+      task_08_cmd: "N/A"
+      task_08_rc: -1
+      data_08: ""
+      status_08: "ERROR"
+      details_08: ""
+    tags: [execute]
+
+  - name: "Req step-02 - Apply password history policy on domain controller"
+    ansible.windows.win_shell: |
+      $domainDN = (Get-ADDomain).DistinguishedName
+      Set-ADDefaultDomainPasswordPolicy -Identity $domainDN -PasswordHistoryCount 24
+    register: _step02_output
+    when: is_dc | bool
+    failed_when: false
+    changed_when: true
+    tags: [execute]
+
+  - name: "Req step-02 - Store DC apply details"
+    ansible.builtin.set_fact:
+      task_02_name: "Apply AD default domain password policy PasswordHistoryCount=24"
+      task_02_cmd: "Set-ADDefaultDomainPasswordPolicy -Identity (Get-ADDomain).DistinguishedName -PasswordHistoryCount 24"
+      task_02_rc: "{{ _step02_output.rc | default(-1) }}"
+      data_02: "{{ _step02_output.stdout | default('') | trim }}"
+      status_02: "{{ 'PASS' if (is_dc | bool and (_step02_output.rc | default(-1)) == 0) else 'FAIL' }}"
+      details_02: "{{ 'DC password policy applied successfully' if (is_dc | bool and (_step02_output.rc | default(-1)) == 0) else 'DC apply failed' }}"
+    when: is_dc | bool
+    tags: [execute]
+
+  - name: "Req step-03 - Export current security policy for member server"
+    ansible.windows.win_shell: 'secedit /export /cfg {{ secpol_cfg_path | trim }} /quiet'
+    register: _step03_output
+    when: is_member | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req step-03 - Store member export details"
+    ansible.builtin.set_fact:
+      task_03_name: "Export current security policy via secedit"
+      task_03_cmd: "secedit /export /cfg {{ secpol_cfg_path | trim }} /quiet"
+      task_03_rc: "{{ _step03_output.rc | default(-1) }}"
+      data_03: "{{ _step03_output.stdout | default('') | trim }}"
+      status_03: "{{ 'PASS' if (is_member | bool and (_step03_output.rc | default(-1)) == 0) else 'FAIL' }}"
+      details_03: "{{ 'Security policy exported' if (is_member | bool and (_step03_output.rc | default(-1)) == 0) else 'Export failed' }}"
+    when: is_member | bool
+    tags: [execute]
+
+  - name: "Req step-04 - Edit secpol.cfg to set PasswordHistorySize to 24"
+    ansible.windows.win_shell: |
+      $path = "{{ secpol_cfg_path | trim }}"
+      $content = Get-Content -LiteralPath $path -Raw -ErrorAction SilentlyContinue
+      if (-not $content) { Write-Output "FAIL: $path not found"; exit 1 }
+      $updated = [regex]::Replace($content, '(?im)^[ \t]*PasswordHistorySize[ \t]*=.*$', 'PasswordHistorySize = 24')
+      if ($updated -notmatch '(?im)^[ \t]*PasswordHistorySize[ \t]*=[ \t]*24[ \t]*\r?$') {
+        if ($updated -match '(?im)^[ \t]*\[System Access\][ \t]*\r?\n') {
+          $updated = $updated -replace '(?im)^(\[System Access\][ \t]*\r?\n)', '$1PasswordHistorySize = 24' + "`r`n"
+        } else {
+          $updated = $updated.TrimEnd() + "`r`n[System Access]`r`nPasswordHistorySize = 24`r`n"
+        }
+      }
+      Set-Content -LiteralPath $path -Value $updated -Force
+      Write-Output "BEFORE:`n$content"
+      Write-Output "AFTER:`n$updated"
+    register: _step04_output
+    when: is_member | bool
+    failed_when: false
+    changed_when: true
+    tags: [execute]
+
+  - name: "Req step-04 - Store member edit details"
+    ansible.builtin.set_fact:
+      task_04_name: "Edit secpol.cfg PasswordHistorySize"
+      task_04_cmd: "Set PasswordHistorySize = 24 in secpol.cfg under [System Access]"
+      task_04_rc: "{{ _step04_output.rc | default(-1) }}"
+      data_04: "{{ _step04_output.stdout | default('') | trim }}"
+      status_04: "{{ 'PASS' if (is_member | bool and (_step04_output.rc | default(-1)) == 0) else 'FAIL' }}"
+      details_04: "{{ 'secpol.cfg updated' if (is_member | bool and (_step04_output.rc | default(-1)) == 0) else 'Edit failed' }}"
+    when: is_member | bool
+    tags: [execute]
+
+  - name: "Req step-05 - Apply security policy via secedit"
+    ansible.windows.win_shell: >-
+      secedit /configure
+      /db {{ secedit_db_path | trim }}
+      /cfg {{ secpol_cfg_path | trim }}
+      /areas SECURITYPOLICY /quiet
+    register: _step05_output
+    when: is_member | bool
+    async: 120
+    poll: 10
+    failed_when: false
+    changed_when: true
+    tags: [execute]
+
+  - name: "Req step-05 - Store member apply details"
+    ansible.builtin.set_fact:
+      task_05_name: "Apply security policy via secedit"
+      task_05_cmd: "secedit /configure /db {{ secedit_db_path | trim }} /cfg {{ secpol_cfg_path | trim }} /areas SECURITYPOLICY /quiet"
+      task_05_rc: "{{ _step05_output.rc | default(-1) }}"
+      data_05: "{{ _step05_output.stdout | default('') | trim }}"
+      status_05: "{{ 'PASS' if (is_member | bool and (_step05_output.rc | default(-1)) == 0) else 'FAIL' }}"
+      details_05: "{{ 'Member policy applied' if (is_member | bool and (_step05_output.rc | default(-1)) == 0) else 'Apply failed' }}"
+    when: is_member | bool
+    tags: [execute]
+
+  - name: "Req step-06 - Verify DC password history count"
+    ansible.windows.win_shell: "Get-ADDefaultDomainPasswordPolicy | Select-Object -ExpandProperty PasswordHistoryCount"
+    register: _step06_output
+    when: is_dc | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req step-06 - Store DC verify details"
+    ansible.builtin.set_fact:
+      task_06_name: "Verify AD default domain password policy PasswordHistoryCount"
+      task_06_cmd: "Get-ADDefaultDomainPasswordPolicy | Select-Object -ExpandProperty PasswordHistoryCount"
+      task_06_rc: "{{ _step06_output.rc | default(-1) }}"
+      data_06: "{{ _step06_output.stdout | default('') | trim }}"
+      status_06: "{{ 'PASS' if ((_step06_output.rc | default(-1)) == 0 and (_step06_output.stdout | default('') | trim) == '24') else 'FAIL' }}"
+      details_06: "{{ 'DC password history count is 24' if ((_step06_output.rc | default(-1)) == 0 and (_step06_output.stdout | default('') | trim) == '24') else 'DC verify failed or count is not 24' }}"
+    when: is_dc | bool
+    tags: [execute]
+
+  - name: "Req step-07 - Export member security policy for verification"
+    ansible.windows.win_shell: 'secedit /export /cfg {{ verify_cfg_path | trim }} /quiet'
+    register: _step07_output
+    when: is_member | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req step-07 - Verify PasswordHistorySize equals 24 in exported policy"
+    ansible.windows.win_shell: |
+      $path = "{{ verify_cfg_path | trim }}"
+      if (Test-Path -LiteralPath $path) {
+        $content = Get-Content -LiteralPath $path -Raw
+        if ($content -match '(?im)^[ \t]*PasswordHistorySize[ \t]*=[ \t]*24[ \t]*\r?$') {
+          Write-Output 'PASS'
+        } else {
+          Write-Output 'FAIL'; exit 1
+        }
+      } else {
+        Write-Output 'FAIL: verification file missing'; exit 1
+      }
+    register: member_verify
+    when: is_member | bool
+    failed_when: false
+    changed_when: false
+    tags: [execute]
+
+  - name: "Req step-07 - Store member verify details"
+    ansible.builtin.set_fact:
+      task_07_name: "Export and verify member security policy PasswordHistorySize"
+      task_07_cmd: "secedit /export /cfg {{ verify_cfg_path | trim }} /quiet; Select-String -Pattern '^PasswordHistorySize = 24$' {{ verify_cfg_path | trim }}"
+      task_07_rc: "{{ member_verify.rc | default(-1) }}"
+      data_07: "{{ member_verify.stdout | default('') | trim }}"
+      status_07: "{{ 'PASS' if ((member_verify.rc | default(-1)) == 0 and (member_verify.stdout | default('') | trim) == 'PASS') else 'FAIL' }}"
+      details_07: "{{ 'Member verification passed' if ((member_verify.rc | default(-1)) == 0 and (member_verify.stdout | default('') | trim) == 'PASS') else 'Member verification failed' }}"
+    when: is_member | bool
+    tags: [execute]
+
+  - name: "Req step-08 - Set cis_result and requirement 08 details"
+    ansible.builtin.set_fact:
+      cis_result: "{{ (status_06 if (is_dc | bool) else (status_07 if (is_member | bool) else 'ERROR')) | trim }}"
+      status_08: "{{ (status_06 if (is_dc | bool) else (status_07 if (is_member | bool) else 'ERROR')) | trim }}"
+      task_08_name: "Store final remediation result as cis_result"
+      task_08_cmd: "set_fact cis_result"
+      task_08_rc: 0
+      data_08: "{{ (status_06 if (is_dc | bool) else (status_07 if (is_member | bool) else 'ERROR')) | trim }}"
+      details_08: "Overall remediation result aggregated from active branch verify step"
+    tags: [execute]
+
+  - name: "Generate remediation report"
+    ansible.builtin.debug:
+      msg:
+      - "REMEDIATION REPORT — CIS 1.1.1"
+      - "Reference: CIS Benchmark checkpoint 1.1.1"
+      - ""
+      - "REQUIREMENT 01 - {{ req_01 }}:"
+      - "  Task: {{ task_01_name | default('Not recorded') }}"
+      - "  Command: {{ task_01_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_01_rc | default(-1) }}"
+      - "  Data: {{ data_01 | default('') | trim }}"
+      - "  Status: {{ status_01 | default('ERROR') | trim }}"
+      - "  Details: {{ details_01 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 02 - {{ req_02 }}:"
+      - "  Task: {{ task_02_name | default('Not recorded') }}"
+      - "  Command: {{ task_02_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_02_rc | default(-1) }}"
+      - "  Data: {{ data_02 | default('') | trim }}"
+      - "  Status: {{ status_02 | default('ERROR') | trim }}"
+      - "  Details: {{ details_02 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 03 - {{ req_03 }}:"
+      - "  Task: {{ task_03_name | default('Not recorded') }}"
+      - "  Command: {{ task_03_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_03_rc | default(-1) }}"
+      - "  Data: {{ data_03 | default('') | trim }}"
+      - "  Status: {{ status_03 | default('ERROR') | trim }}"
+      - "  Details: {{ details_03 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 04 - {{ req_04 }}:"
+      - "  Task: {{ task_04_name | default('Not recorded') }}"
+      - "  Command: {{ task_04_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_04_rc | default(-1) }}"
+      - "  Data: {{ data_04 | default('') | trim }}"
+      - "  Status: {{ status_04 | default('ERROR') | trim }}"
+      - "  Details: {{ details_04 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 05 - {{ req_05 }}:"
+      - "  Task: {{ task_05_name | default('Not recorded') }}"
+      - "  Command: {{ task_05_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_05_rc | default(-1) }}"
+      - "  Data: {{ data_05 | default('') | trim }}"
+      - "  Status: {{ status_05 | default('ERROR') | trim }}"
+      - "  Details: {{ details_05 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 06 - {{ req_06 }}:"
+      - "  Task: {{ task_06_name | default('Not recorded') }}"
+      - "  Command: {{ task_06_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_06_rc | default(-1) }}"
+      - "  Data: {{ data_06 | default('') | trim }}"
+      - "  Status: {{ status_06 | default('ERROR') | trim }}"
+      - "  Details: {{ details_06 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 07 - {{ req_07 }}:"
+      - "  Task: {{ task_07_name | default('Not recorded') }}"
+      - "  Command: {{ task_07_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_07_rc | default(-1) }}"
+      - "  Data: {{ data_07 | default('') | trim }}"
+      - "  Status: {{ status_07 | default('ERROR') | trim }}"
+      - "  Details: {{ details_07 | default('') | trim }}"
+      - ""
+      - "REQUIREMENT 08 - {{ req_08 }}:"
+      - "  Task: {{ task_08_name | default('Not recorded') }}"
+      - "  Command: {{ task_08_cmd | default('N/A') }}"
+      - "  Exit code: {{ task_08_rc | default(-1) }}"
+      - "  Data: {{ data_08 | default('') | trim }}"
+      - "  Status: {{ status_08 | default('ERROR') | trim }}"
+      - "  Details: {{ details_08 | default('') | trim }}"
+      - ""
+      - "========================================================"
+      - "OVERALL REMEDIATION:"
+      - "  Result: {{ cis_result | default('ERROR') | trim }}"
+      - "========================================================"
+    tags: [execute]
+
+  always:
+  - name: "Restore - Start restore and cleanup"
+    ansible.windows.win_shell: |
+      $ErrorActionPreference = 'Continue'
+      $backupDir = "{{ backup_dir | trim }}"
+      if (-not (Test-Path -LiteralPath $backupDir)) { Write-Output 'No backup; nothing to restore'; exit 0 }
+
+      function Restore-FileOrDelete($name, $dest) {
+        $p = Join-Path $backupDir "$name.present"
+        $a = Join-Path $backupDir "$name.absent"
+        if (Test-Path -LiteralPath $p) {
+          Copy-Item -LiteralPath $p -Destination $dest -Force
+          Write-Output "Restored: $dest"
+        } elseif (Test-Path -LiteralPath $a) {
+          Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+          Write-Output "Removed (was absent): $dest"
+        }
+      }
+      Restore-FileOrDelete 'secpol.cfg' '{{ secpol_cfg_path | trim }}'
+      Restore-FileOrDelete 'verify.cfg' '{{ verify_cfg_path | trim }}'
+
+      $dcSnap = Join-Path $backupDir 'dc_password_history_count.txt'
+      if (Test-Path -LiteralPath $dcSnap) {
+        $count = (Get-Content -LiteralPath $dcSnap -Raw).Trim()
+        if ($count -match '^\d+$') {
+          Set-ADDefaultDomainPasswordPolicy -Identity (Get-ADDomain).DistinguishedName -PasswordHistoryCount ([int]$count)
+          Write-Output "Restored DC PasswordHistoryCount to $count"
+        }
+      }
+
+      $memberOrigCfg = Join-Path $backupDir 'secpol_original.cfg'
+      if (Test-Path -LiteralPath $memberOrigCfg) {
+        $tmpDb = Join-Path $env:TEMP 'secedit_restore.sdb'
+        secedit /configure /cfg $memberOrigCfg /db $tmpDb /areas SECURITYPOLICY /quiet
+        Remove-Item -LiteralPath $tmpDb -Force -ErrorAction SilentlyContinue
+        Write-Output 'Restored Member Server security policy'
+      }
+
+      Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+      Write-Output 'Restore completed'
+    async: 300
+    poll: 0
+    register: _restore_job
+    failed_when: false
+    changed_when: false
+    tags: [restore]
+
+  - name: "Restore - Wait for restore to complete"
+    ansible.builtin.async_status:
+      jid: "{{ _restore_job.ansible_job_id }}"
+    register: _restore_result
+    until: _restore_result.finished
+    retries: 30
+    delay: 10
+    failed_when: false
+    when: _restore_job.ansible_job_id is defined
+    tags: [restore]

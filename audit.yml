@@ -19,7 +19,8 @@
 
     - name: Load the master index list
       include_vars:
-        file: rhel9_cis.yml
+        file: win2022_cis.yml
+        #file: rhel9_cis.yml
 
     - name: include cis role
       ansible.builtin.include_tasks: actions.yaml
