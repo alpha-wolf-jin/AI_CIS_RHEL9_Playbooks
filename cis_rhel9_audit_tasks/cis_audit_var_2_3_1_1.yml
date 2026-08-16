@@ -1,0 +1,5 @@
+req_01: "Check if the Guest account is disabled using command: `Get-LocalUser -Name Guest | Select-Object -ExpandProperty Enabled`. Expected result: False"
+req_02: |-
+  Check if the Guest account status is set to Disabled via Group Policy using command: `Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' -Name 'DefaultUserName' -ErrorAction SilentlyContinue`. Expected result: No relevant setting or not applicable
+req_03: "Check overall compliance: PASS if Guest account is disabled, SKIP if no local account database exists (e.g., Domain Controller), FAIL if Guest account is enabled."
+req_04: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."

@@ -1,0 +1,105 @@
+---
+- name: Initialize meta data variables
+  include_vars: cis_audit_var_9_1_1.yml
+
+- name: "Check if system is a domain member"
+  ansible.windows.win_shell: |
+    {% raw %}
+    (Get-CimInstance Win32_ComputerSystem).PartOfDomain
+    {% endraw %}
+  register: result_domain_member
+  failed_when: false
+  changed_when: false
+
+- name: "Req 01 - Check Windows Firewall Domain Profile state using Get-NetFirewallProfile"
+  ansible.windows.win_shell: |
+    {% raw %}
+    $fw = Get-NetFirewallProfile -Name Domain; Write-Output $($fw.Enabled)
+    {% endraw %}
+  register: result_01
+  failed_when: false
+  changed_when: false
+
+- name: "Compute preliminary compliance facts"
+  ansible.builtin.set_fact:
+    domain_member: "{{ (result_domain_member.stdout | default('') | trim | lower) == 'true' }}"
+    domain_command_ok: "{{ (result_domain_member.rc | default(-1)) == 0 }}"
+    fw_command_ok: "{{ (result_01.rc | default(-1)) == 0 }}"
+    fw_enabled: "{{ (result_01.stdout | default('') | trim | lower) == 'true' }}"
+
+- name: "Req 02 - Evaluate compliance status"
+  ansible.builtin.set_fact:
+    task_01_name: "Req 01 - Check Windows Firewall Domain Profile state using Get-NetFirewallProfile"
+    task_01_cmd: "$fw = Get-NetFirewallProfile -Name Domain; Write-Output $($fw.Enabled)"
+    task_01_rc: "{{ result_01.rc | default(-1) }}"
+    data_01: "{{ result_01.stdout | default('') | trim }}"
+    status_01: "{{ ('ERROR' if (not fw_command_ok) or (not domain_command_ok) else ('SKIP' if not domain_member else ('PASS' if fw_enabled else 'FAIL'))) | trim }}"
+    details_01: "{{ 'ERROR: command failed' if (not fw_command_ok) or (not domain_command_ok) else ('SKIP: system is not a domain member' if not domain_member else ('PASS: Domain profile Enabled property is True' if fw_enabled else ('FAIL: expected True, got ' ~ (result_01.stdout | default('') | trim)))) }}"
+    task_02_name: "Req 02 - Evaluate compliance status"
+    task_02_cmd: "Compare PowerShell output to True"
+    task_02_rc: "{{ result_01.rc | default(-1) }}"
+    data_02: "{{ result_01.stdout | default('') | trim }}"
+    status_02: "{{ ('ERROR' if (not fw_command_ok) or (not domain_command_ok) else ('SKIP' if not domain_member else ('PASS' if fw_enabled else 'FAIL'))) | trim }}"
+    details_02: "{{ 'ERROR: command failed' if (not fw_command_ok) or (not domain_command_ok) else ('SKIP: system is not a domain member' if not domain_member else ('PASS: PowerShell output was True' if fw_enabled else ('FAIL: expected True, got ' ~ (result_01.stdout | default('') | trim)))) }}"
+    task_03_name: "Req 03 - Store final audit result in cis_result"
+    task_03_cmd: "N/A"
+    task_03_rc: 0
+    data_03: "Pending"
+    status_03: "PENDING"
+    details_03: "Will be set by cis_result"
+    task_04_name: "Req 04 - Generate audit report"
+    task_04_cmd: "N/A"
+    task_04_rc: 0
+    data_04: "Report generated"
+    status_04: "PASS"
+    details_04: "Final report task"
+
+- name: "Req 03 - Store final audit result in cis_result"
+  ansible.builtin.set_fact:
+    cis_result: "{{ status_02 | default('ERROR') | trim }}"
+    data_03: "{{ status_02 | default('ERROR') | trim }}"
+    status_03: "{{ status_02 | default('ERROR') | trim }}"
+    details_03: "{{ 'cis_result set to ' ~ (status_02 | default('ERROR') | trim) }}"
+
+- name: "Generate audit report"
+  ansible.builtin.debug:
+    msg:
+    - "AUDIT REPORT — CIS 9.1.1"
+    - "Reference: CIS Benchmark checkpoint 9.1.1"
+    - ""
+    - "REQUIREMENT 01 - {{ req_01 }}:"
+    - "  Task: {{ task_01_name | default('Not recorded') }}"
+    - "  Command: {{ task_01_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_01_rc | default(-1) }}"
+    - "  Data: {{ data_01 | default('') | trim }}"
+    - "  Status: {{ status_01 | default('ERROR') | trim }}"
+    - "  Details: {{ details_01 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 02 - {{ req_02 }}:"
+    - "  Task: {{ task_02_name | default('Not recorded') }}"
+    - "  Command: {{ task_02_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_02_rc | default(-1) }}"
+    - "  Data: {{ data_02 | default('') | trim }}"
+    - "  Status: {{ status_02 | default('ERROR') | trim }}"
+    - "  Details: {{ details_02 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 03 - {{ req_03 }}:"
+    - "  Task: {{ task_03_name | default('Not recorded') }}"
+    - "  Command: {{ task_03_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_03_rc | default(-1) }}"
+    - "  Data: {{ data_03 | default('') | trim }}"
+    - "  Status: {{ status_03 | default('ERROR') | trim }}"
+    - "  Details: {{ details_03 | default('') | trim }}"
+    - ""
+    - "REQUIREMENT 04 - {{ req_04 }}:"
+    - "  Task: {{ task_04_name | default('Not recorded') }}"
+    - "  Command: {{ task_04_cmd | default('N/A') }}"
+    - "  Exit code: {{ task_04_rc | default(-1) }}"
+    - "  Data: {{ data_04 | default('') | trim }}"
+    - "  Status: {{ status_04 | default('ERROR') | trim }}"
+    - "  Details: {{ details_04 | default('') | trim }}"
+    - ""
+    - "========================================================"
+    - "OVERALL COMPLIANCE:"
+    - "  Result: {{ cis_result | default('ERROR') | trim }}"
+    - "========================================================"

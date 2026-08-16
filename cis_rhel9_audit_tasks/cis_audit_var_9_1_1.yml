@@ -1,0 +1,4 @@
+req_01: "Check if Windows Firewall Domain Profile state is enabled using Get-NetFirewallProfile -Name Domain and comparing the Enabled property to True (case-insensitive)."
+req_02: "Check overall compliance: PASS if the Domain profile Enabled property is True; FAIL if False or missing; SKIP if the system is not a domain member or the policy is not applicable."
+req_03: "Store the final audit result in a variable named 'cis_result' using set_fact. Set cis_result to the overall compliance status (PASS/FAIL/SKIP/ERROR) derived from the last requirement's status variable."
+req_04: "Generate audit report using debug msg with prescribed format and OVERALL COMPLIANCE result cis_result."
